@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="1024dp"
+    android:height="1024dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+
+    <path
+        android:fillColor="#09120F"
+        android:pathData="M262,32 L762,32 Q992,32 992,262 L992,762 Q992,992 762,992 L262,992 Q32,992 32,762 L32,262 Q32,32 262,32 Z" />
+
+    <path
+        android:fillColor="#1A6B48"
+        android:fillAlpha="0.105"
+        android:pathData="M512,305 C400,305 300,380 300,510 C300,640 400,715 512,715 C624,715 724,640 724,510 C724,380 624,305 512,305 Z" />
+
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#6EEFA4"
+        android:strokeAlpha="0.055"
+        android:strokeWidth="8"
+        android:pathData="M512,157 A355,355 0,1 0,512,867 A355,355 0,1 0,512,157" />
+
+    <path
+        android:fillColor="#A3FFD0"
+        android:pathData="M560,205 L620,215 L620,700 C620,775 555,825 465,825 C390,825 325,790 325,725 C325,660 390,615 470,615 C520,615 560,635 560,660 L560,205 Z" />
+
+    <path
+        android:fillColor="#20C978"
+        android:pathData="M560,205 C690,205 775,265 800,390 C750,350 690,335 620,340 L560,350 Z" />
+
+    <path
+        android:fillColor="#20C978"
+        android:pathData="M445,632 C520,632 580,672 580,725 C580,778 520,828 445,828 C370,828 310,788 310,735 C310,682 370,632 445,632 Z" />
+
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#A3FFD0"
+        android:strokeAlpha="0.75"
+        android:strokeWidth="14"
+        android:strokeLineCap="round"
+        android:pathData="M270,865 Q310,825 350,865 Q390,905 430,865" />
+
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#A3FFD0"
+        android:strokeAlpha="0.75"
+        android:strokeWidth="14"
+        android:strokeLineCap="round"
+        android:pathData="M610,865 Q650,825 690,865 Q730,905 770,865" />
+
+</vector>
