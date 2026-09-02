@@ -7,16 +7,25 @@ import java.util.ArrayList;
 public class MusicRepository {
 
     private final MusicScanner musicScanner;
+    private final MetadataOverrideManager metadataOverrideManager;
 
     public MusicRepository(Context context) {
 
         musicScanner =
                 new MusicScanner(context);
+
+        metadataOverrideManager =
+                new MetadataOverrideManager(context);
     }
 
     public ArrayList<AudioFile> getAllSongs() {
 
-        return musicScanner.scanMusic();
+        ArrayList<AudioFile> songs =
+                musicScanner.scanMusic();
+
+        applyOverrides(songs);
+
+        return songs;
     }
 
     public ArrayList<AudioFile> searchSongs(
@@ -24,6 +33,8 @@ public class MusicRepository {
 
         ArrayList<AudioFile> allSongs =
                 musicScanner.scanMusic();
+
+        applyOverrides(allSongs);
 
         ArrayList<AudioFile> results =
                 new ArrayList<>();
@@ -38,6 +49,10 @@ public class MusicRepository {
                 query.trim().toLowerCase();
 
         for (AudioFile song : allSongs) {
+
+            if (song == null) {
+                continue;
+            }
 
             if (song.getTitle() != null &&
                     song.getTitle()
@@ -71,11 +86,33 @@ public class MusicRepository {
 
     public ArrayList<AudioFile> refreshMusic() {
 
-        return musicScanner.refreshMusic();
+        ArrayList<AudioFile> songs =
+                musicScanner.refreshMusic();
+
+        applyOverrides(songs);
+
+        return songs;
     }
 
     public void clearMusicCache() {
 
         musicScanner.clearCache();
+    }
+
+    private void applyOverrides(
+            ArrayList<AudioFile> songs) {
+
+        if (songs == null) {
+            return;
+        }
+
+        for (AudioFile song : songs) {
+
+            if (song == null) {
+                continue;
+            }
+
+            metadataOverrideManager.apply(song);
+        }
     }
 }
