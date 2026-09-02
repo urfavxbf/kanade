@@ -11,17 +11,13 @@ import org.json.JSONObject;
  */
 public class MetadataOverrideManager {
 
-    private static final String PREF_NAME =
-            "kanade_metadata_overrides";
-
-    private static final String KEY_OVERRIDES =
-            "overrides";
+    private static final String PREF_NAME = "kanade_metadata_overrides";
+    private static final String KEY_OVERRIDES = "overrides";
 
     private final SharedPreferences preferences;
 
     public MetadataOverrideManager(Context context) {
         Context appContext = context.getApplicationContext();
-
         preferences = appContext.getSharedPreferences(
                 PREF_NAME,
                 Context.MODE_PRIVATE
@@ -46,14 +42,12 @@ public class MetadataOverrideManager {
             putNullable(override, "year", song.getYear());
             putNullable(override, "trackNumber", song.getTrackNumber());
             putNullable(override, "discNumber", song.getDiscNumber());
+            putNullable(override, "albumArtUri", song.getAlbumArtUri());
 
             allOverrides.put(song.getUri(), override);
 
             preferences.edit()
-                    .putString(
-                            KEY_OVERRIDES,
-                            allOverrides.toString()
-                    )
+                    .putString(KEY_OVERRIDES, allOverrides.toString())
                     .apply();
 
             return true;
@@ -71,53 +65,22 @@ public class MetadataOverrideManager {
 
         try {
             JSONObject allOverrides = getAllOverrides();
-            JSONObject override = allOverrides.optJSONObject(
-                    song.getUri()
-            );
+            JSONObject override = allOverrides.optJSONObject(song.getUri());
 
             if (override == null) {
                 return;
             }
 
-            song.setTitle(
-                    readNullable(override, "title", song.getTitle())
-            );
-            song.setArtist(
-                    readNullable(override, "artist", song.getArtist())
-            );
-            song.setAlbum(
-                    readNullable(override, "album", song.getAlbum())
-            );
-            song.setAlbumArtist(
-                    readNullable(
-                            override,
-                            "albumArtist",
-                            song.getAlbumArtist()
-                    )
-            );
-            song.setGenre(
-                    readNullable(override, "genre", song.getGenre())
-            );
-            song.setComposer(
-                    readNullable(override, "composer", song.getComposer())
-            );
-            song.setYear(
-                    readNullable(override, "year", song.getYear())
-            );
-            song.setTrackNumber(
-                    readNullable(
-                            override,
-                            "trackNumber",
-                            song.getTrackNumber()
-                    )
-            );
-            song.setDiscNumber(
-                    readNullable(
-                            override,
-                            "discNumber",
-                            song.getDiscNumber()
-                    )
-            );
+            song.setTitle(readNullable(override, "title", song.getTitle()));
+            song.setArtist(readNullable(override, "artist", song.getArtist()));
+            song.setAlbum(readNullable(override, "album", song.getAlbum()));
+            song.setAlbumArtist(readNullable(override, "albumArtist", song.getAlbumArtist()));
+            song.setGenre(readNullable(override, "genre", song.getGenre()));
+            song.setComposer(readNullable(override, "composer", song.getComposer()));
+            song.setYear(readNullable(override, "year", song.getYear()));
+            song.setTrackNumber(readNullable(override, "trackNumber", song.getTrackNumber()));
+            song.setDiscNumber(readNullable(override, "discNumber", song.getDiscNumber()));
+            song.setAlbumArtUri(readNullable(override, "albumArtUri", song.getAlbumArtUri()));
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -128,7 +91,6 @@ public class MetadataOverrideManager {
         if (isEmpty(uri)) {
             return false;
         }
-
         return getAllOverrides().has(uri);
     }
 
@@ -147,10 +109,7 @@ public class MetadataOverrideManager {
             allOverrides.remove(uri);
 
             preferences.edit()
-                    .putString(
-                            KEY_OVERRIDES,
-                            allOverrides.toString()
-                    )
+                    .putString(KEY_OVERRIDES, allOverrides.toString())
                     .apply();
 
             return true;
@@ -168,10 +127,7 @@ public class MetadataOverrideManager {
     }
 
     private JSONObject getAllOverrides() {
-        String json = preferences.getString(
-                KEY_OVERRIDES,
-                null
-        );
+        String json = preferences.getString(KEY_OVERRIDES, null);
 
         if (isEmpty(json)) {
             return new JSONObject();
@@ -183,7 +139,6 @@ public class MetadataOverrideManager {
             preferences.edit()
                     .remove(KEY_OVERRIDES)
                     .apply();
-
             return new JSONObject();
         }
     }
@@ -211,12 +166,7 @@ public class MetadataOverrideManager {
         }
 
         String value = object.optString(key, null);
-
-        if (value == null) {
-            return fallback;
-        }
-
-        return value;
+        return value == null ? fallback : value;
     }
 
     private boolean isEmpty(String value) {
