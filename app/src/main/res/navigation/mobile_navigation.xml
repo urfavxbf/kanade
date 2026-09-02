@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<navigation
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mobile_navigation"
+    app:startDestination="@id/navigation_home">
+
+    <!-- SONGS -->
+
+    <fragment
+        android:id="@+id/navigation_home"
+        android:name="com.urfavxbf.kanade.ui.songs.HomeFragment"
+        android:label="Songs"
+        tools:layout="@layout/main" />
+
+    <!-- ARTISTS -->
+
+    <fragment
+        android:id="@+id/navigation_artist"
+        android:name="com.urfavxbf.kanade.ui.artist.ArtistFragment"
+        android:label="Artists"
+        tools:layout="@layout/fragment_artist" />
+
+    <!-- DASHBOARD -->
+
+    <fragment
+        android:id="@+id/navigation_dashboard"
+        android:name="com.urfavxbf.kanade.ui.dashboard.DashboardFragment"
+        android:label="Dashboard"
+        tools:layout="@layout/fragment_dashboard" />
+
+    <!-- PLAYLISTS -->
+
+    <fragment
+        android:id="@+id/navigation_playlist"
+        android:name="com.urfavxbf.kanade.ui.playlist.PlaylistFragment"
+        android:label="Playlists"
+        tools:layout="@layout/activity_playlist" />
+
+    <!-- YOUTUBE -->
+
+    <fragment
+        android:id="@+id/navigation_youtube"
+        android:name="com.urfavxbf.kanade.ui.youtube.YouTubeFragment"
+        android:label="YouTube"
+        tools:layout="@layout/fragment_youtube" />
+
+</navigation>

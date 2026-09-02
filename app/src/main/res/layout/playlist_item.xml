@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+<androidx.cardview.widget.CardView
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginStart="12dp"
+    android:layout_marginEnd="12dp"
+    android:layout_marginTop="6dp"
+    android:layout_marginBottom="6dp"
+    app:cardCornerRadius="18dp"
+    app:cardElevation="2dp"
+    app:cardBackgroundColor="#181A24">
+
+    
+
+        <!-- PLAYLIST HEADER -->
+
+        <LinearLayout
+            android:id="@+id/playlistHeader"
+            android:layout_width="match_parent"
+            android:layout_height="70dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="14dp"
+            android:paddingEnd="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
+
+            <ImageView
+                android:id="@+id/imgPlaylistIcon"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:padding="9dp"
+                android:src="@drawable/ic_playlist"
+                android:tint="#C9C4FF"
+                android:background="@drawable/rounded_album_art"
+                android:scaleType="centerInside"
+                android:contentDescription="Playlist" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="13dp"
+                android:layout_marginEnd="8dp">
+
+                <TextView
+                    android:id="@+id/txtPlaylistName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Playlist"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/txtPlaylistCount"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="0 songs"
+                    android:textColor="#9698A6"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+
+            <ImageButton
+    android:id="@+id/btn_more"
+    android:layout_width="40dp"
+    android:layout_height="40dp"
+    android:background="@drawable/rounded_album_art"
+    android:src="@drawable/menu_vertical"
+    android:tint="#777A89"
+    android:padding="9dp"
+    android:scaleType="centerInside"
+    android:contentDescription="More options" />
+
+        </LinearLayout>
+</androidx.cardview.widget.CardView>
+
+<androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/playlistSongsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:clipToPadding="false"
+            android:nestedScrollingEnabled="false"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="8dp" />
+               </LinearLayout>
