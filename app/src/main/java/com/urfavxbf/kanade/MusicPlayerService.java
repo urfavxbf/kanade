@@ -13,6 +13,8 @@ import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.media.MediaFormat;
+import android.media.audiofx.Visualizer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
@@ -126,6 +128,33 @@ public class MusicPlayerService extends Service {
     public static final String EXTRA_QUEUE_SIZE =
             "com.urfavxbf.kanade.EXTRA_QUEUE_SIZE";
 
+    /*
+     * ---------------------------------------------------------
+     * AUDIO ANALYSIS
+     * ---------------------------------------------------------
+     */
+
+    public static final String ACTION_AUDIO_ANALYSIS =
+            "com.urfavxbf.kanade.ACTION_AUDIO_ANALYSIS";
+
+    public static final String EXTRA_FFT =
+            "com.urfavxbf.kanade.EXTRA_FFT";
+
+    public static final String EXTRA_BASS =
+            "com.urfavxbf.kanade.EXTRA_BASS";
+
+    public static final String EXTRA_ENERGY =
+            "com.urfavxbf.kanade.EXTRA_ENERGY";
+
+    public static final String EXTRA_BEAT =
+            "com.urfavxbf.kanade.EXTRA_BEAT";
+
+    public static final String EXTRA_BEAT_INTENSITY =
+            "com.urfavxbf.kanade.EXTRA_BEAT_INTENSITY";
+
+    public static final String EXTRA_SAMPLE_RATE =
+            "com.urfavxbf.kanade.EXTRA_SAMPLE_RATE";
+
     private static final String CHANNEL_ID =
             "kanade_music_playback";
 
@@ -160,6 +189,37 @@ public class MusicPlayerService extends Service {
     private int repeatMode = REPEAT_OFF;
 
     private final Random random = new Random();
+
+    /*
+     * ---------------------------------------------------------
+     * AUDIO VISUALIZER / FFT
+     * ---------------------------------------------------------
+     */
+
+    private Visualizer audioVisualizer;
+
+    private int audioVisualizerSampleRate = 44100;
+
+    private volatile boolean audioAnalysisRunning = false;
+
+    /*
+     * Adaptive energy values.
+     *
+     * These are intentionally kept in the service so the beat
+     * detector is based on the actual incoming FFT stream.
+     */
+
+    private float smoothedEnergy = 0f;
+
+    private float energyBaseline = 0f;
+
+    private float smoothedBass = 0f;
+
+    private float previousBass = 0f;
+
+    private long lastBeatTime = 0L;
+
+    private static final long MIN_BEAT_INTERVAL_MS = 115L;
 
     @Override
     public void onCreate() {
@@ -207,6 +267,8 @@ public class MusicPlayerService extends Service {
                                 if (!mediaPlayer.isPlaying()) {
 
                                     mediaPlayer.start();
+
+                                    startAudioAnalysis();
 
                                     startPositionUpdates();
 
@@ -584,6 +646,17 @@ public class MusicPlayerService extends Service {
 
             mediaPlayer.start();
 
+            /*
+             * IMPORTANT:
+             *
+             * MediaPlayer.create() has already prepared the
+             * player, so the audio session is now available.
+             *
+             * Start FFT analysis only after MediaPlayer.start().
+             */
+
+            startAudioAnalysis();
+
             startPlaybackForeground();
 
             updateMediaMetadata();
@@ -652,6 +725,8 @@ public class MusicPlayerService extends Service {
 
                 mediaPlayer.start();
 
+                startAudioAnalysis();
+
                 startPositionUpdates();
 
                 updateMediaSessionState(
@@ -685,6 +760,16 @@ public class MusicPlayerService extends Service {
                 mediaPlayer.pause();
             }
 
+            /*
+             * Stop FFT capture while paused.
+             *
+             * The Visualizer object itself remains attached to
+             * the MediaPlayer audio session and can be started
+             * again immediately when playback resumes.
+             */
+
+            stopAudioAnalysisCapture();
+
             isUpdatingPosition =
                     false;
 
@@ -702,6 +787,1053 @@ public class MusicPlayerService extends Service {
 
             e.printStackTrace();
         }
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * AUDIO ANALYSIS
+     * ---------------------------------------------------------
+     */
+
+    private void startAudioAnalysis() {
+
+    if (mediaPlayer == null) {
+        return;
+    }
+
+    try {
+
+        /*
+         * If a Visualizer already exists, reuse it.
+         * This happens when playback resumes after pause.
+         */
+
+        if (audioVisualizer != null) {
+
+            resetAudioAnalysisState();
+
+            try {
+
+                audioVisualizer.setEnabled(true);
+
+                audioAnalysisRunning = true;
+
+                return;
+
+            } catch (Exception ignored) {
+
+                releaseAudioVisualizer();
+            }
+        }
+
+        int audioSessionId =
+                mediaPlayer.getAudioSessionId();
+
+        if (audioSessionId <= 0) {
+            return;
+        }
+
+        audioVisualizer =
+                new Visualizer(audioSessionId);
+
+        /*
+         * -----------------------------------------------------
+         * CAPTURE SIZE
+         * -----------------------------------------------------
+         */
+
+        int[] captureRange =
+                Visualizer.getCaptureSizeRange();
+
+        int captureSize =
+                chooseCaptureSize(
+                        captureRange
+                );
+
+        try {
+
+            audioVisualizer.setCaptureSize(
+                    captureSize
+            );
+
+        } catch (Exception e) {
+
+            /*
+             * Some OEM implementations reject 1024.
+             * Fall back to the minimum supported size.
+             */
+
+            try {
+
+                if (captureRange != null &&
+                        captureRange.length >= 2) {
+
+                    audioVisualizer.setCaptureSize(
+                            captureRange[0]
+                    );
+                }
+
+            } catch (Exception ignored) {
+
+                releaseAudioVisualizer();
+
+                return;
+            }
+        }
+
+        /*
+         * -----------------------------------------------------
+         * FFT LISTENER
+         * -----------------------------------------------------
+         */
+
+        int maxCaptureRate;
+
+        try {
+
+            maxCaptureRate =
+                    Visualizer.getMaxCaptureRate();
+
+        } catch (Exception e) {
+
+            maxCaptureRate =
+                    8000000;
+        }
+
+        /*
+         * Visualizer capture rate is expressed in milliHz.
+         *
+         * 8,000,000 milliHz = 8 kHz.
+         *
+         * We use the smaller of our desired rate and the
+         * device-supported maximum.
+         */
+
+        int requestedCaptureRate =
+                Math.min(
+                        8000000,
+                        maxCaptureRate
+                );
+
+        /*
+         * Prevent invalid/zero capture rates on unusual devices.
+         */
+
+        if (requestedCaptureRate <= 0) {
+
+            requestedCaptureRate =
+                    8000000;
+        }
+
+        audioVisualizer.setDataCaptureListener(
+
+                new Visualizer.OnDataCaptureListener() {
+
+                    @Override
+                    public void onWaveFormDataCapture(
+                            Visualizer visualizer,
+                            byte[] waveform,
+                            int samplingRate) {
+
+                        /*
+                         * Kanade uses FFT data rather than
+                         * waveform data.
+                         */
+                    }
+
+                    @Override
+                    public void onFftDataCapture(
+                            Visualizer visualizer,
+                            byte[] fft,
+                            int samplingRate) {
+
+                        processFFTData(
+                                fft,
+                                samplingRate
+                        );
+                    }
+                },
+
+                requestedCaptureRate,
+
+                false,
+
+                true
+        );
+
+        /*
+         * -----------------------------------------------------
+         * ENABLE
+         * -----------------------------------------------------
+         */
+
+        audioVisualizer.setEnabled(
+                true
+        );
+
+        resetAudioAnalysisState();
+
+        audioAnalysisRunning =
+                true;
+
+    } catch (Exception e) {
+
+        /*
+         * Visualizer failure must NEVER interrupt playback.
+         */
+
+        e.printStackTrace();
+
+        releaseAudioVisualizer();
+    }
+}
+
+    private int chooseCaptureSize(
+            int[] range) {
+
+        if (range == null ||
+                range.length < 2) {
+
+            return 1024;
+        }
+
+        int min =
+                range[0];
+
+        int max =
+                range[1];
+
+        /*
+         * Prefer 1024 because it gives the visualizer enough
+         * frequency resolution while remaining lightweight.
+         */
+
+        int preferred =
+                1024;
+
+        if (preferred >= min &&
+                preferred <= max) {
+
+            return preferred;
+        }
+
+        /*
+         * Find the nearest supported power-of-two size.
+         */
+
+        int size =
+                min;
+
+        if (size < 64) {
+
+            size = 64;
+        }
+
+        int best =
+                size;
+
+        while (size <= max) {
+
+            if (size <= preferred) {
+
+                best = size;
+
+            } else {
+
+                break;
+            }
+
+            if (size > 16384) {
+
+                break;
+            }
+
+            size *= 2;
+        }
+
+        if (best < min) {
+
+            best = min;
+        }
+
+        if (best > max) {
+
+            best = max;
+        }
+
+        return best;
+    }
+
+    private void processFFTData(
+        byte[] fft,
+        int samplingRateMilliHz) {
+
+    if (!audioAnalysisRunning) {
+        return;
+    }
+
+    if (fft == null ||
+            fft.length < 4) {
+        return;
+    }
+
+    try {
+
+        if (samplingRateMilliHz > 0) {
+
+            audioVisualizerSampleRate =
+                    samplingRateMilliHz / 1000;
+        }
+
+        if (audioVisualizerSampleRate <= 0) {
+
+            audioVisualizerSampleRate =
+                    44100;
+        }
+
+        byte[] fftCopy =
+                new byte[fft.length];
+
+        System.arraycopy(
+                fft,
+                0,
+                fftCopy,
+                0,
+                fft.length
+        );
+
+        float bass =
+                calculateBassEnergy(
+                        fft
+                );
+
+        float energy =
+                calculateOverallEnergy(
+                        fft
+                );
+
+        /*
+         * Faster attack.
+         *
+         * Bass reacts quickly to kick drums.
+         * Energy reacts slightly slower to avoid excessive
+         * triggering from high-frequency fluctuations.
+         */
+
+        smoothedBass =
+                smoothValue(
+                        smoothedBass,
+                        bass,
+                        0.45f
+                );
+
+        smoothedEnergy =
+                smoothValue(
+                        smoothedEnergy,
+                        energy,
+                        0.32f
+                );
+
+        /*
+         * Adaptive baseline.
+         *
+         * Keep this slow so the baseline does not immediately
+         * follow every kick.
+         */
+
+        if (energyBaseline <= 0f) {
+
+            energyBaseline =
+                    smoothedEnergy;
+
+        } else {
+
+            energyBaseline =
+                    smoothValue(
+                            energyBaseline,
+                            smoothedEnergy,
+                            0.025f
+                    );
+        }
+
+        float bassRise =
+                smoothedBass -
+                previousBass;
+
+        float energyRise =
+                smoothedEnergy -
+                energyBaseline;
+
+        boolean beat =
+                detectBeat(
+                        smoothedBass,
+                        smoothedEnergy,
+                        bassRise,
+                        energyRise
+                );
+
+        float beatIntensity =
+                calculateBeatIntensity(
+                        smoothedBass,
+                        smoothedEnergy,
+                        bassRise,
+                        energyRise
+                );
+
+        previousBass =
+                smoothedBass;
+
+        broadcastAudioAnalysis(
+                fftCopy,
+                smoothedBass,
+                smoothedEnergy,
+                beat,
+                beatIntensity,
+                audioVisualizerSampleRate
+        );
+
+    } catch (Exception ignored) {
+    }
+}
+    private float calculateBassEnergy(
+            byte[] fft) {
+
+        if (fft == null ||
+                fft.length < 4) {
+
+            return 0f;
+        }
+
+        /*
+         * Android Visualizer FFT format:
+         *
+         * index 0 = real DC
+         * index 1 = imaginary DC
+         * then real/imaginary pairs
+         *
+         * We analyze approximately 20Hz–250Hz.
+         */
+
+        int binCount =
+                fft.length / 2;
+
+        float nyquist =
+                audioVisualizerSampleRate / 2f;
+
+        if (nyquist <= 0f) {
+
+            nyquist = 22050f;
+        }
+
+        int startBin =
+                frequencyToFFTBin(
+                        20f,
+                        binCount,
+                        nyquist
+                );
+
+        int endBin =
+                frequencyToFFTBin(
+                        250f,
+                        binCount,
+                        nyquist
+                );
+
+        if (startBin < 1) {
+
+            startBin = 1;
+        }
+
+        if (endBin >= binCount) {
+
+            endBin =
+                    binCount - 1;
+        }
+
+        if (endBin <= startBin) {
+
+            endBin =
+                    Math.min(
+                            binCount - 1,
+                            startBin + 4
+                    );
+        }
+
+        float total =
+                0f;
+
+        int count =
+                0;
+
+        for (int bin = startBin;
+                bin <= endBin;
+                bin++) {
+
+            int index =
+                    bin * 2;
+
+            if (index + 1 >= fft.length) {
+
+                break;
+            }
+
+            float real =
+                    fft[index];
+
+            float imaginary =
+                    fft[index + 1];
+
+            float magnitude =
+                    (float) Math.sqrt(
+                            real * real +
+                            imaginary * imaginary
+                    );
+
+            /*
+             * Normalize the 8-bit signed FFT magnitude.
+             */
+
+            float normalized =
+                    magnitude / 181.02f;
+
+            if (normalized > 1f) {
+
+                normalized = 1f;
+            }
+
+            /*
+             * Compress so quiet bass remains visible.
+             */
+
+            normalized =
+                    (float) Math.sqrt(
+                            normalized
+                    );
+
+            total +=
+                    normalized;
+
+            count++;
+        }
+
+        if (count <= 0) {
+
+            return 0f;
+        }
+
+        float result =
+                total / count;
+
+        if (result > 1f) {
+
+            result = 1f;
+        }
+
+        return result;
+    }
+
+    private float calculateOverallEnergy(
+            byte[] fft) {
+
+        if (fft == null ||
+                fft.length < 4) {
+
+            return 0f;
+        }
+
+        int binCount =
+                fft.length / 2;
+
+        if (binCount <= 1) {
+
+            return 0f;
+        }
+
+        float total =
+                0f;
+
+        float weightedTotal =
+                0f;
+
+        int count =
+                0;
+
+        /*
+         * Ignore DC and focus on audible spectrum.
+         */
+
+        for (int bin = 1;
+                bin < binCount;
+                bin++) {
+
+            int index =
+                    bin * 2;
+
+            if (index + 1 >= fft.length) {
+
+                break;
+            }
+
+            float real =
+                    fft[index];
+
+            float imaginary =
+                    fft[index + 1];
+
+            float magnitude =
+                    (float) Math.sqrt(
+                            real * real +
+                            imaginary * imaginary
+                    );
+
+            float normalized =
+                    magnitude / 181.02f;
+
+            if (normalized > 1f) {
+
+                normalized = 1f;
+            }
+
+            /*
+             * Slightly compress the spectrum.
+             */
+
+            normalized =
+                    (float) Math.sqrt(
+                            normalized
+                    );
+
+            /*
+             * Bass gets slightly more weight because beats
+             * are generally more visible there.
+             */
+
+            float position =
+                    bin / (float) binCount;
+
+            float bassWeight =
+                    1f +
+                    (1f - position) * 0.45f;
+
+            weightedTotal +=
+                    normalized *
+                    bassWeight;
+
+            total +=
+                    normalized;
+
+            count++;
+        }
+
+        if (count <= 0) {
+
+            return 0f;
+        }
+
+        float average =
+                total / count;
+
+        float weightedAverage =
+                weightedTotal / count;
+
+        /*
+         * Combine broad spectral energy with bass-weighted
+         * energy.
+         */
+
+        float energy =
+                average * 0.55f +
+                weightedAverage * 0.45f;
+
+        if (energy > 1f) {
+
+            energy = 1f;
+        }
+
+        return energy;
+    }
+
+    private int frequencyToFFTBin(
+            float frequency,
+            int binCount,
+            float nyquist) {
+
+        if (frequency <= 0f ||
+                binCount <= 1 ||
+                nyquist <= 0f) {
+
+            return 1;
+        }
+
+        float normalized =
+                frequency / nyquist;
+
+        if (normalized < 0f) {
+
+            normalized = 0f;
+        }
+
+        if (normalized > 1f) {
+
+            normalized = 1f;
+        }
+
+        int bin =
+                Math.round(
+                        normalized *
+                        (binCount - 1)
+                );
+
+        if (bin < 1) {
+
+            bin = 1;
+        }
+
+        if (bin >= binCount) {
+
+            bin =
+                    binCount - 1;
+        }
+
+        return bin;
+    }
+
+    private float smoothValue(
+            float current,
+            float target,
+            float factor) {
+
+        return current +
+                (target - current) *
+                factor;
+    }
+
+    private boolean detectBeat(
+        float bass,
+        float energy,
+        float bassRise,
+        float energyRise) {
+
+    long now =
+            System.currentTimeMillis();
+
+    /*
+     * Prevent multiple beats from the same kick transient.
+     */
+
+    if (now - lastBeatTime <
+            MIN_BEAT_INTERVAL_MS) {
+
+        return false;
+    }
+
+    /*
+     * Lower adaptive thresholds.
+     *
+     * Bass is the primary beat detector.
+     */
+
+    float bassThreshold =
+            0.032f +
+            energyBaseline * 0.055f;
+
+    float energyThreshold =
+            0.022f +
+            energyBaseline * 0.040f;
+
+    /*
+     * Detect sudden bass increase.
+     */
+
+    boolean bassTransient =
+            bassRise >
+            bassThreshold;
+
+    /*
+     * Detect broader energy increase.
+     */
+
+    boolean energyTransient =
+            energyRise >
+            energyThreshold;
+
+    /*
+     * Prevent beats while the signal is essentially silent.
+     */
+
+    boolean enoughEnergy =
+            energy >
+            Math.max(
+                    0.040f,
+                    energyBaseline * 0.55f
+            );
+
+    /*
+     * Strong bass transient = immediate beat.
+     *
+     * Moderate bass + energy transient = beat.
+     *
+     * This gives us better detection for:
+     * - kick drums
+     * - bass-heavy EDM
+     * - hip-hop
+     * - pop
+     * - rock
+     */
+
+    boolean strongBassBeat =
+            bassTransient &&
+            bass > 0.075f;
+
+    boolean combinedBeat =
+            bassTransient &&
+            energyTransient &&
+            bass > 0.055f;
+
+    boolean energyBeat =
+            energyTransient &&
+            bassRise > bassThreshold * 0.65f &&
+            bass > 0.060f;
+
+    boolean detected =
+            enoughEnergy &&
+            (
+                    strongBassBeat ||
+                    combinedBeat ||
+                    energyBeat
+            );
+
+    if (detected) {
+
+        lastBeatTime =
+                now;
+    }
+
+    return detected;
+}
+
+    private float calculateBeatIntensity(
+        float bass,
+        float energy,
+        float bassRise,
+        float energyRise) {
+
+    /*
+     * Bass transient is the strongest visual trigger.
+     */
+
+    float bassComponent =
+            bassRise * 6.0f;
+
+    /*
+     * Overall energy provides additional intensity.
+     */
+
+    float energyComponent =
+            energyRise * 4.5f;
+
+    /*
+     * Current signal level keeps the ripple visible on
+     * sustained bass sections.
+     */
+
+    float levelComponent =
+            bass * 0.45f +
+            energy * 0.30f;
+
+    float intensity =
+            bassComponent +
+            energyComponent +
+            levelComponent;
+
+    /*
+     * Small boost for stronger bass hits.
+     */
+
+    if (bassRise > 0.10f) {
+
+        intensity += 0.12f;
+    }
+
+    if (bassRise > 0.16f) {
+
+        intensity += 0.15f;
+    }
+
+    if (intensity < 0f) {
+
+        intensity = 0f;
+    }
+
+    if (intensity > 1f) {
+
+        intensity = 1f;
+    }
+
+    return intensity;
+}
+    private void broadcastAudioAnalysis(
+            byte[] fft,
+            float bass,
+            float energy,
+            boolean beat,
+            float beatIntensity,
+            int sampleRate) {
+
+        try {
+
+            Intent intent =
+                    new Intent(
+                            ACTION_AUDIO_ANALYSIS
+                    );
+
+            intent.setPackage(
+                    getPackageName()
+            );
+
+            intent.putExtra(
+                    EXTRA_FFT,
+                    fft
+            );
+
+            intent.putExtra(
+                    EXTRA_BASS,
+                    bass
+            );
+
+            intent.putExtra(
+                    EXTRA_ENERGY,
+                    energy
+            );
+
+            intent.putExtra(
+                    EXTRA_BEAT,
+                    beat
+            );
+
+            intent.putExtra(
+                    EXTRA_BEAT_INTENSITY,
+                    beatIntensity
+            );
+
+            intent.putExtra(
+                    EXTRA_SAMPLE_RATE,
+                    sampleRate
+            );
+
+            sendBroadcast(
+                    intent
+            );
+
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void resetAudioAnalysisState() {
+
+        smoothedEnergy =
+                0f;
+
+        energyBaseline =
+                0f;
+
+        smoothedBass =
+                0f;
+
+        previousBass =
+                0f;
+
+        lastBeatTime =
+                0L;
+    }
+
+    private void stopAudioAnalysisCapture() {
+
+        audioAnalysisRunning =
+                false;
+
+        if (audioVisualizer != null) {
+
+            try {
+
+                audioVisualizer.setEnabled(
+                        false
+                );
+
+            } catch (Exception ignored) {
+            }
+        }
+
+        resetAudioAnalysisState();
+
+        /*
+         * Tell the UI that there is no active audio analysis
+         * while playback is paused.
+         */
+
+        broadcastAudioAnalysis(
+                new byte[0],
+                0f,
+                0f,
+                false,
+                0f,
+                audioVisualizerSampleRate
+        );
+    }
+
+    private void releaseAudioVisualizer() {
+
+        audioAnalysisRunning =
+                false;
+
+        if (audioVisualizer != null) {
+
+            try {
+
+                audioVisualizer.setEnabled(
+                        false
+                );
+
+            } catch (Exception ignored) {
+            }
+
+            try {
+
+                audioVisualizer.setDataCaptureListener(
+                        null,
+                        0,
+                        false,
+                        false
+                );
+
+            } catch (Exception ignored) {
+            }
+
+            try {
+
+                audioVisualizer.release();
+
+            } catch (Exception ignored) {
+            }
+
+            audioVisualizer =
+                    null;
+        }
+
+        resetAudioAnalysisState();
+
+        /*
+         * Clear visualizer UI when the player is released.
+         */
+
+        broadcastAudioAnalysis(
+                new byte[0],
+                0f,
+                0f,
+                false,
+                0f,
+                audioVisualizerSampleRate
+        );
     }
 
     /*
@@ -739,7 +1871,6 @@ public class MusicPlayerService extends Service {
                 playSong(
                         currentSong.getUri()
                 );
-
             }
 
             return;
@@ -1507,6 +2638,8 @@ public class MusicPlayerService extends Service {
                                                 try {
 
                                                     mediaPlayer.start();
+
+                                                    startAudioAnalysis();
 
                                                     startPositionUpdates();
 
@@ -2462,6 +3595,13 @@ public class MusicPlayerService extends Service {
 
         isUpdatingPosition =
                 false;
+
+        /*
+         * Visualizer MUST be released before the MediaPlayer
+         * audio session disappears.
+         */
+
+        releaseAudioVisualizer();
 
         if (mediaPlayer != null) {
 

@@ -176,17 +176,6 @@ public class PlayerActivity extends AppCompatActivity {
                 currentBackgroundColor
         );
 
-        /*
-         * BACK
-         */
-
-        binding.btnFullPlayerBack.setOnClickListener(
-                v -> finish()
-        );
-
-        /*
-         * PLAY / PAUSE
-         */
 
         binding.btnFullPlayPause.setOnClickListener(
                 v -> {
@@ -1315,11 +1304,6 @@ public class PlayerActivity extends AppCompatActivity {
                 );
 
         binding.btnFullNext
-                .setColorFilter(
-                        accentColor
-                );
-
-        binding.btnFullPlayerBack
                 .setColorFilter(
                         accentColor
                 );

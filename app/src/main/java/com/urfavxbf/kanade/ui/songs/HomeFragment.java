@@ -7,10 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.ColorStateList;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
-import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
@@ -19,38 +16,31 @@ import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.PopupMenu;
 import android.widget.Toast;
+import android.widget.EditText;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
-import androidx.navigation.NavController;
-import androidx.navigation.Navigation;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import com.urfavxbf.kanade.AcoustIdTestHelper;
 import com.urfavxbf.kanade.AlbumColorManager;
 import com.urfavxbf.kanade.AudioFile;
 import com.urfavxbf.kanade.AudioListAdapter;
-import com.urfavxbf.kanade.PlaylistManager;
+import com.urfavxbf.kanade.ChromaprintTestHelper;
+import com.urfavxbf.kanade.MusicBrainzTestHelper;
+import com.urfavxbf.kanade.MusicIdentifierTestHelper;
 import com.urfavxbf.kanade.MusicPlayerController;
-import com.urfavxbf.kanade.MusicPlayerService;
+import com.urfavxbf.kanade.PlaylistManager;
 import com.urfavxbf.kanade.MusicRepository;
 import com.urfavxbf.kanade.R;
 import com.urfavxbf.kanade.databinding.FragmentHomeBinding;
-import com.urfavxbf.kanade.ChromaprintTestHelper;
-import com.urfavxbf.kanade.AcoustIdTestHelper;
 
-import com.urfavxbf.kanade.MusicBrainzTestHelper;
-import com.urfavxbf.kanade.MusicIdentifierTestHelper;
+import java.util.ArrayList;
 
 import android.app.AlertDialog;
-import android.widget.EditText;
-
-import java.io.InputStream;
-import java.util.ArrayList;
-import android.content.Intent;
-import com.urfavxbf.kanade.PlayerActivity;
 
 public class HomeFragment extends Fragment {
 
@@ -59,18 +49,14 @@ public class HomeFragment extends Fragment {
     private MusicRepository musicRepository;
     private AudioListAdapter audioListAdapter;
     private PlaylistManager playlistManager;
-
     private AlbumColorManager albumColorManager;
+    private MusicPlayerController playerController;
 
     private final ArrayList<AudioFile> songs =
             new ArrayList<>();
 
     private final ArrayList<AudioFile> allSongs =
             new ArrayList<>();
-
-    private MusicPlayerController playerController;
-
-    private String currentMiniPlayerUri;
 
     private int currentAccentColor =
             Color.rgb(
@@ -88,44 +74,17 @@ public class HomeFragment extends Fragment {
 
     private ValueAnimator colorAnimator;
 
-    private boolean receiversRegistered = false;
+    private boolean receiversRegistered =
+            false;
 
-    private boolean isSearchOpen = false;
+    private boolean isSearchOpen =
+            false;
 
     private OnBackPressedCallback searchBackCallback;
 
-    private final BroadcastReceiver playerReceiver =
-            new BroadcastReceiver() {
-                @Override
-                public void onReceive(
-                        Context context,
-                        Intent intent) {
-
-                    if (!MusicPlayerService.ACTION_STATE_CHANGED
-                            .equals(intent.getAction())) {
-                        return;
-                    }
-
-                    boolean isPlaying =
-                            intent.getBooleanExtra(
-                                    MusicPlayerService.EXTRA_IS_PLAYING,
-                                    false
-                            );
-
-                    String uri =
-                            intent.getStringExtra(
-                                    MusicPlayerService.EXTRA_CURRENT_URI
-                            );
-
-                    updateMiniPlayer(
-                            uri,
-                            isPlaying
-                    );
-                }
-            };
-
     private final BroadcastReceiver colorReceiver =
             new BroadcastReceiver() {
+
                 @Override
                 public void onReceive(
                         Context context,
@@ -214,10 +173,9 @@ public class HomeFragment extends Fragment {
                             public void onSongClick(
                                     AudioFile song) {
 
-                                showMiniPlayer(
-                                        song,
-                                        true
-                                );
+                                if (song == null) {
+                                    return;
+                                }
 
                                 playerController.play(
                                         song.getUri()
@@ -228,7 +186,9 @@ public class HomeFragment extends Fragment {
                             public void onFavoriteClick(
                                     AudioFile song) {
 
-                                toggleFavorite(song);
+                                toggleFavorite(
+                                        song
+                                );
                             }
 
                             @Override
@@ -257,6 +217,7 @@ public class HomeFragment extends Fragment {
 
         binding.swipeRefresh.setOnRefreshListener(
                 new SwipeRefreshLayout.OnRefreshListener() {
+
                     @Override
                     public void onRefresh() {
 
@@ -269,6 +230,7 @@ public class HomeFragment extends Fragment {
 
         binding.btnSearch.setOnClickListener(
                 new View.OnClickListener() {
+
                     @Override
                     public void onClick(View v) {
 
@@ -368,6 +330,7 @@ public class HomeFragment extends Fragment {
                 new OnBackPressedCallback(
                         true
                 ) {
+
                     @Override
                     public void handleOnBackPressed() {
 
@@ -394,36 +357,6 @@ public class HomeFragment extends Fragment {
                         getViewLifecycleOwner(),
                         searchBackCallback
                 );
-
-        binding.miniPlayer.setVisibility(
-                View.GONE
-        );
-
-        binding.miniPlayer.setOnClickListener(
-        new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-
-                Intent intent =
-                        new Intent(
-                                requireContext(),
-                                PlayerActivity.class
-                        );
-
-                startActivity(intent);
-            }
-        }
-);
-
-        binding.miniPlayPause.setOnClickListener(
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-
-                        playerController.play();
-                    }
-                }
-        );
 
         loadMusic();
 
@@ -517,6 +450,7 @@ public class HomeFragment extends Fragment {
 
         binding.searchEditText.postDelayed(
                 new Runnable() {
+
                     @Override
                     public void run() {
 
@@ -584,6 +518,7 @@ public class HomeFragment extends Fragment {
                 .setDuration(170)
                 .withEndAction(
                         new Runnable() {
+
                             @Override
                             public void run() {
 
@@ -664,6 +599,169 @@ public class HomeFragment extends Fragment {
                         }
                 )
                 .start();
+    }
+
+    private void closeSearchImmediate() {
+
+        if (binding == null) {
+            return;
+        }
+
+        isSearchOpen = false;
+
+        binding.homeTitle.setVisibility(
+                View.VISIBLE
+        );
+
+        binding.homeTitle.setAlpha(
+                1.0f
+        );
+
+        binding.homeTitle.setTranslationX(
+                0.0f
+        );
+
+        binding.searchIcon.setVisibility(
+                View.GONE
+        );
+
+        binding.searchEditText.setVisibility(
+                View.GONE
+        );
+
+        binding.btnSearch.setVisibility(
+                View.VISIBLE
+        );
+
+        binding.btnSearch.setAlpha(
+                1.0f
+        );
+
+        binding.btnSearch.setScaleX(
+                1.0f
+        );
+
+        binding.btnSearch.setScaleY(
+                1.0f
+        );
+
+        binding.btnSearch.setImageResource(
+                R.drawable.ic_search
+        );
+
+        binding.btnSearch.setContentDescription(
+                "Search"
+        );
+
+        binding.searchEditText.setAlpha(
+                1.0f
+        );
+
+        binding.searchEditText.setTranslationX(
+                18.0f
+        );
+    }
+
+    private void filterSongs(
+            String query) {
+
+        if (binding == null ||
+                audioListAdapter == null) {
+            return;
+        }
+
+        String normalizedQuery =
+                query == null
+                        ? ""
+                        : query.trim().toLowerCase();
+
+        songs.clear();
+
+        if (normalizedQuery.isEmpty()) {
+
+            songs.addAll(
+                    allSongs
+            );
+
+            audioListAdapter
+                    .notifyDataSetChanged();
+
+            return;
+        }
+
+        for (AudioFile song : allSongs) {
+
+            if (song == null) {
+                continue;
+            }
+
+            String title =
+                    song.getTitle();
+
+            String artist =
+                    song.getArtist();
+
+            String album =
+                    song.getAlbum();
+
+            if (title == null) {
+                title = "";
+            }
+
+            if (artist == null) {
+                artist = "";
+            }
+
+            if (album == null) {
+                album = "";
+            }
+
+            String searchableText =
+                    (
+                            title
+                                    + " "
+                                    + artist
+                                    + " "
+                                    + album
+                    ).toLowerCase();
+
+            if (searchableText.contains(
+                    normalizedQuery
+            )) {
+
+                songs.add(
+                        song
+                );
+            }
+        }
+
+        audioListAdapter
+                .notifyDataSetChanged();
+    }
+
+    private void hideKeyboard() {
+
+        if (binding == null) {
+            return;
+        }
+
+        InputMethodManager imm =
+                (InputMethodManager)
+                        requireContext()
+                                .getSystemService(
+                                        Context.INPUT_METHOD_SERVICE
+                                );
+
+        if (imm != null) {
+
+            imm.hideSoftInputFromWindow(
+                    binding.searchEditText
+                            .getWindowToken(),
+                    0
+            );
+        }
+
+        binding.searchEditText.clearFocus();
     }
 
     private void showAddToPlaylistDialog(
@@ -892,257 +990,6 @@ public class HomeFragment extends Fragment {
         dialog.show();
     }
 
-    private void closeSearchImmediate() {
-
-        if (binding == null) {
-            return;
-        }
-
-        isSearchOpen = false;
-
-        binding.homeTitle.setVisibility(
-                View.VISIBLE
-        );
-
-        binding.homeTitle.setAlpha(
-                1.0f
-        );
-
-        binding.homeTitle.setTranslationX(
-                0.0f
-        );
-
-        binding.searchIcon.setVisibility(
-                View.GONE
-        );
-
-        binding.searchEditText.setVisibility(
-                View.GONE
-        );
-
-        binding.btnSearch.setVisibility(
-                View.VISIBLE
-        );
-
-        binding.btnSearch.setAlpha(
-                1.0f
-        );
-
-        binding.btnSearch.setScaleX(
-                1.0f
-        );
-
-        binding.btnSearch.setScaleY(
-                1.0f
-        );
-
-        binding.btnSearch.setImageResource(
-                R.drawable.ic_search
-        );
-
-        binding.btnSearch.setContentDescription(
-                "Search"
-        );
-
-        binding.searchEditText.setAlpha(
-                1.0f
-        );
-
-        binding.searchEditText.setTranslationX(
-                18.0f
-        );
-    }
-
-    private void filterSongs(
-            String query) {
-
-        if (binding == null ||
-                audioListAdapter == null) {
-            return;
-        }
-
-        String normalizedQuery =
-                query == null
-                        ? ""
-                        : query.trim().toLowerCase();
-
-        songs.clear();
-
-        if (normalizedQuery.isEmpty()) {
-
-            songs.addAll(
-                    allSongs
-            );
-
-            audioListAdapter
-                    .notifyDataSetChanged();
-
-            return;
-        }
-
-        for (AudioFile song : allSongs) {
-
-            if (song == null) {
-                continue;
-            }
-
-            String title =
-                    song.getTitle();
-
-            String artist =
-                    song.getArtist();
-
-            String album =
-                    song.getAlbum();
-
-            if (title == null) {
-                title = "";
-            }
-
-            if (artist == null) {
-                artist = "";
-            }
-
-            if (album == null) {
-                album = "";
-            }
-
-            String searchableText =
-                    (
-                            title
-                                    + " "
-                                    + artist
-                                    + " "
-                                    + album
-                    ).toLowerCase();
-
-            if (searchableText.contains(
-                    normalizedQuery
-            )) {
-
-                songs.add(
-                        song
-                );
-            }
-        }
-
-        audioListAdapter
-                .notifyDataSetChanged();
-    }
-
-    private void hideKeyboard() {
-
-        if (binding == null) {
-            return;
-        }
-
-        InputMethodManager imm =
-                (InputMethodManager)
-                        requireContext()
-                                .getSystemService(
-                                        Context.INPUT_METHOD_SERVICE
-                                );
-
-        if (imm != null) {
-
-            imm.hideSoftInputFromWindow(
-                    binding.searchEditText
-                            .getWindowToken(),
-                    0
-            );
-        }
-
-        binding.searchEditText.clearFocus();
-    }
-
-    @Override
-    public void onStart() {
-        super.onStart();
-
-        if (receiversRegistered) {
-            return;
-        }
-
-        IntentFilter playerFilter =
-                new IntentFilter(
-                        MusicPlayerService.ACTION_STATE_CHANGED
-                );
-
-        ContextCompat.registerReceiver(
-                requireContext(),
-                playerReceiver,
-                playerFilter,
-                ContextCompat.RECEIVER_NOT_EXPORTED
-        );
-
-        IntentFilter colorFilter =
-                new IntentFilter(
-                        AlbumColorManager.ACTION_COLORS_CHANGED
-                );
-
-        ContextCompat.registerReceiver(
-                requireContext(),
-                colorReceiver,
-                colorFilter,
-                ContextCompat.RECEIVER_NOT_EXPORTED
-        );
-
-        receiversRegistered = true;
-
-        if (albumColorManager != null) {
-
-            currentAccentColor =
-                    albumColorManager
-                            .getCurrentAccentColor();
-
-            currentBackgroundColor =
-                    albumColorManager
-                            .getCurrentBackgroundColor();
-
-            applyThemeColors(
-                    currentAccentColor,
-                    currentBackgroundColor
-            );
-        }
-    }
-
-    @Override
-    public void onStop() {
-
-        if (receiversRegistered) {
-
-            try {
-
-                requireContext()
-                        .unregisterReceiver(
-                                playerReceiver
-                        );
-
-            } catch (Exception ignored) {
-            }
-
-            try {
-
-                requireContext()
-                        .unregisterReceiver(
-                                colorReceiver
-                        );
-
-            } catch (Exception ignored) {
-            }
-
-            receiversRegistered = false;
-        }
-
-        if (colorAnimator != null) {
-
-            colorAnimator.cancel();
-            colorAnimator = null;
-        }
-
-        super.onStop();
-    }
-
     private void toggleFavorite(
             AudioFile song) {
 
@@ -1193,174 +1040,140 @@ public class HomeFragment extends Fragment {
     }
 
     private void showSongMenu(
-        AudioFile song,
-        View anchor) {
+            AudioFile song,
+            View anchor) {
 
-    if (song == null) {
-        return;
+        if (song == null) {
+            return;
+        }
+
+        PopupMenu popupMenu =
+                new PopupMenu(
+                        requireContext(),
+                        anchor
+                );
+
+        popupMenu.getMenu().add(
+                "Play"
+        );
+
+        popupMenu.getMenu().add(
+                "Test Music Identifier"
+        );
+
+        popupMenu.getMenu().add(
+                "Test AcoustID"
+        );
+
+        popupMenu.getMenu().add(
+                "Add to Playlist"
+        );
+
+        popupMenu.getMenu().add(
+                "Song Info"
+        );
+
+        popupMenu.getMenu().add(
+                "Test Fingerprint"
+        );
+
+        popupMenu.getMenu().add(
+                "Test MusicBrainz"
+        );
+
+        popupMenu.setOnMenuItemClickListener(
+                item -> {
+
+                    String title =
+                            item.getTitle()
+                                    .toString();
+
+                    if ("Play".equals(title)) {
+
+                        playerController.play(
+                                song.getUri()
+                        );
+                    }
+
+                    else if (
+                            "Test AcoustID".equals(title)
+                    ) {
+
+                        AcoustIdTestHelper.test(
+                                requireContext(),
+                                song
+                        );
+                    }
+
+                    else if (
+                            "Add to Playlist".equals(title)
+                    ) {
+
+                        showAddToPlaylistDialog(
+                                song
+                        );
+                    }
+
+                    else if (
+                            "Song Info".equals(title)
+                    ) {
+
+                        Toast.makeText(
+                                requireContext(),
+                                song.getTitle(),
+                                Toast.LENGTH_SHORT
+                        ).show();
+                    }
+
+                    else if (
+                            "Test Fingerprint".equals(title)
+                    ) {
+
+                        ChromaprintTestHelper.test(
+                                requireContext(),
+                                song
+                        );
+
+                        Toast.makeText(
+                                requireContext(),
+                                "Fingerprint test started. Check Logcat.",
+                                Toast.LENGTH_SHORT
+                        ).show();
+                    }
+
+                    else if (
+                            "Test MusicBrainz".equals(title)
+                    ) {
+
+                        MusicBrainzTestHelper.test(
+                                requireContext(),
+                                song
+                        );
+                    }
+
+                    else if (
+                            "Test Music Identifier"
+                                    .equals(title)
+                    ) {
+
+                        MusicIdentifierTestHelper.test(
+                                requireContext(),
+                                song
+                        );
+                    }
+
+                    return true;
+                }
+        );
+
+        popupMenu.show();
     }
-
-    PopupMenu popupMenu =
-            new PopupMenu(
-                    requireContext(),
-                    anchor
-            );
-
-    // =========================
-    // MENU ITEMS
-    // =========================
-
-    popupMenu.getMenu().add(
-            "Play"
-    );
-   popupMenu.getMenu().add("Test Music Identifier");
-
-    popupMenu.getMenu().add(
-            "Test AcoustID"
-    );
-
-    popupMenu.getMenu().add(
-            "Add to Playlist"
-    );
-
-    popupMenu.getMenu().add(
-            "Song Info"
-    );
-
-    popupMenu.getMenu().add(
-            "Test Fingerprint"
-    );
-
-    popupMenu.getMenu().add(
-            "Test MusicBrainz"
-    );
-
-    // =========================
-    // MENU CLICK LISTENER
-    // =========================
-
-    popupMenu.setOnMenuItemClickListener(
-            item -> {
-
-                String title =
-                        item.getTitle().toString();
-
-                // =========================
-                // PLAY
-                // =========================
-
-                if ("Play".equals(title)) {
-
-                    showMiniPlayer(
-                            song,
-                            true
-                    );
-
-                    playerController.play(
-                            song.getUri()
-                    );
-
-                }
-
-                // =========================
-                // TEST ACOUSTID
-                // =========================
-
-                else if (
-                        "Test AcoustID".equals(title)
-                ) {
-
-                    AcoustIdTestHelper.test(
-                            requireContext(),
-                            song
-                    );
-
-                }
-
-                // =========================
-                // ADD TO PLAYLIST
-                // =========================
-
-                else if (
-                        "Add to Playlist".equals(title)
-                ) {
-
-                    showAddToPlaylistDialog(
-                            song
-                    );
-
-                }
-
-                // =========================
-                // SONG INFO
-                // =========================
-
-                else if (
-                        "Song Info".equals(title)
-                ) {
-
-                    Toast.makeText(
-                            requireContext(),
-                            song.getTitle(),
-                            Toast.LENGTH_SHORT
-                    ).show();
-
-                }
-
-                // =========================
-                // TEST FINGERPRINT
-                // =========================
-
-                else if (
-                        "Test Fingerprint".equals(title)
-                ) {
-
-                    ChromaprintTestHelper.test(
-                            requireContext(),
-                            song
-                    );
-
-                    Toast.makeText(
-                            requireContext(),
-                            "Fingerprint test started. Check Logcat.",
-                            Toast.LENGTH_SHORT
-                    ).show();
-
-                }
-
-                // =========================
-                // TEST MUSICBRAINZ
-                // =========================
-
-                else if (
-                        "Test MusicBrainz".equals(title)
-                ) {
-
-                    MusicBrainzTestHelper.test(
-                            requireContext(),
-                            song
-                    );
-
-               } else if ("Test Music Identifier".equals(title)) {
-
-    MusicIdentifierTestHelper.test(
-            requireContext(),
-            song
-    );
-    }
-                
-
-                return true;
-            }
-    );
-
-    popupMenu.show();
-}
 
     private void loadMusic() {
 
         new Thread(
                 new Runnable() {
+
                     @Override
                     public void run() {
 
@@ -1393,6 +1206,7 @@ public class HomeFragment extends Fragment {
                         requireActivity()
                                 .runOnUiThread(
                                         new Runnable() {
+
                                             @Override
                                             public void run() {
 
@@ -1439,6 +1253,7 @@ public class HomeFragment extends Fragment {
         requireActivity()
                 .runOnUiThread(
                         new Runnable() {
+
                             @Override
                             public void run() {
 
@@ -1453,337 +1268,6 @@ public class HomeFragment extends Fragment {
                             }
                         }
                 );
-    }
-
-    private void showMiniPlayer(
-            AudioFile song,
-            boolean isPlaying) {
-
-        if (binding == null ||
-                song == null) {
-            return;
-        }
-
-        String songUri =
-                song.getUri();
-
-        if (songUri == null ||
-                songUri.trim().isEmpty()) {
-            return;
-        }
-
-        currentMiniPlayerUri =
-                songUri;
-
-        binding.miniPlayer.setVisibility(
-                View.VISIBLE
-        );
-
-        String title =
-                song.getTitle();
-
-        if (title == null ||
-                title.trim().isEmpty()) {
-
-            title = "Unknown song";
-        }
-
-        binding.miniTitle.setText(
-                title
-        );
-
-        String artist =
-                song.getArtist();
-
-        if (artist == null ||
-                artist.trim().isEmpty()) {
-
-            artist = "Unknown artist";
-        }
-
-        binding.miniArtist.setText(
-                artist
-        );
-
-        binding.miniAlbumArt.setImageResource(
-                android.R.drawable.ic_media_play
-        );
-
-        loadAlbumArt(
-                song,
-                songUri
-        );
-
-        binding.miniPlayPause.setImageResource(
-                isPlaying
-                        ? android.R.drawable.ic_media_pause
-                        : android.R.drawable.ic_media_play
-        );
-
-        applyThemeColors(
-                currentAccentColor,
-                currentBackgroundColor
-        );
-    }
-
-    private void loadAlbumArt(
-            final AudioFile song,
-            final String requestedUri) {
-
-        if (binding == null ||
-                song == null ||
-                requestedUri == null) {
-            return;
-        }
-
-        final String albumArtUri =
-                song.getAlbumArtUri();
-
-        if (albumArtUri == null ||
-                albumArtUri.trim().isEmpty()) {
-
-            loadAlbumArtThumbnail(
-                    song,
-                    requestedUri
-            );
-
-            return;
-        }
-
-        new Thread(
-                new Runnable() {
-                    @Override
-                    public void run() {
-
-                        Bitmap bitmap =
-                                null;
-
-                        try {
-
-                            Uri uri =
-                                    Uri.parse(
-                                            albumArtUri
-                                    );
-
-                            InputStream inputStream =
-                                    requireContext()
-                                            .getContentResolver()
-                                            .openInputStream(
-                                                    uri
-                                            );
-
-                            if (inputStream != null) {
-
-                                bitmap =
-                                        BitmapFactory
-                                                .decodeStream(
-                                                        inputStream
-                                                );
-
-                                inputStream.close();
-                            }
-
-                        } catch (Exception ignored) {
-                        }
-
-                        final Bitmap result =
-                                bitmap;
-
-                        if (!isAdded()) {
-                            return;
-                        }
-
-                        requireActivity()
-                                .runOnUiThread(
-                                        new Runnable() {
-                                            @Override
-                                            public void run() {
-
-                                                if (binding == null) {
-                                                    return;
-                                                }
-
-                                                if (!requestedUri.equals(
-                                                        currentMiniPlayerUri
-                                                )) {
-                                                    return;
-                                                }
-
-                                                if (result != null) {
-
-                                                    binding.miniAlbumArt
-                                                            .setImageBitmap(
-                                                                    result
-                                                            );
-
-                                                } else {
-
-                                                    loadAlbumArtThumbnail(
-                                                            song,
-                                                            requestedUri
-                                                    );
-                                                }
-                                            }
-                                        }
-                                );
-                    }
-                }
-        ).start();
-    }
-
-    private void loadAlbumArtThumbnail(
-            final AudioFile song,
-            final String requestedUri) {
-
-        if (binding == null ||
-                song == null ||
-                requestedUri == null) {
-            return;
-        }
-
-        new Thread(
-                new Runnable() {
-                    @Override
-                    public void run() {
-
-                        Bitmap bitmap =
-                                null;
-
-                        try {
-
-                            Uri songUri =
-                                    Uri.parse(
-                                            song.getUri()
-                                    );
-
-                            bitmap =
-                                    requireContext()
-                                            .getContentResolver()
-                                            .loadThumbnail(
-                                                    songUri,
-                                                    new android.util.Size(
-                                                            256,
-                                                            256
-                                                    ),
-                                                    null
-                                            );
-
-                        } catch (Exception ignored) {
-                        }
-
-                        final Bitmap result =
-                                bitmap;
-
-                        if (!isAdded()) {
-                            return;
-                        }
-
-                        requireActivity()
-                                .runOnUiThread(
-                                        new Runnable() {
-                                            @Override
-                                            public void run() {
-
-                                                if (binding == null) {
-                                                    return;
-                                                }
-
-                                                if (!requestedUri.equals(
-                                                        currentMiniPlayerUri
-                                                )) {
-                                                    return;
-                                                }
-
-                                                if (result != null) {
-
-                                                    binding.miniAlbumArt
-                                                            .setImageBitmap(
-                                                                    result
-                                                            );
-
-                                                } else {
-
-                                                    binding.miniAlbumArt
-                                                            .setImageResource(
-                                                                    android.R.drawable
-                                                                            .ic_media_play
-                                                            );
-                                                }
-                                            }
-                                        }
-                                );
-                    }
-                }
-        ).start();
-    }
-
-    private void updateMiniPlayer(
-            String uri,
-            boolean isPlaying) {
-
-        if (binding == null) {
-            return;
-        }
-
-        if (uri == null ||
-                uri.trim().isEmpty()) {
-
-            currentMiniPlayerUri = null;
-
-            binding.miniPlayer.setVisibility(
-                    View.GONE
-            );
-
-            return;
-        }
-
-        AudioFile currentSong =
-                null;
-
-        for (AudioFile song : allSongs) {
-
-            if (song == null) {
-                continue;
-            }
-
-            if (uri.equals(
-                    song.getUri()
-            )) {
-
-                currentSong =
-                        song;
-
-                break;
-            }
-        }
-
-        if (currentSong == null) {
-            return;
-        }
-
-        boolean songChanged =
-                !uri.equals(
-                        currentMiniPlayerUri
-                );
-
-        if (songChanged) {
-
-            showMiniPlayer(
-                    currentSong,
-                    isPlaying
-            );
-
-        } else {
-
-            binding.miniPlayPause
-                    .setImageResource(
-                            isPlaying
-                                    ? R.drawable
-                                            .ic_pause
-                                    : R.drawable
-                                            .ic_play
-                    );
-        }
     }
 
     private void animateThemeColors(
@@ -1817,6 +1301,7 @@ public class HomeFragment extends Fragment {
 
         colorAnimator.addUpdateListener(
                 new ValueAnimator.AnimatorUpdateListener() {
+
                     @Override
                     public void onAnimationUpdate(
                             ValueAnimator animation) {
@@ -1934,38 +1419,6 @@ public class HomeFragment extends Fragment {
                                 currentAccentColor
                         )
                 );
-
-        int miniPlayerColor =
-                darkenColor(
-                        backgroundColor,
-                        0.78f
-                );
-
-        binding.miniPlayer
-                .setCardBackgroundColor(
-                        miniPlayerColor
-                );
-
-        binding.miniTitle
-                .setTextColor(
-                        Color.WHITE
-                );
-
-        binding.miniArtist
-                .setTextColor(
-                        blendColors(
-                                currentAccentColor,
-                                Color.WHITE,
-                                0.35f
-                        )
-                );
-
-        binding.miniPlayPause
-                .setImageTintList(
-                        ColorStateList.valueOf(
-                                currentAccentColor
-                        )
-                );
     }
 
     private int darkenColor(
@@ -2073,6 +1526,73 @@ public class HomeFragment extends Fragment {
     }
 
     @Override
+    public void onStart() {
+
+        super.onStart();
+
+        if (receiversRegistered) {
+            return;
+        }
+
+        IntentFilter colorFilter =
+                new IntentFilter(
+                        AlbumColorManager.ACTION_COLORS_CHANGED
+                );
+
+        ContextCompat.registerReceiver(
+                requireContext(),
+                colorReceiver,
+                colorFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+        );
+
+        receiversRegistered = true;
+
+        if (albumColorManager != null) {
+
+            currentAccentColor =
+                    albumColorManager
+                            .getCurrentAccentColor();
+
+            currentBackgroundColor =
+                    albumColorManager
+                            .getCurrentBackgroundColor();
+
+            applyThemeColors(
+                    currentAccentColor,
+                    currentBackgroundColor
+            );
+        }
+    }
+
+    @Override
+    public void onStop() {
+
+        if (receiversRegistered) {
+
+            try {
+
+                requireContext()
+                        .unregisterReceiver(
+                                colorReceiver
+                        );
+
+            } catch (Exception ignored) {
+            }
+
+            receiversRegistered = false;
+        }
+
+        if (colorAnimator != null) {
+
+            colorAnimator.cancel();
+            colorAnimator = null;
+        }
+
+        super.onStop();
+    }
+
+    @Override
     public void onDestroyView() {
 
         if (colorAnimator != null) {
@@ -2082,8 +1602,6 @@ public class HomeFragment extends Fragment {
         }
 
         hideKeyboard();
-
-        currentMiniPlayerUri = null;
 
         isSearchOpen = false;
 

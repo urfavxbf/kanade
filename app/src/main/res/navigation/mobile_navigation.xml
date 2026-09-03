@@ -7,15 +7,11 @@
     android:id="@+id/mobile_navigation"
     app:startDestination="@id/navigation_home">
 
-    <!-- SONGS -->
-
     <fragment
         android:id="@+id/navigation_home"
         android:name="com.urfavxbf.kanade.ui.songs.HomeFragment"
         android:label="Songs"
-        tools:layout="@layout/main" />
-
-    <!-- ARTISTS -->
+        tools:layout="@layout/fragment_home" />
 
     <fragment
         android:id="@+id/navigation_artist"
@@ -23,28 +19,28 @@
         android:label="Artists"
         tools:layout="@layout/fragment_artist" />
 
-    <!-- DASHBOARD -->
-
     <fragment
         android:id="@+id/navigation_dashboard"
         android:name="com.urfavxbf.kanade.ui.dashboard.DashboardFragment"
         android:label="Dashboard"
         tools:layout="@layout/fragment_dashboard" />
 
-    <!-- PLAYLISTS -->
-
     <fragment
         android:id="@+id/navigation_playlist"
         android:name="com.urfavxbf.kanade.ui.playlist.PlaylistFragment"
         android:label="Playlists"
-        tools:layout="@layout/activity_playlist" />
-
-    <!-- YOUTUBE -->
+        tools:layout="@layout/fragment_playlist" />
 
     <fragment
         android:id="@+id/navigation_youtube"
         android:name="com.urfavxbf.kanade.ui.youtube.YouTubeFragment"
         android:label="YouTube"
         tools:layout="@layout/fragment_youtube" />
+
+    <fragment
+        android:id="@+id/navigation_player"
+        android:name="com.urfavxbf.kanade.ui.player.PlayerFragment"
+        android:label="Now Playing"
+        tools:layout="@layout/player" />
 
 </navigation>

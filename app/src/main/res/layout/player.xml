@@ -1,79 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<LinearLayout
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="#10111A"
-    android:fitsSystemWindows="true"
-    android:paddingStart="20dp"
-    android:paddingEnd="20dp"
-    android:paddingTop="12dp"
-    android:paddingBottom="0dp">
+    android:fitsSystemWindows="true">
 
-    <!-- TOP BAR -->
-
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/playerTopBar"
-        android:layout_width="match_parent"
-        android:layout_height="52dp">
-
-        <ImageButton
-            android:id="@+id/btnFullPlayerBack"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Back"
-            android:padding="13dp"
-            android:src="@drawable/ic_back"
-            app:tint="#D9D9E4"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent" />
-
-        <TextView
-            android:id="@+id/playerTopTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Now Playing"
-            android:textColor="#E8E8F0"
-            android:textSize="16sp"
-            android:fontFamily="sans-serif-medium"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent" />
-
-        <ImageButton
-            android:id="@+id/playerMore"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="More"
-            android:padding="13dp"
-            android:src="@drawable/menu_vertical"
-            app:tint="#D9D9E4"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent" />
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
-
-
-    <!-- CONTENT -->
+    <!-- PLAYER CONTENT -->
 
     <LinearLayout
         android:id="@+id/playerContent"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:gravity="center_horizontal">
+        android:gravity="center_horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="0dp">
 
-        <!-- LYRICS + ALBUM ART AREA -->
+        <!-- ALBUM ART AREA -->
 
         <FrameLayout
             android:id="@+id/playerVisualContainer"
@@ -171,20 +120,49 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/fullPlayerTitle"
+            <!-- TITLE + MENU -->
+
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="4dp"
-                android:maxLines="1"
-                android:ellipsize="end"
-                android:gravity="center"
-                android:text="No song"
-                android:textColor="#F1F1F6"
-                android:textSize="21sp"
-                android:fontFamily="sans-serif-medium" />
+                android:layout_marginTop="12dp">
+
+                <TextView
+                    android:id="@+id/fullPlayerTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:text="No song"
+                    android:textColor="#F1F1F6"
+                    android:textSize="21sp"
+                    android:fontFamily="sans-serif-medium"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toStartOf="@id/playerMore"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent" />
+
+                <ImageButton
+                    android:id="@+id/playerMore"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="More"
+                    android:padding="10dp"
+                    android:src="@drawable/menu_vertical"
+                    android:tint="#D9D9E4"
+                    android:elevation="20dp"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+
+            <!-- ARTIST -->
 
             <TextView
                 android:id="@+id/fullPlayerArtist"
@@ -227,15 +205,13 @@
             <com.urfavxbf.kanade.ui.player.EqualizerSeekBar
                 android:id="@+id/seekFullPlayer"
                 android:layout_width="0dp"
-                android:layout_height="42dp"
+                android:layout_height="52dp"
                 android:layout_weight="1"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="4dp"
-                android:max="1000"
-                android:progress="0"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
                 android:background="@android:color/transparent"
-                android:paddingStart="0dp"
-                android:paddingEnd="0dp"
+                android:progress="0"
+                android:max="1000"
                 android:splitTrack="false" />
 
             <TextView
@@ -249,6 +225,9 @@
                 android:fontFamily="sans-serif-medium" />
 
         </LinearLayout>
+
+
+        <!-- MAIN PLAYER CONTROLS -->
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/fullPlayerControls"
@@ -266,7 +245,7 @@
                 android:contentDescription="Previous"
                 android:padding="15dp"
                 android:src="@drawable/ic_previous"
-                app:tint="#ffffff"
+                android:tint="#ffffff"
                 app:layout_constraintEnd_toStartOf="@id/btnFullPlayPause"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent" />
@@ -279,7 +258,7 @@
                 android:contentDescription="Play or pause"
                 android:padding="8dp"
                 android:src="@drawable/ic_play"
-                app:tint="#ffffff"
+                android:tint="#ffffff"
                 android:scaleType="fitCenter"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
@@ -295,12 +274,15 @@
                 android:contentDescription="Next"
                 android:padding="15dp"
                 android:src="@drawable/ic_next"
-                app:tint="#ffffff"
+                android:tint="#ffffff"
                 app:layout_constraintStart_toEndOf="@id/btnFullPlayPause"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
+
+
+        <!-- EXTRA CONTROLS -->
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/playerExtraControls"
@@ -375,4 +357,19 @@
 
     </LinearLayout>
 
-</LinearLayout>
+
+    <!-- AUDIO REACTIVE CUTOUT RIPPLE
+         Full-screen overlay.
+         This is intentionally AFTER playerContent so it renders above it.
+         It is non-clickable, so player controls remain usable. -->
+
+    <com.urfavxbf.kanade.ui.player.CutoutRippleView
+        android:id="@+id/cutoutRippleView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false"
+        android:importantForAccessibility="no"
+        android:elevation="10dp" />
+
+</FrameLayout>

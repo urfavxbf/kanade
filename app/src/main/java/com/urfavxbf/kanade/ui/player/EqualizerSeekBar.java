@@ -11,8 +11,6 @@ import android.view.MotionEvent;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.AppCompatSeekBar;
 
-import java.util.Random;
-
 public class EqualizerSeekBar extends AppCompatSeekBar {
 
     private final Paint activePaint =
@@ -21,23 +19,20 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
     private final Paint inactivePaint =
             new Paint(Paint.ANTI_ALIAS_FLAG);
 
-    private final Random random =
-            new Random();
-
     private float[] barHeights;
     private float[] targetHeights;
 
-    /*
-     * Default:
-     * 100 bars
-     *
-     * Allowed:
-     * 34 - 100
-     */
+    private float[] fftMagnitudes;
+
     private int barCount = 100;
 
     private static final int MIN_BAR_COUNT = 34;
     private static final int MAX_BAR_COUNT = 100;
+
+    private static final float MIN_FREQUENCY = 20f;
+    private static final float MAX_FREQUENCY = 16000f;
+
+    private static final float MIN_VISIBLE_LEVEL = 0.06f;
 
     private int activeColor =
             Color.rgb(
@@ -67,11 +62,29 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
     private boolean trackingTouch =
             false;
 
-    private long lastAnimationTime =
+    private boolean hasFFTData =
+            false;
+
+    private boolean beatDetected =
+            false;
+
+    private float audioLevel =
+            0f;
+
+    private float bassLevel =
+            0f;
+
+    private int fftSampleRate =
+            44100;
+
+    private long lastFrameTime =
             0L;
 
-    private float animationTime =
-            0f;
+    private long beatPulseTime =
+            0L;
+
+    private static final long BEAT_PULSE_DURATION =
+            220L;
 
     private OnSeekBarChangeListener
             externalListener;
@@ -86,13 +99,12 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
                         return;
                     }
 
-                    animateBars();
+                    updateAnimation();
 
                     invalidate();
 
-                    postDelayed(
-                            this,
-                            16
+                    postOnAnimation(
+                            this
                     );
                 }
             };
@@ -192,25 +204,14 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
              i < barCount;
              i++) {
 
-            float value =
-                    0.25f
-                            + random.nextFloat()
-                            * 0.55f;
-
             barHeights[i] =
-                    value;
+                    MIN_VISIBLE_LEVEL;
 
             targetHeights[i] =
-                    value;
+                    MIN_VISIBLE_LEVEL;
         }
     }
 
-    /**
-     * Set number of equalizer bars.
-     *
-     * Allowed range:
-     * 34 - 100
-     */
     public void setBarCount(
             int count) {
 
@@ -235,28 +236,269 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
         invalidate();
     }
 
-    /**
-     * Returns current number of bars.
-     */
     public int getBarCount() {
 
         return barCount;
     }
 
-    /**
-     * Minimum supported bar count.
-     */
     public int getMinBarCount() {
 
         return MIN_BAR_COUNT;
     }
 
-    /**
-     * Maximum supported bar count.
-     */
     public int getMaxBarCount() {
 
         return MAX_BAR_COUNT;
+    }
+
+    /**
+     * Receives raw FFT data from MusicPlayerService.
+     *
+     * Android Visualizer FFT format:
+     *
+     * [real0, imag0, real1, imag1, ...]
+     *
+     * This method remains for compatibility with
+     * existing PlayerFragment code.
+     */
+    public synchronized void setFFTData(
+            byte[] fft) {
+
+        setFFTData(
+                fft,
+                fftSampleRate
+        );
+    }
+
+    /**
+     * Receives raw FFT data together with the actual
+     * audio sample rate used by the analyzer.
+     *
+     * Supplying the real sample rate makes the
+     * frequency mapping considerably more accurate.
+     */
+    public synchronized void setFFTData(
+            byte[] fft,
+            int sampleRate) {
+
+        if (fft == null ||
+                fft.length < 4) {
+
+            hasFFTData =
+                    false;
+
+            return;
+        }
+
+        if (sampleRate > 0) {
+
+            fftSampleRate =
+                    sampleRate;
+        }
+
+        int magnitudeCount =
+                fft.length / 2;
+
+        if (magnitudeCount <= 0) {
+
+            hasFFTData =
+                    false;
+
+            return;
+        }
+
+        if (fftMagnitudes == null ||
+                fftMagnitudes.length != magnitudeCount) {
+
+            fftMagnitudes =
+                    new float[magnitudeCount];
+        }
+
+        for (int i = 0;
+             i < magnitudeCount;
+             i++) {
+
+            int realIndex =
+                    i * 2;
+
+            int imaginaryIndex =
+                    realIndex + 1;
+
+            if (imaginaryIndex >= fft.length) {
+                break;
+            }
+
+            /*
+             * Visualizer FFT values are signed bytes.
+             */
+            float real =
+                    fft[realIndex];
+
+            float imaginary =
+                    fft[imaginaryIndex];
+
+            float magnitude =
+                    (float)
+                            Math.sqrt(
+                                    real * real
+                                            +
+                                    imaginary
+                                            * imaginary
+                            );
+
+            /*
+             * Normalize.
+             */
+            magnitude /=
+                    128f;
+
+            /*
+             * Log compression.
+             *
+             * This makes quieter frequencies visible
+             * without allowing large peaks to dominate
+             * the entire visualizer.
+             */
+            magnitude =
+                    (float)
+                            Math.log1p(
+                                    magnitude * 8f
+                            )
+                                    /
+                            (float)
+                                    Math.log1p(
+                                            8f
+                                    );
+
+            magnitude =
+                    clamp(
+                            magnitude
+                    );
+
+            /*
+             * FFT temporal smoothing.
+             *
+             * Attack is intentionally faster than
+             * decay so transients remain visible.
+             */
+            float old =
+                    fftMagnitudes[i];
+
+            float coefficient;
+
+            if (magnitude > old) {
+
+                coefficient =
+                        0.42f;
+
+            } else {
+
+                coefficient =
+                        0.18f;
+            }
+
+            fftMagnitudes[i] =
+                    old
+                            +
+                    (
+                            magnitude
+                                    -
+                            old
+                    )
+                            *
+                    coefficient;
+        }
+
+        hasFFTData =
+                true;
+    }
+
+    /**
+     * Clears FFT data.
+     *
+     * Used when playback stops or the Fragment
+     * is destroyed.
+     */
+    public synchronized void clearFFTData() {
+
+        hasFFTData =
+                false;
+
+        if (fftMagnitudes != null) {
+
+            for (int i = 0;
+                 i < fftMagnitudes.length;
+                 i++) {
+
+                fftMagnitudes[i] =
+                        0f;
+            }
+        }
+
+        audioLevel =
+                0f;
+
+        bassLevel =
+                0f;
+
+        beatDetected =
+                false;
+
+        beatPulseTime =
+                0L;
+
+        invalidate();
+    }
+
+    /**
+     * Receives general audio energy.
+     *
+     * Expected range:
+     * 0.0 - 1.0
+     */
+    public synchronized void setAudioLevel(
+            float level) {
+
+        audioLevel =
+                clamp(
+                        level
+                );
+    }
+
+    /**
+     * Receives bass energy.
+     *
+     * Expected range:
+     * 0.0 - 1.0
+     */
+    public synchronized void setBassLevel(
+            float level) {
+
+        bassLevel =
+                clamp(
+                        level
+                );
+    }
+
+    /**
+     * Called by PlayerFragment when the service
+     * detects an actual transient/beat.
+     *
+     * There is NO internal timer generating beats.
+     */
+    public synchronized void setBeatDetected(
+            boolean detected) {
+
+        if (!detected) {
+
+            return;
+        }
+
+        beatDetected =
+                true;
+
+        beatPulseTime =
+                System.currentTimeMillis();
     }
 
     @Override
@@ -281,23 +523,6 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
             createBars();
         }
 
-        /*
-         * The equalizer uses the FULL available
-         * width of the SeekBar.
-         *
-         * This is what makes the seekbar long
-         * instead of leaving a huge empty area.
-         */
-        float startX =
-                0f;
-
-        float availableWidth =
-                width;
-
-        /*
-         * Keep bars compact while still filling
-         * the entire available width.
-         */
         float barWidth;
 
         float gap;
@@ -327,32 +552,33 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
                     dp(1);
         }
 
+        float availableWidth =
+                width;
+
         float requiredWidth =
                 barCount * barWidth
-                        + (barCount - 1) * gap;
+                        +
+                (
+                        barCount - 1
+                )
+                        * gap;
 
-        /*
-         * If the calculated bars are too wide,
-         * automatically compress the gap first.
-         */
         if (requiredWidth > availableWidth) {
 
             gap =
                     (
                             availableWidth
-                                    - barCount
+                                    -
+                            barCount
                                     * barWidth
                     )
-                            / (float)
+                            /
+                    (float)
                             Math.max(
                                     1,
                                     barCount - 1
                             );
 
-            /*
-             * If even the bars themselves do not fit,
-             * calculate a smaller bar width.
-             */
             if (gap < 0f) {
 
                 gap =
@@ -361,13 +587,14 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
                 barWidth =
                         (
                                 availableWidth
-                                        - (
-                                                barCount
-                                                        - 1
-                                        )
+                                        -
+                                (
+                                        barCount - 1
+                                )
                                         * gap
                         )
-                                / (float)
+                                /
+                        (float)
                                 barCount;
 
                 barWidth =
@@ -378,23 +605,21 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
             }
         }
 
-        /*
-         * Center only if there is a tiny remaining
-         * difference. Normally the equalizer occupies
-         * the complete width.
-         */
         float totalWidth =
                 barCount * barWidth
-                        + (
-                                barCount - 1
-                        ) * gap;
+                        +
+                (
+                        barCount - 1
+                )
+                        * gap;
 
-        startX =
+        float startX =
                 Math.max(
                         0f,
                         (
                                 width
-                                        - totalWidth
+                                        -
+                                totalWidth
                         ) / 2f
                 );
 
@@ -418,14 +643,13 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
                             Math.min(
                                     1f,
                                     progress
-                                            / (float) max
+                                            /
+                                    (float)
+                                            max
                             )
                     );
         }
 
-        /*
-         * Use most of the vertical space.
-         */
         float maxHeight =
                 height * 0.90f;
 
@@ -435,82 +659,112 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
                         height * 0.10f
                 );
 
+        float beatPulse =
+                getBeatPulse();
+
         for (int i = 0;
              i < barCount;
              i++) {
 
             float x =
                     startX
-                            + i
-                            * (
-                                    barWidth
-                                            + gap
-                            );
+                            +
+                    i
+                            *
+                    (
+                            barWidth
+                                    +
+                            gap
+                    );
 
             float position =
                     barCount <= 1
                             ? 0f
                             : i
-                            / (float)
-                            (barCount - 1);
+                            /
+                            (float)
+                            (
+                                    barCount - 1
+                            );
 
             boolean active =
-                    position <= progressRatio;
+                    position
+                            <=
+                    progressRatio;
 
             float value =
                     barHeights[i];
 
             /*
-             * Animated waveform.
+             * Actual audio energy.
              */
-            if (equalizerPlaying) {
+            value =
+                    value * 0.78f
+                            +
+                    audioLevel * 0.22f;
 
-                float wave =
-                        (float)
-                                Math.sin(
-                                        animationTime
-                                                * 2.2f
-                                                + i
-                                                * 0.42f
-                                );
+            /*
+             * Bass emphasis.
+             */
+            float bassWeight =
+                    getBassWeight(
+                            position
+                    );
 
-                float wave2 =
-                        (float)
-                                Math.sin(
-                                        animationTime
-                                                * 3.7f
-                                                + i
-                                                * 0.19f
-                                );
+            value +=
+                    bassLevel
+                            *
+                    bassWeight
+                            *
+                    0.30f;
 
-                float waveValue =
-                        wave * 0.5f
-                                + wave2 * 0.25f;
+            /*
+             * Actual beat impulse.
+             *
+             * This only exists after the service has
+             * reported a detected beat.
+             */
+            value +=
+                    beatPulse
+                            *
+                    (
+                            0.06f
+                                    +
+                            bassWeight
+                                    *
+                            0.20f
+                    );
 
-                value +=
-                        waveValue * 0.10f;
+            value =
+                    clamp(
+                            value
+                    );
+
+            /*
+             * Keep the bars minimally visible during
+             * active playback, but do not animate them
+             * artificially.
+             */
+            if (equalizerPlaying &&
+                    value < MIN_VISIBLE_LEVEL) {
 
                 value =
-                        Math.max(
-                                0.08f,
-                                Math.min(
-                                        1f,
-                                        value
-                                )
-                        );
+                        MIN_VISIBLE_LEVEL;
             }
 
             float barHeight =
                     minHeight
-                            + (
-                                    maxHeight
-                                            - minHeight
-                            )
-                                    * value;
+                            +
+                    (
+                            maxHeight
+                                    -
+                            minHeight
+                    )
+                            *
+                    value;
 
             /*
-             * Inactive bars are still visible,
-             * just dimmer and slightly shorter.
+             * Inactive section remains visible.
              */
             if (!active) {
 
@@ -519,7 +773,7 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
             }
 
             /*
-             * Soft edges.
+             * Smooth edge falloff.
              */
             float edgeFactor =
                     1f;
@@ -536,27 +790,36 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
 
                     edgeFactor =
                             0.65f
-                                    + (
-                                            i
-                                                    / (float)
-                                                    edgeBars
-                                    ) * 0.35f;
+                                    +
+                            (
+                                    i
+                                            /
+                                    (float)
+                                    edgeBars
+                            )
+                                    * 0.35f;
 
                 } else if (
-                        i >= barCount - edgeBars
+                        i >=
+                                barCount
+                                        -
+                                edgeBars
                 ) {
 
                     edgeFactor =
                             0.65f
-                                    + (
-                                            (
-                                                    barCount
-                                                            - 1
-                                                            - i
-                                            )
-                                                    / (float)
-                                                    edgeBars
-                                    ) * 0.35f;
+                                    +
+                            (
+                                    (
+                                            barCount
+                                                    - 1
+                                                    - i
+                                    )
+                                            /
+                                    (float)
+                                    edgeBars
+                            )
+                                    * 0.35f;
                 }
             }
 
@@ -565,11 +828,13 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
 
             float top =
                     centerY
-                            - barHeight / 2f;
+                            -
+                    barHeight / 2f;
 
             float bottom =
                     centerY
-                            + barHeight / 2f;
+                            +
+                    barHeight / 2f;
 
             Paint paint =
                     active
@@ -599,32 +864,289 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
         }
     }
 
-    private void animateBars() {
+    /**
+     * Converts a bar's normalized position into
+     * an actual FFT frequency.
+     */
+    private float getFrequencyForPosition(
+            float position) {
+
+        double minLog =
+                Math.log(
+                        MIN_FREQUENCY
+                );
+
+        double maxLog =
+                Math.log(
+                        Math.min(
+                                MAX_FREQUENCY,
+                                fftSampleRate / 2f
+                        )
+                );
+
+        if (maxLog <= minLog) {
+
+            return MIN_FREQUENCY;
+        }
+
+        return (float)
+                Math.exp(
+                        minLog
+                                +
+                        (
+                                maxLog
+                                        -
+                                minLog
+                        )
+                                * position
+                );
+    }
+
+    /**
+     * Converts an actual frequency into an FFT
+     * bin index.
+     */
+    private int frequencyToFFTIndex(
+            float frequency) {
+
+        if (fftMagnitudes == null ||
+                fftMagnitudes.length == 0) {
+
+            return 0;
+        }
+
+        float nyquist =
+                fftSampleRate / 2f;
+
+        if (nyquist <= 0f) {
+
+            nyquist =
+                    22050f;
+        }
+
+        frequency =
+                Math.max(
+                        0f,
+                        Math.min(
+                                nyquist,
+                                frequency
+                        )
+                );
+
+        float normalized =
+                frequency
+                        /
+                nyquist;
+
+        int index =
+                Math.round(
+                        normalized
+                                *
+                        (
+                                fftMagnitudes.length - 1
+                        )
+                );
+
+        return Math.max(
+                0,
+                Math.min(
+                        fftMagnitudes.length - 1,
+                        index
+                )
+        );
+    }
+
+    private float getFrequencyValue(
+            float position,
+            int barIndex) {
+
+        if (!hasFFTData ||
+                fftMagnitudes == null ||
+                fftMagnitudes.length == 0) {
+
+            return MIN_VISIBLE_LEVEL;
+        }
+
+        float frequency =
+                getFrequencyForPosition(
+                        position
+                );
+
+        int index =
+                frequencyToFFTIndex(
+                        frequency
+                );
+
+        /*
+         * Wider averaging at low frequencies,
+         * narrower averaging at high frequencies.
+         */
+        int radius;
+
+        if (frequency < 150f) {
+
+            radius =
+                    Math.max(
+                            2,
+                            fftMagnitudes.length / 48
+                    );
+
+        } else if (frequency < 1000f) {
+
+            radius =
+                    Math.max(
+                            1,
+                            fftMagnitudes.length / 80
+                    );
+
+        } else {
+
+            radius =
+                    Math.max(
+                            1,
+                            fftMagnitudes.length / 120
+                    );
+        }
+
+        float total =
+                0f;
+
+        int count =
+                0;
+
+        int start =
+                Math.max(
+                        1,
+                        index - radius
+                );
+
+        int end =
+                Math.min(
+                        fftMagnitudes.length - 1,
+                        index + radius
+                );
+
+        for (int i = start;
+             i <= end;
+             i++) {
+
+            total +=
+                    fftMagnitudes[i];
+
+            count++;
+        }
+
+        if (count <= 0) {
+
+            return MIN_VISIBLE_LEVEL;
+        }
+
+        float value =
+                total
+                        /
+                count;
+
+        /*
+         * Musical compression.
+         */
+        value =
+                (float)
+                        Math.pow(
+                                value,
+                                0.72f
+                        );
+
+        /*
+         * Additional bass emphasis.
+         *
+         * This is applied according to the actual
+         * frequency rather than merely the visual
+         * position.
+         */
+        if (frequency <= 250f) {
+
+            float bassFactor =
+                    1f
+                            -
+                    (
+                            frequency
+                                    /
+                            250f
+                    );
+
+            value +=
+                    bassFactor
+                            *
+                    bassLevel
+                            *
+                    0.22f;
+        }
+
+        return clamp(
+                value
+        );
+    }
+
+    private float getBassWeight(
+            float position) {
+
+        if (position >= 0.35f) {
+
+            return 0f;
+        }
+
+        float value =
+                1f
+                        -
+                (
+                        position
+                                /
+                        0.35f
+                );
+
+        return value * value;
+    }
+
+    /**
+     * Smooths bar movement toward actual FFT targets.
+     *
+     * Fast attack:
+     *   makes kicks/snare transients visible.
+     *
+     * Slow decay:
+     *   prevents jitter.
+     */
+    private void updateAnimation() {
 
         long now =
                 System.currentTimeMillis();
 
-        if (lastAnimationTime == 0L) {
+        if (lastFrameTime == 0L) {
 
-            lastAnimationTime =
+            lastFrameTime =
                     now;
         }
 
         long elapsed =
-                now - lastAnimationTime;
+                now - lastFrameTime;
 
-        lastAnimationTime =
+        lastFrameTime =
                 now;
 
-        if (elapsed > 100) {
-            elapsed = 100;
+        if (elapsed > 100L) {
+
+            elapsed =
+                    100L;
+        }
+
+        if (elapsed < 0L) {
+
+            elapsed =
+                    0L;
         }
 
         float delta =
                 elapsed / 1000f;
-
-        animationTime +=
-                delta;
 
         for (int i = 0;
              i < barCount;
@@ -634,17 +1156,34 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
                     barHeights[i];
 
             float target =
-                    targetHeights[i];
+                    getTargetHeight(
+                            i
+                    );
 
             float difference =
                     target - current;
 
-            float speed =
-                    5.5f;
+            /*
+             * Faster response when rising,
+             * slower response when falling.
+             */
+            float speed;
+
+            if (difference > 0f) {
+
+                speed =
+                        12.0f;
+
+            } else {
+
+                speed =
+                        5.5f;
+            }
 
             float interpolation =
                     1f
-                            - (float)
+                            -
+                    (float)
                             Math.exp(
                                     -speed
                                             * delta
@@ -652,44 +1191,115 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
 
             barHeights[i] =
                     current
-                            + difference
-                            * interpolation;
+                            +
+                    difference
+                            *
+                    interpolation;
 
-            if (Math.abs(difference) < 0.025f) {
-
-                float center =
-                        0.50f
-                                + (
-                                        (float)
-                                                Math.sin(
-                                                        animationTime
-                                                                * 1.7f
-                                                                + i
-                                                                * 0.31f
-                                                )
-                                )
-                                * 0.18f;
-
-                float randomVariation =
-                        (
-                                random.nextFloat()
-                                        - 0.5f
-                        ) * 0.22f;
-
-                float next =
-                        center
-                                + randomVariation;
-
-                targetHeights[i] =
-                        Math.max(
-                                0.12f,
-                                Math.min(
-                                        0.95f,
-                                        next
-                                )
-                        );
-            }
+            targetHeights[i] =
+                    target;
         }
+    }
+
+    private float getTargetHeight(
+            int index) {
+
+        if (!equalizerPlaying) {
+
+            return MIN_VISIBLE_LEVEL;
+        }
+
+        if (!hasFFTData ||
+                fftMagnitudes == null ||
+                fftMagnitudes.length == 0) {
+
+            /*
+             * IMPORTANT:
+             *
+             * No FFT = no fake animation.
+             */
+            return MIN_VISIBLE_LEVEL;
+        }
+
+        float position =
+                barCount <= 1
+                        ? 0f
+                        : index
+                        /
+                        (float)
+                        (
+                                barCount - 1
+                        );
+
+        float value =
+                getFrequencyValue(
+                        position,
+                        index
+                );
+
+        /*
+         * General audio energy.
+         */
+        value =
+                value * 0.84f
+                        +
+                audioLevel * 0.16f;
+
+        /*
+         * Bass response.
+         */
+        value +=
+                bassLevel
+                        *
+                getBassWeight(
+                        position
+                )
+                        *
+                0.24f;
+
+        return clamp(
+                value
+        );
+    }
+
+    private float getBeatPulse() {
+
+        if (!beatDetected ||
+                beatPulseTime <= 0L) {
+
+            return 0f;
+        }
+
+        long elapsed =
+                System.currentTimeMillis()
+                        -
+                beatPulseTime;
+
+        if (elapsed >=
+                BEAT_PULSE_DURATION) {
+
+            beatDetected =
+                    false;
+
+            beatPulseTime =
+                    0L;
+
+            return 0f;
+        }
+
+        float progress =
+                elapsed
+                        /
+                (float)
+                BEAT_PULSE_DURATION;
+
+        /*
+         * Fast attack + smooth decay.
+         */
+        float pulse =
+                1f - progress;
+
+        return pulse * pulse;
     }
 
     public void setEqualizerPlaying(
@@ -711,21 +1321,8 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
 
         if (playing) {
 
-            lastAnimationTime =
+            lastFrameTime =
                     System.currentTimeMillis();
-
-            animationTime =
-                    0f;
-
-            for (int i = 0;
-                 i < barCount;
-                 i++) {
-
-                targetHeights[i] =
-                        0.25f
-                                + random.nextFloat()
-                                * 0.70f;
-            }
 
             post(
                     animationRunnable
@@ -733,12 +1330,33 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
 
         } else {
 
-            for (int i = 0;
-                 i < barCount;
-                 i++) {
+            lastFrameTime =
+                    0L;
 
-                targetHeights[i] =
-                        0.22f;
+            beatDetected =
+                    false;
+
+            beatPulseTime =
+                    0L;
+
+            audioLevel =
+                    0f;
+
+            bassLevel =
+                    0f;
+
+            if (barHeights != null) {
+
+                for (int i = 0;
+                     i < barHeights.length;
+                     i++) {
+
+                    barHeights[i] =
+                            MIN_VISIBLE_LEVEL;
+
+                    targetHeights[i] =
+                            MIN_VISIBLE_LEVEL;
+                }
             }
         }
 
@@ -800,7 +1418,7 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
 
     @Override
     public void setOnSeekBarChangeListener(
-            OnSeekBarChangeListener listener) {
+            @Nullable OnSeekBarChangeListener listener) {
 
         externalListener =
                 listener;
@@ -815,10 +1433,12 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
             MotionEvent event) {
 
         if (!isEnabled()) {
+
             return false;
         }
 
         if (event == null) {
+
             return false;
         }
 
@@ -846,6 +1466,7 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
             case MotionEvent.ACTION_MOVE:
 
                 if (!trackingTouch) {
+
                     return false;
                 }
 
@@ -902,6 +1523,7 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
                 getWidth();
 
         if (width <= 0) {
+
             return;
         }
 
@@ -951,6 +1573,18 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
         );
 
         invalidate();
+    }
+
+    private float clamp(
+            float value) {
+
+        return Math.max(
+                0f,
+                Math.min(
+                        1f,
+                        value
+                )
+        );
     }
 
     private int blendColors(
@@ -1006,9 +1640,10 @@ public class EqualizerSeekBar extends AppCompatSeekBar {
 
         return Math.round(
                 value
-                        * getResources()
-                                .getDisplayMetrics()
-                                .density
+                        *
+                getResources()
+                        .getDisplayMetrics()
+                        .density
         );
     }
 
