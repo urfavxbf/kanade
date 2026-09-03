@@ -66,6 +66,7 @@ public class PlayerFragment extends Fragment {
     private ImageButton btnShuffle;
     private ImageButton btnRepeat;
     private ImageButton btnQueue;
+    private QueueBottomSheet queueBottomSheet;
 
     private boolean receiverRegistered = false;
     private boolean colorReceiverRegistered = false;
@@ -103,7 +104,6 @@ public class PlayerFragment extends Fragment {
                     String action = intent.getAction();
 
                     if (!MusicPlayerService.ACTION_STATE_CHANGED.equals(action)) {
-
                         return;
                     }
 
@@ -122,7 +122,6 @@ public class PlayerFragment extends Fragment {
                     }
 
                     if (!AlbumColorManager.ACTION_COLORS_CHANGED.equals(intent.getAction())) {
-
                         return;
                     }
 
@@ -131,7 +130,6 @@ public class PlayerFragment extends Fragment {
                                     AlbumColorManager.EXTRA_CURRENT_URI);
 
                     if (uri == null || uri.trim().isEmpty()) {
-
                         return;
                     }
 
@@ -142,7 +140,6 @@ public class PlayerFragment extends Fragment {
                      * that is no longer the actual player song.
                      */
                     if (currentUri == null || !uri.equals(currentUri)) {
-
                         return;
                     }
 
@@ -164,9 +161,7 @@ public class PlayerFragment extends Fragment {
             new BroadcastReceiver() {
 
                 @Override
-                public void onReceive(
-                        Context context,
-                        Intent intent) {
+                public void onReceive(Context context, Intent intent) {
 
                     if (intent == null) {
                         return;
@@ -174,7 +169,6 @@ public class PlayerFragment extends Fragment {
 
                     if (!MusicPlayerService.ACTION_AUDIO_ANALYSIS.equals(
                             intent.getAction())) {
-
                         return;
                     }
 
@@ -207,9 +201,6 @@ public class PlayerFragment extends Fragment {
                                     MusicPlayerService.EXTRA_SAMPLE_RATE,
                                     44100);
 
-                    /*
-                     * Send real FFT data to the equalizer.
-                     */
                     if (seekFullPlayer != null) {
 
                         if (fft != null && fft.length > 1) {
@@ -223,20 +214,13 @@ public class PlayerFragment extends Fragment {
                             seekFullPlayer.clearFFTData();
                         }
 
-                        seekFullPlayer.setAudioLevel(
-                                energy);
+                        seekFullPlayer.setAudioLevel(energy);
 
-                        seekFullPlayer.setBassLevel(
-                                bass);
+                        seekFullPlayer.setBassLevel(bass);
 
-                        seekFullPlayer.setBeatDetected(
-                                beat);
+                        seekFullPlayer.setBeatDetected(beat);
                     }
 
-                    /*
-                     * Send the exact same audio analysis
-                     * to the punch-hole visualizer.
-                     */
                     if (cutoutRippleView != null) {
 
                         cutoutRippleView.setAudioData(
@@ -293,94 +277,71 @@ public class PlayerFragment extends Fragment {
 
     private void initializeViews(View view) {
 
-
         btnFullPrevious =
-                view.findViewById(
-                        R.id.btnFullPrevious);
+                view.findViewById(R.id.btnFullPrevious);
 
         btnFullPlayPause =
-                view.findViewById(
-                        R.id.btnFullPlayPause);
+                view.findViewById(R.id.btnFullPlayPause);
 
         btnFullNext =
-                view.findViewById(
-                        R.id.btnFullNext);
+                view.findViewById(R.id.btnFullNext);
 
         playerMore =
-                view.findViewById(
-                        R.id.playerMore);
+                view.findViewById(R.id.playerMore);
 
         fullPlayerAlbumArt =
-                view.findViewById(
-                        R.id.fullPlayerAlbumArt);
+                view.findViewById(R.id.fullPlayerAlbumArt);
 
         fullPlayerAlbumCard =
-                view.findViewById(
-                        R.id.fullPlayerAlbumCard);
+                view.findViewById(R.id.fullPlayerAlbumCard);
 
         playerVisualContainer =
-                view.findViewById(
-                        R.id.playerVisualContainer);
+                view.findViewById(R.id.playerVisualContainer);
 
         songInfoContainer =
-                view.findViewById(
-                        R.id.songInfoContainer);
+                view.findViewById(R.id.songInfoContainer);
 
         cutoutRippleView =
-                view.findViewById(
-                        R.id.cutoutRippleView);
+                view.findViewById(R.id.cutoutRippleView);
 
         fullPlayerTitle =
-                view.findViewById(
-                        R.id.fullPlayerTitle);
+                view.findViewById(R.id.fullPlayerTitle);
 
         fullPlayerArtist =
-                view.findViewById(
-                        R.id.fullPlayerArtist);
+                view.findViewById(R.id.fullPlayerArtist);
 
         fullPlayerElapsed =
-                view.findViewById(
-                        R.id.fullPlayerElapsed);
+                view.findViewById(R.id.fullPlayerElapsed);
 
         fullPlayerDuration =
-                view.findViewById(
-                        R.id.fullPlayerDuration);
+                view.findViewById(R.id.fullPlayerDuration);
 
         seekFullPlayer =
-                view.findViewById(
-                        R.id.seekFullPlayer);
+                view.findViewById(R.id.seekFullPlayer);
 
         lyricsContainer =
-                view.findViewById(
-                        R.id.lyricsContainer);
+                view.findViewById(R.id.lyricsContainer);
 
         lyricsPrevious =
-                view.findViewById(
-                        R.id.lyricsPrevious);
+                view.findViewById(R.id.lyricsPrevious);
 
         lyricsCurrent =
-                view.findViewById(
-                        R.id.lyricsCurrent);
+                view.findViewById(R.id.lyricsCurrent);
 
         lyricsNext =
-                view.findViewById(
-                        R.id.lyricsNext);
+                view.findViewById(R.id.lyricsNext);
 
         btnEqualizer =
-                view.findViewById(
-                        R.id.btnEqualizer);
+                view.findViewById(R.id.btnEqualizer);
 
         btnShuffle =
-                view.findViewById(
-                        R.id.btnShuffle);
+                view.findViewById(R.id.btnShuffle);
 
         btnRepeat =
-                view.findViewById(
-                        R.id.btnRepeat);
+                view.findViewById(R.id.btnRepeat);
 
         btnQueue =
-                view.findViewById(
-                        R.id.btnQueue);
+                view.findViewById(R.id.btnQueue);
 
         if (seekFullPlayer != null) {
 
@@ -471,23 +432,12 @@ public class PlayerFragment extends Fragment {
 
                             } else {
 
-                                Intent intent =
-                                        new Intent(
-                                                requireContext(),
-                                                MusicPlayerService.class);
-
-                                intent.setAction(
+                                /*
+                                 * Resume the currently loaded song.
+                                 * Do not send EXTRA_SONG_URI here.
+                                 */
+                                sendServiceAction(
                                         MusicPlayerService.ACTION_PLAY);
-
-                                if (currentUri != null
-                                        && !currentUri.trim().isEmpty()) {
-
-                                    intent.putExtra(
-                                            MusicPlayerService.EXTRA_SONG_URI,
-                                            currentUri);
-                                }
-
-                                startMusicService(intent);
                             }
                         }
                     });
@@ -539,20 +489,48 @@ public class PlayerFragment extends Fragment {
 
         if (btnQueue != null) {
 
-            btnQueue.setOnClickListener(
-                    new View.OnClickListener() {
+    btnQueue.setOnClickListener(
+            new View.OnClickListener() {
 
-                        @Override
-                        public void onClick(View v) {
+                @Override
+                public void onClick(View v) {
 
-                            Toast.makeText(
-                                            requireContext(),
-                                            "Queue",
-                                            Toast.LENGTH_SHORT)
-                                    .show();
-                        }
-                    });
-        }
+                    if (!isAdded()) {
+                        return;
+                    }
+
+                    btnQueue.animate()
+                            .scaleX(0.88f)
+                            .scaleY(0.88f)
+                            .setDuration(80)
+                            .withEndAction(
+                                    new Runnable() {
+
+                                        @Override
+                                        public void run() {
+
+                                            btnQueue.animate()
+                                                    .scaleX(1f)
+                                                    .scaleY(1f)
+                                                    .setDuration(160)
+                                                    .start();
+                                        }
+                                    })
+                            .start();
+
+                    if (queueBottomSheet == null) {
+
+                        queueBottomSheet =
+                                new QueueBottomSheet(
+                                        requireContext());
+                    }
+
+                    queueBottomSheet.show(
+                            currentAccentColor,
+                            currentBackgroundColor);
+                }
+            });
+}
 
         if (btnEqualizer != null) {
 
@@ -587,7 +565,6 @@ public class PlayerFragment extends Fragment {
     private void enterLyricsMode() {
 
         if (lyricsMode) {
-
             return;
         }
 
@@ -600,7 +577,8 @@ public class PlayerFragment extends Fragment {
 
             lyricsContainer.setAlpha(0f);
 
-            lyricsContainer.animate()
+            lyricsContainer
+                    .animate()
                     .alpha(1f)
                     .setDuration(250)
                     .start();
@@ -653,15 +631,11 @@ public class PlayerFragment extends Fragment {
                 fullPlayerAlbumCard.getHeight();
 
         if (currentWidth <= 0) {
-
-            currentWidth =
-                    300f * density;
+            currentWidth = 300f * density;
         }
 
         if (currentHeight <= 0) {
-
-            currentHeight =
-                    300f * density;
+            currentHeight = 300f * density;
         }
 
         float scaleX =
@@ -728,7 +702,6 @@ public class PlayerFragment extends Fragment {
     private void exitLyricsMode() {
 
         if (!lyricsMode) {
-
             return;
         }
 
@@ -828,7 +801,6 @@ public class PlayerFragment extends Fragment {
     private void setupSeekBar() {
 
         if (seekFullPlayer == null) {
-
             return;
         }
 
@@ -842,12 +814,10 @@ public class PlayerFragment extends Fragment {
                             boolean fromUser) {
 
                         if (!fromUser) {
-
                             return;
                         }
 
                         if (currentDuration <= 0) {
-
                             return;
                         }
 
@@ -856,8 +826,7 @@ public class PlayerFragment extends Fragment {
                                         (progress / 1000f)
                                                 * currentDuration);
 
-                        currentPosition =
-                                position;
+                        currentPosition = position;
 
                         if (fullPlayerElapsed != null) {
 
@@ -894,8 +863,7 @@ public class PlayerFragment extends Fragment {
                                         (progress / 1000f)
                                                 * currentDuration);
 
-                        currentPosition =
-                                position;
+                        currentPosition = position;
 
                         sendSeekCommand(position);
 
@@ -937,8 +905,13 @@ public class PlayerFragment extends Fragment {
                         MusicPlayerService.EXTRA_REPEAT_STATE,
                         repeatMode);
 
-        isPlaying =
-                playing;
+        /*
+         * IMPORTANT:
+         *
+         * The service is the source of truth.
+         * Always update this before updating the icon.
+         */
+        isPlaying = playing;
 
         if (uri != null
                 && !uri.trim().isEmpty()) {
@@ -949,13 +922,8 @@ public class PlayerFragment extends Fragment {
 
             if (songChanged) {
 
-                currentUri =
-                        uri;
+                currentUri = uri;
 
-                /*
-                 * Clear stale audio visualization
-                 * immediately when changing songs.
-                 */
                 if (seekFullPlayer != null) {
 
                     seekFullPlayer.clearFFTData();
@@ -972,9 +940,6 @@ public class PlayerFragment extends Fragment {
                     cutoutRippleView.clearAudioData();
                 }
 
-                /*
-                 * Clear previous album art immediately.
-                 */
                 if (fullPlayerAlbumArt != null) {
 
                     fullPlayerAlbumArt.setImageResource(
@@ -987,8 +952,7 @@ public class PlayerFragment extends Fragment {
 
         if (duration > 0) {
 
-            currentDuration =
-                    duration;
+            currentDuration = duration;
 
             if (fullPlayerDuration != null) {
 
@@ -1001,8 +965,7 @@ public class PlayerFragment extends Fragment {
 
             if (position >= 0) {
 
-                currentPosition =
-                        position;
+                currentPosition = position;
             }
 
             if (fullPlayerElapsed != null) {
@@ -1015,8 +978,7 @@ public class PlayerFragment extends Fragment {
                     currentPosition,
                     currentDuration);
 
-            updateLyrics(
-                    currentPosition);
+            updateLyrics(currentPosition);
         }
 
         updatePlayPauseIcon();
@@ -1033,7 +995,6 @@ public class PlayerFragment extends Fragment {
     private void updateLyrics(int position) {
 
         if (!lyricsMode) {
-
             return;
         }
 
@@ -1045,7 +1006,6 @@ public class PlayerFragment extends Fragment {
             int duration) {
 
         if (seekFullPlayer == null) {
-
             return;
         }
 
@@ -1057,12 +1017,10 @@ public class PlayerFragment extends Fragment {
         }
 
         if (position < 0) {
-
             position = 0;
         }
 
         if (position > duration) {
-
             position = duration;
         }
 
@@ -1072,17 +1030,14 @@ public class PlayerFragment extends Fragment {
                                 * 1000f);
 
         if (progress < 0) {
-
             progress = 0;
         }
 
         if (progress > 1000) {
-
             progress = 1000;
         }
 
-        seekFullPlayer.setProgress(
-                progress);
+        seekFullPlayer.setProgress(progress);
     }
 
     private void updatePlayPauseIcon() {
@@ -1130,7 +1085,8 @@ public class PlayerFragment extends Fragment {
         if (btnRepeat != null) {
 
             btnRepeat.setColorFilter(
-                    repeatMode != MusicPlayerService.REPEAT_OFF
+                    repeatMode
+                                    != MusicPlayerService.REPEAT_OFF
                             ? accentColor
                             : inactiveColor);
         }
@@ -1151,14 +1107,11 @@ public class PlayerFragment extends Fragment {
     private int createInactiveAccentColor(
             int accentColor) {
 
-        int red =
-                Color.red(accentColor);
+        int red = Color.red(accentColor);
 
-        int green =
-                Color.green(accentColor);
+        int green = Color.green(accentColor);
 
-        int blue =
-                Color.blue(accentColor);
+        int blue = Color.blue(accentColor);
 
         red =
                 Math.round(
@@ -1184,12 +1137,10 @@ public class PlayerFragment extends Fragment {
     private int clampColor(int value) {
 
         if (value < 0) {
-
             return 0;
         }
 
         if (value > 255) {
-
             return 255;
         }
 
@@ -1200,7 +1151,6 @@ public class PlayerFragment extends Fragment {
             String action) {
 
         if (!isAdded()) {
-
             return;
         }
 
@@ -1218,7 +1168,6 @@ public class PlayerFragment extends Fragment {
             int position) {
 
         if (!isAdded()) {
-
             return;
         }
 
@@ -1264,7 +1213,12 @@ public class PlayerFragment extends Fragment {
 
         /*
          * The service broadcast is the source of truth.
+         *
+         * The receiver remains registered while this
+         * Fragment's view exists, including while the
+         * Fragment is temporarily paused by another app.
          */
+        updatePlayPauseIcon();
     }
 
     private void loadCurrentSong(
@@ -1277,89 +1231,84 @@ public class PlayerFragment extends Fragment {
             return;
         }
 
-        final String requestedUri =
-                uri;
+        final String requestedUri = uri;
 
         new Thread(
-                new Runnable() {
+                        new Runnable() {
 
-                    @Override
-                    public void run() {
+                            @Override
+                            public void run() {
 
-                        AudioFile foundSong =
-                                null;
+                                AudioFile foundSong = null;
 
-                        try {
+                                try {
 
-                            MusicRepository repository =
-                                    new MusicRepository(
-                                            requireContext()
-                                                    .getApplicationContext());
+                                    MusicRepository repository =
+                                            new MusicRepository(
+                                                    requireContext()
+                                                            .getApplicationContext());
 
-                            ArrayList<AudioFile> songs =
-                                    repository.getAllSongs();
+                                    ArrayList<AudioFile> songs =
+                                            repository.getAllSongs();
 
-                            if (songs != null) {
+                                    if (songs != null) {
 
-                                for (AudioFile song : songs) {
+                                        for (AudioFile song :
+                                                songs) {
 
-                                    if (song != null
-                                            && song.getUri() != null
-                                            && requestedUri.equals(
-                                                    song.getUri())) {
+                                            if (song != null
+                                                    && song.getUri() != null
+                                                    && requestedUri.equals(
+                                                            song.getUri())) {
 
-                                        foundSong =
-                                                song;
+                                                foundSong = song;
 
-                                        break;
-                                    }
-                                }
-                            }
-
-                        } catch (Exception e) {
-
-                            e.printStackTrace();
-                        }
-
-                        final AudioFile result =
-                                foundSong;
-
-                        if (!isAdded()) {
-
-                            return;
-                        }
-
-                        requireActivity()
-                                .runOnUiThread(
-                                        new Runnable() {
-
-                                            @Override
-                                            public void run() {
-
-                                                if (!isAdded()) {
-
-                                                    return;
-                                                }
-
-                                                if (currentUri == null
-                                                        || !requestedUri.equals(
-                                                                currentUri)) {
-
-                                                    return;
-                                                }
-
-                                                if (result == null) {
-
-                                                    return;
-                                                }
-
-                                                updateSongInformation(
-                                                        result,
-                                                        requestedUri);
+                                                break;
                                             }
-                                        });
-                    }
-                })
+                                        }
+                                    }
+
+                                } catch (Exception e) {
+
+                                    e.printStackTrace();
+                                }
+
+                                final AudioFile result =
+                                        foundSong;
+
+                                if (!isAdded()) {
+                                    return;
+                                }
+
+                                requireActivity()
+                                        .runOnUiThread(
+                                                new Runnable() {
+
+                                                    @Override
+                                                    public void run() {
+
+                                                        if (!isAdded()) {
+                                                            return;
+                                                        }
+
+                                                        if (currentUri == null
+                                                                || !requestedUri.equals(
+                                                                        currentUri)) {
+
+                                                            return;
+                                                        }
+
+                                                        if (result == null) {
+                                                            return;
+                                                        }
+
+                                                        updateSongInformation(
+                                                                result,
+                                                                requestedUri);
+                                                    }
+                                                });
+                            }
+                        })
                 .start();
     }
 
@@ -1371,8 +1320,7 @@ public class PlayerFragment extends Fragment {
                 || !isAdded()
                 || requestedUri == null
                 || currentUri == null
-                || !requestedUri.equals(
-                        currentUri)) {
+                || !requestedUri.equals(currentUri)) {
 
             return;
         }
@@ -1410,127 +1358,124 @@ public class PlayerFragment extends Fragment {
                 || song == null
                 || requestedUri == null
                 || currentUri == null
-                || !requestedUri.equals(
-                        currentUri)) {
+                || !requestedUri.equals(currentUri)) {
 
             return;
         }
 
         new Thread(
-                new Runnable() {
+                        new Runnable() {
 
-                    @Override
-                    public void run() {
+                            @Override
+                            public void run() {
 
-                        Bitmap bitmap =
-                                null;
-
-                        try {
-
-                            android.net.Uri songUri =
-                                    android.net.Uri.parse(
-                                            requestedUri);
-
-                            bitmap =
-                                    requireContext()
-                                            .getContentResolver()
-                                            .loadThumbnail(
-                                                    songUri,
-                                                    new android.util.Size(
-                                                            800,
-                                                            800),
-                                                    null);
-
-                        } catch (Exception ignored) {
-                        }
-
-                        if (bitmap == null) {
-
-                            String path =
-                                    song.getPath();
-
-                            if (path != null
-                                    && !path.trim().isEmpty()) {
-
-                                android.media.MediaMetadataRetriever retriever =
-                                        new android.media.MediaMetadataRetriever();
+                                Bitmap bitmap = null;
 
                                 try {
 
-                                    retriever.setDataSource(
-                                            path);
+                                    android.net.Uri songUri =
+                                            android.net.Uri.parse(
+                                                    requestedUri);
 
-                                    byte[] artwork =
-                                            retriever.getEmbeddedPicture();
-
-                                    if (artwork != null
-                                            && artwork.length > 0) {
-
-                                        bitmap =
-                                                BitmapFactory.decodeByteArray(
-                                                        artwork,
-                                                        0,
-                                                        artwork.length);
-                                    }
+                                    bitmap =
+                                            requireContext()
+                                                    .getContentResolver()
+                                                    .loadThumbnail(
+                                                            songUri,
+                                                            new android.util.Size(
+                                                                    800,
+                                                                    800),
+                                                            null);
 
                                 } catch (Exception ignored) {
+                                }
 
-                                } finally {
+                                if (bitmap == null) {
 
-                                    try {
+                                    String path =
+                                            song.getPath();
 
-                                        retriever.release();
+                                    if (path != null
+                                            && !path.trim().isEmpty()) {
 
-                                    } catch (Exception ignored) {
+                                        android.media.MediaMetadataRetriever retriever =
+                                                new android.media.MediaMetadataRetriever();
+
+                                        try {
+
+                                            retriever.setDataSource(
+                                                    path);
+
+                                            byte[] artwork =
+                                                    retriever.getEmbeddedPicture();
+
+                                            if (artwork != null
+                                                    && artwork.length > 0) {
+
+                                                bitmap =
+                                                        BitmapFactory.decodeByteArray(
+                                                                artwork,
+                                                                0,
+                                                                artwork.length);
+                                            }
+
+                                        } catch (Exception ignored) {
+
+                                        } finally {
+
+                                            try {
+
+                                                retriever.release();
+
+                                            } catch (Exception ignored) {
+                                            }
+                                        }
                                     }
                                 }
+
+                                final Bitmap result =
+                                        bitmap;
+
+                                if (!isAdded()) {
+                                    return;
+                                }
+
+                                requireActivity()
+                                        .runOnUiThread(
+                                                new Runnable() {
+
+                                                    @Override
+                                                    public void run() {
+
+                                                        if (!isAdded()
+                                                                || fullPlayerAlbumArt == null) {
+
+                                                            return;
+                                                        }
+
+                                                        if (currentUri == null
+                                                                || !requestedUri.equals(
+                                                                        currentUri)) {
+
+                                                            return;
+                                                        }
+
+                                                        if (result != null) {
+
+                                                            fullPlayerAlbumArt
+                                                                    .setImageBitmap(
+                                                                            result);
+
+                                                        } else {
+
+                                                            fullPlayerAlbumArt
+                                                                    .setImageResource(
+                                                                            R.drawable.ic_play);
+                                                        }
+                                                    }
+                                                });
                             }
-                        }
-
-                        final Bitmap result =
-                                bitmap;
-
-                        if (!isAdded()) {
-
-                            return;
-                        }
-
-                        requireActivity()
-                                .runOnUiThread(
-                                        new Runnable() {
-
-                                            @Override
-                                            public void run() {
-
-                                                if (!isAdded()
-                                                        || fullPlayerAlbumArt == null) {
-
-                                                    return;
-                                                }
-
-                                                if (currentUri == null
-                                                        || !requestedUri.equals(
-                                                                currentUri)) {
-
-                                                    return;
-                                                }
-
-                                                if (result != null) {
-
-                                                    fullPlayerAlbumArt
-                                                            .setImageBitmap(
-                                                                    result);
-
-                                                } else {
-
-                                                    fullPlayerAlbumArt
-                                                            .setImageResource(
-                                                                    R.drawable.ic_play);
-                                                }
-                                            }
-                                        });
-                    }
-                })
+                        })
                 .start();
     }
 
@@ -1542,8 +1487,7 @@ public class PlayerFragment extends Fragment {
                 || !isAdded()
                 || requestedUri == null
                 || currentUri == null
-                || !requestedUri.equals(
-                        currentUri)) {
+                || !requestedUri.equals(currentUri)) {
 
             return;
         }
@@ -1565,8 +1509,7 @@ public class PlayerFragment extends Fragment {
                 return;
             }
 
-            manager.setCurrentSong(
-                    song);
+            manager.setCurrentSong(song);
 
             if (currentUri == null
                     || !requestedUri.equals(currentUri)) {
@@ -1585,7 +1528,6 @@ public class PlayerFragment extends Fragment {
     private void loadExistingColors() {
 
         if (!isAdded()) {
-
             return;
         }
 
@@ -1618,7 +1560,6 @@ public class PlayerFragment extends Fragment {
             final int backgroundColor) {
 
         if (!isAdded()) {
-
             return;
         }
 
@@ -1644,8 +1585,7 @@ public class PlayerFragment extends Fragment {
                             startColor,
                             backgroundColor);
 
-            backgroundAnimator.setDuration(
-                    350);
+            backgroundAnimator.setDuration(350);
 
             backgroundAnimator.addUpdateListener(
                     new ValueAnimator.AnimatorUpdateListener() {
@@ -1656,11 +1596,9 @@ public class PlayerFragment extends Fragment {
 
                             if (getView() != null) {
 
-                                getView()
-                                        .setBackgroundColor(
-                                                (Integer)
-                                                        animation
-                                                                .getAnimatedValue());
+                                getView().setBackgroundColor(
+                                        (Integer)
+                                                animation.getAnimatedValue());
                             }
                         }
                     });
@@ -1711,6 +1649,12 @@ public class PlayerFragment extends Fragment {
         }
 
         updatePlaybackModeButtons();
+        if (queueBottomSheet != null) {
+
+    queueBottomSheet.updateColors(
+            accentColor,
+            backgroundColor);
+}
 
         if (lyricsCurrent != null) {
 
@@ -1735,9 +1679,7 @@ public class PlayerFragment extends Fragment {
 
     private void registerPlayerReceiver() {
 
-        if (receiverRegistered
-                || !isAdded()) {
-
+        if (receiverRegistered || !isAdded()) {
             return;
         }
 
@@ -1766,8 +1708,7 @@ public class PlayerFragment extends Fragment {
                                 filter);
             }
 
-            receiverRegistered =
-                    true;
+            receiverRegistered = true;
 
         } catch (Exception e) {
 
@@ -1777,9 +1718,7 @@ public class PlayerFragment extends Fragment {
 
     private void registerColorReceiver() {
 
-        if (colorReceiverRegistered
-                || !isAdded()) {
-
+        if (colorReceiverRegistered || !isAdded()) {
             return;
         }
 
@@ -1808,8 +1747,7 @@ public class PlayerFragment extends Fragment {
                                 filter);
             }
 
-            colorReceiverRegistered =
-                    true;
+            colorReceiverRegistered = true;
 
         } catch (Exception e) {
 
@@ -1850,8 +1788,7 @@ public class PlayerFragment extends Fragment {
                                 filter);
             }
 
-            audioAnalysisReceiverRegistered =
-                    true;
+            audioAnalysisReceiverRegistered = true;
 
         } catch (Exception e) {
 
@@ -1876,8 +1813,7 @@ public class PlayerFragment extends Fragment {
         } catch (Exception ignored) {
         }
 
-        receiverRegistered =
-                false;
+        receiverRegistered = false;
     }
 
     private void unregisterColorReceiver() {
@@ -1897,8 +1833,7 @@ public class PlayerFragment extends Fragment {
         } catch (Exception ignored) {
         }
 
-        colorReceiverRegistered =
-                false;
+        colorReceiverRegistered = false;
     }
 
     private void unregisterAudioAnalysisReceiver() {
@@ -1918,15 +1853,13 @@ public class PlayerFragment extends Fragment {
         } catch (Exception ignored) {
         }
 
-        audioAnalysisReceiverRegistered =
-                false;
+        audioAnalysisReceiverRegistered = false;
     }
 
     private String formatTime(
             int milliseconds) {
 
         if (milliseconds < 0) {
-
             milliseconds = 0;
         }
 
@@ -1980,6 +1913,13 @@ public class PlayerFragment extends Fragment {
 
         super.onResume();
 
+        /*
+         * Do NOT unregister/register the player receiver
+         * based on Fragment pause/resume.
+         *
+         * The service must be able to notify this Fragment
+         * when another app takes audio focus.
+         */
         if (!receiverRegistered) {
 
             registerPlayerReceiver();
@@ -1995,24 +1935,30 @@ public class PlayerFragment extends Fragment {
             registerAudioAnalysisReceiver();
         }
 
-        /*
-         * Do not let AlbumColorManager select a song here.
-         */
         if (currentUri != null) {
 
             loadExistingColors();
         }
+
+        updatePlayPauseIcon();
     }
 
     @Override
     public void onPause() {
 
-        unregisterPlayerReceiver();
-
-        unregisterColorReceiver();
-
-        unregisterAudioAnalysisReceiver();
-
+        /*
+         * IMPORTANT:
+         *
+         * Do not unregister playerReceiver here.
+         *
+         * If YouTube or another audio app causes an audio
+         * focus loss while this Fragment is paused, the
+         * MusicPlayerService sends ACTION_STATE_CHANGED
+         * with EXTRA_IS_PLAYING=false.
+         *
+         * Keeping this receiver alive lets the Fragment
+         * receive that state change and update the button.
+         */
         super.onPause();
     }
 
@@ -2029,25 +1975,20 @@ public class PlayerFragment extends Fragment {
 
             backgroundAnimator.cancel();
 
-            backgroundAnimator =
-                    null;
+            backgroundAnimator = null;
         }
 
         if (seekFullPlayer != null) {
 
-            seekFullPlayer.setEqualizerPlaying(
-                    false);
+            seekFullPlayer.setEqualizerPlaying(false);
 
             seekFullPlayer.clearFFTData();
 
-            seekFullPlayer.setAudioLevel(
-                    0f);
+            seekFullPlayer.setAudioLevel(0f);
 
-            seekFullPlayer.setBassLevel(
-                    0f);
+            seekFullPlayer.setBassLevel(0f);
 
-            seekFullPlayer.setBeatDetected(
-                    false);
+            seekFullPlayer.setBeatDetected(false);
         }
 
         if (cutoutRippleView != null) {
@@ -2058,8 +1999,7 @@ public class PlayerFragment extends Fragment {
         /*
          * Invalidate all pending album-art/color callbacks.
          */
-        currentUri =
-                null;
+        currentUri = null;
 
         super.onDestroyView();
     }

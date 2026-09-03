@@ -3,6 +3,8 @@ package com.urfavxbf.kanade;
 import android.content.Context;
 import android.content.Intent;
 
+import java.util.ArrayList;
+
 public class MusicPlayerController {
 
     private final Context context;
@@ -33,6 +35,107 @@ public class MusicPlayerController {
         intent.putExtra(
                 MusicPlayerService.EXTRA_SONG_URI,
                 songUri
+        );
+
+        context.startService(intent);
+    }
+
+    /*
+     * PLAY A SOURCE QUEUE
+     *
+     * This replaces the service queue with the
+     * exact list supplied by the caller, then
+     * starts the selected song.
+     *
+     * Used by:
+     * - Home / All Songs
+     * - Favorites
+     * - Playlists
+     */
+
+    public void playQueue(
+            ArrayList<AudioFile> songs,
+            int index) {
+
+        if (songs == null || songs.isEmpty()) {
+            return;
+        }
+
+        ArrayList<String> uris =
+                new ArrayList<>();
+
+        int requestedIndex = -1;
+
+        for (int i = 0; i < songs.size(); i++) {
+
+            AudioFile song = songs.get(i);
+
+            if (song == null) {
+                continue;
+            }
+
+            String uri = song.getUri();
+
+            if (uri == null || uri.trim().isEmpty()) {
+                continue;
+            }
+
+            if (i == index) {
+                requestedIndex = uris.size();
+            }
+
+            uris.add(uri);
+        }
+
+        if (uris.isEmpty()) {
+            return;
+        }
+
+        if (requestedIndex < 0) {
+
+            if (index >= 0 && index < songs.size()) {
+
+                AudioFile requestedSong =
+                        songs.get(index);
+
+                if (requestedSong != null
+                        && requestedSong.getUri() != null
+                        && !requestedSong.getUri().trim().isEmpty()) {
+
+                    for (int i = 0; i < uris.size(); i++) {
+
+                        if (requestedSong.getUri()
+                                .equals(uris.get(i))) {
+
+                            requestedIndex = i;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (requestedIndex < 0) {
+            requestedIndex = 0;
+        }
+
+        Intent intent = new Intent(
+                context,
+                MusicPlayerService.class
+        );
+
+        intent.setAction(
+                MusicPlayerService.ACTION_SET_QUEUE_AND_PLAY
+        );
+
+        intent.putStringArrayListExtra(
+                MusicPlayerService.EXTRA_QUEUE_URIS,
+                uris
+        );
+
+        intent.putExtra(
+                MusicPlayerService.EXTRA_QUEUE_INDEX,
+                requestedIndex
         );
 
         context.startService(intent);

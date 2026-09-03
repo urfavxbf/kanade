@@ -991,49 +991,43 @@ public class MainActivity extends AppCompatActivity {
          */
 
         binding.bottomPart.miniPlayPause
-                .setOnClickListener(
-                        v -> {
+        .setOnClickListener(
+                v -> {
 
-                            Intent intent =
-                                    new Intent(
-                                            MainActivity.this,
-                                            MusicPlayerService.class
-                                    );
-
-                            if (isMusicPlaying) {
-
-                                intent.setAction(
-                                        MusicPlayerService
-                                                .ACTION_PAUSE
-                                );
-
-                            } else {
-
-                                intent.setAction(
-                                        MusicPlayerService
-                                                .ACTION_PLAY
-                                );
-
-                                if (currentPlayingUri
-                                        != null
-                                        && !currentPlayingUri
-                                                .trim()
-                                                .isEmpty()) {
-
-                                    intent.putExtra(
-                                            MusicPlayerService
-                                                    .EXTRA_SONG_URI,
-                                            currentPlayingUri
-                                    );
-                                }
-                            }
-
-                            startMusicService(
-                                    intent
+                    Intent intent =
+                            new Intent(
+                                    MainActivity.this,
+                                    MusicPlayerService.class
                             );
-                        }
-                );
 
+                    if (isMusicPlaying) {
+
+                        intent.setAction(
+                                MusicPlayerService
+                                        .ACTION_PAUSE
+                        );
+
+                    } else {
+
+                        /*
+                         * Resume the currently loaded song.
+                         *
+                         * Do not send EXTRA_SONG_URI here.
+                         * This prevents MediaPlayer from being
+                         * recreated and resetting the position.
+                         */
+
+                        intent.setAction(
+                                MusicPlayerService
+                                        .ACTION_PLAY
+                        );
+                    }
+
+                    startMusicService(
+                            intent
+                    );
+                }
+        );
         /*
          * -----------------------------------------------------
          * PREVIOUS
@@ -1430,31 +1424,49 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateMiniPlayPauseIcon() {
 
-        if (binding == null
-                || binding.bottomPart == null
-                || binding.bottomPart
-                        .miniPlayPause == null) {
+    if (binding == null
+            || binding.bottomPart == null
+            || binding.bottomPart.miniPlayPause == null) {
 
-            return;
-        }
+        return;
+    }
 
-        try {
+    try {
+
+        if (isMusicPlaying) {
+
+            binding.bottomPart
+                    .miniPlayPause
+                    .setImageResource(
+                            R.drawable.ic_pause
+                    );
+
+        } else {
 
             binding.bottomPart
                     .miniPlayPause
                     .setImageResource(
                             R.drawable.ic_play
                     );
-
-        } catch (Exception e) {
-
-            Log.e(
-                    "MainActivity",
-                    "Mini play/pause icon error",
-                    e
-            );
         }
+
+        binding.bottomPart
+                .miniPlayPause
+                .setImageTintList(
+                        ColorStateList.valueOf(
+                                currentAccentColor
+                        )
+                );
+
+    } catch (Exception e) {
+
+        Log.e(
+                "MainActivity",
+                "Mini play/pause icon error",
+                e
+        );
     }
+}
 
     /*
      * ---------------------------------------------------------
