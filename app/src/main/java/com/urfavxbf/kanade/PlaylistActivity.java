@@ -19,7 +19,6 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatButton;
-import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -42,7 +41,6 @@ public class PlaylistActivity extends AppCompatActivity {
     private PlaylistAdapter adapter;
 
     private final ArrayList<String> playlists = new ArrayList<>();
-    private int accentColor = Color.rgb(201, 196, 255);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,7 +58,6 @@ public class PlaylistActivity extends AppCompatActivity {
         txtPlaylistSubtitle = findViewById(R.id.txtPlaylistSubtitle);
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setHasFixedSize(false);
 
         adapter = new PlaylistAdapter(
                 this,
@@ -141,13 +138,11 @@ public class PlaylistActivity extends AppCompatActivity {
             loadPlaylists();
             Toast.makeText(this, "Playlist created", Toast.LENGTH_SHORT).show();
         }));
-
         dialog.show();
     }
 
     private void showPlaylistMenu(String playlistName, View anchor) {
         android.widget.PopupMenu popupMenu = new android.widget.PopupMenu(this, anchor);
-
         if (!PlaylistManager.FAVORITES_PLAYLIST.equalsIgnoreCase(playlistName)) {
             popupMenu.getMenu().add("Rename");
             popupMenu.getMenu().add("Delete");
@@ -243,12 +238,8 @@ public class PlaylistActivity extends AppCompatActivity {
         private final Set<String> expandedPlaylists = new HashSet<>();
         private final Map<String, ArrayList<AudioFile>> songCache = new HashMap<>();
 
-        PlaylistAdapter(
-                Context context,
-                ArrayList<String> playlists,
-                PlaylistManager playlistManager,
-                MusicRepository musicRepository,
-                Listener listener) {
+        PlaylistAdapter(Context context, ArrayList<String> playlists, PlaylistManager playlistManager,
+                        MusicRepository musicRepository, Listener listener) {
             this.context = context;
             this.playlists = playlists;
             this.playlistManager = playlistManager;
@@ -281,28 +272,25 @@ public class PlaylistActivity extends AppCompatActivity {
             holder.count.setText(count + (count == 1 ? " song" : " songs"));
             holder.icon.setImageResource(
                     PlaylistManager.FAVORITES_PLAYLIST.equalsIgnoreCase(name)
-                            ? R.drawable.ic_favorite
-                            : R.drawable.ic_playlist
+                            ? R.drawable.ic_favorite : R.drawable.ic_playlist
             );
-            holder.icon.setColorFilter(accentColor(context));
+            holder.icon.setColorFilter(AlbumColorManager.getInstance(context).getCurrentAccentColor());
             holder.songsContainer.setVisibility(expanded ? View.VISIBLE : View.GONE);
             holder.itemView.setContentDescription(name + ", " + count + " songs");
-
             holder.itemView.setOnClickListener(v -> listener.onPlaylistClick(name));
             holder.more.setOnClickListener(v -> listener.onMoreClick(name, v));
 
             if (expanded) {
                 bindSongs(holder.songsContainer, name);
             } else {
-                holder.songsContainer.removeAllViews();
+                holder.songsContainer.setAdapter(null);
             }
         }
 
         private void bindSongs(RecyclerView container, String playlistName) {
             ArrayList<AudioFile> songs = getSongs(playlistName);
-            SongAdapter songAdapter = new SongAdapter(context, songs);
             container.setLayoutManager(new LinearLayoutManager(context));
-            container.setAdapter(songAdapter);
+            container.setAdapter(new SongAdapter(context, songs));
             container.setNestedScrollingEnabled(false);
         }
 
@@ -335,10 +323,6 @@ public class PlaylistActivity extends AppCompatActivity {
         @Override
         public int getItemCount() {
             return playlists.size();
-        }
-
-        private static int accentColor(Context context) {
-            return new AlbumColorManager(context.getApplicationContext()).getCurrentAccentColor();
         }
 
         static final class ViewHolder extends RecyclerView.ViewHolder {
@@ -374,7 +358,8 @@ public class PlaylistActivity extends AppCompatActivity {
             LinearLayout row = new LinearLayout(parent.getContext());
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(parent, 8), dp(parent, 5), dp(parent, 8), dp(parent, 5));
+            int horizontal = Math.round(8 * parent.getResources().getDisplayMetrics().density);
+            row.setPadding(horizontal, 5, horizontal, 5);
 
             TextView number = new TextView(parent.getContext());
             number.setTextColor(Color.rgb(130, 132, 145));
@@ -396,7 +381,6 @@ public class PlaylistActivity extends AppCompatActivity {
             text.addView(title);
             text.addView(artist);
             row.addView(text, new LinearLayout.LayoutParams(0, dp(parent, 48), 1f));
-
             return new ViewHolder(row, number, title, artist);
         }
 
@@ -410,6 +394,7 @@ public class PlaylistActivity extends AppCompatActivity {
             holder.number.setText(String.valueOf(position + 1));
             holder.title.setText(title);
             holder.artist.setText(artist);
+            holder.itemView.setContentDescription(title + ", " + artist);
             holder.itemView.setOnClickListener(v -> {
                 Intent intent = new Intent(context, MusicPlayerService.class);
                 intent.setAction(MusicPlayerService.ACTION_PLAY);
