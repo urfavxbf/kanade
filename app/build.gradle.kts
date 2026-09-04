@@ -9,24 +9,19 @@ val keystorePropsFile = rootProject.file("release.properties")
 val keystoreProps = Properties()
 
 if (keystorePropsFile.exists()) {
-    keystoreProps.load(FileInputStream(keystorePropsFile))
+    FileInputStream(keystorePropsFile).use {
+        keystoreProps.load(it)
+    }
 }
 
-val hasValidSigningProps = keystorePropsFile.exists().also { exists ->
-    if (exists) {
-        FileInputStream(keystorePropsFile).use {
-            keystoreProps.load(it)
-        }
-    }
-}.let {
-    listOf(
-        "storeFile",
-        "storePassword",
-        "keyAlias",
-        "keyPassword"
-    ).all { key ->
-        keystoreProps[key] != null
-    }
+val hasValidSigningProps = keystorePropsFile.exists()
+        && listOf(
+    "storeFile",
+    "storePassword",
+    "keyAlias",
+    "keyPassword"
+).all { key ->
+    keystoreProps[key] != null
 }
 
 android {
