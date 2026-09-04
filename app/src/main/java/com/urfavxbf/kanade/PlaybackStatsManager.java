@@ -33,32 +33,28 @@ public class PlaybackStatsManager {
     }
 
     public synchronized void recordPlay(AudioFile song) {
-        if (song == null || isEmpty(song.getUri())) {
-            return;
-        }
+        if (song == null || isEmpty(song.getUri())) return;
 
         long now = System.currentTimeMillis();
         Map<String, SongStat> stats = readSongStats();
         SongStat stat = stats.get(song.getUri());
-
         if (stat == null) {
             stat = new SongStat(song.getUri(), clean(song.getTitle()), clean(song.getArtist()), 0L, 0L);
         }
-
         stat.title = clean(song.getTitle());
         stat.artist = clean(song.getArtist());
         stat.playCount++;
         stat.lastPlayed = now;
         stats.put(song.getUri(), stat);
         writeSongStats(stats);
+    }
 
-        recordUsageMinutes(now, 1L);
+    public synchronized void recordUsageMinute(long timestamp) {
+        recordUsageMinutes(timestamp, 1L);
     }
 
     public synchronized SongStat getSongStat(String uri) {
-        if (isEmpty(uri)) {
-            return null;
-        }
+        if (isEmpty(uri)) return null;
         return readSongStats().get(uri);
     }
 
@@ -70,8 +66,7 @@ public class PlaybackStatsManager {
         ArrayList<SongStat> songs = new ArrayList<>(readSongStats().values());
         Collections.sort(songs, (a, b) -> {
             int count = Long.compare(a.playCount, b.playCount);
-            if (count != 0) return count;
-            return Long.compare(b.lastPlayed, a.lastPlayed);
+            return count != 0 ? count : Long.compare(b.lastPlayed, a.lastPlayed);
         });
         return limit(songs, limit);
     }
@@ -87,7 +82,6 @@ public class PlaybackStatsManager {
         ArrayList<UsagePoint> result = new ArrayList<>();
         long dayMs = 86_400_000L;
         long today = startOfDay(System.currentTimeMillis());
-
         for (int i = 6; i >= 0; i--) {
             long day = today - (i * dayMs);
             String key = String.valueOf(day);
@@ -109,7 +103,6 @@ public class PlaybackStatsManager {
             }
             stat.playCount += song.playCount;
         }
-
         ArrayList<ArtistStat> result = new ArrayList<>(artists.values());
         Collections.sort(result, (a, b) -> Long.compare(b.playCount, a.playCount));
         return limit(result, limit);
@@ -132,7 +125,6 @@ public class PlaybackStatsManager {
         String key = String.valueOf(startOfDay(timestamp));
         long current = usage.containsKey(key) ? usage.get(key) : 0L;
         usage.put(key, current + Math.max(0L, minutes));
-
         long cutoff = startOfDay(timestamp) - (30L * 86_400_000L);
         usage.entrySet().removeIf(entry -> parseLong(entry.getKey()) < cutoff);
 
@@ -150,7 +142,6 @@ public class PlaybackStatsManager {
         HashMap<String, SongStat> result = new HashMap<>();
         String json = preferences.getString(KEY_SONGS, null);
         if (isEmpty(json)) return result;
-
         try {
             JSONArray array = new JSONArray(json);
             for (int i = 0; i < array.length(); i++) {
@@ -158,13 +149,7 @@ public class PlaybackStatsManager {
                 if (object == null) continue;
                 String uri = object.optString(FIELD_URI, "");
                 if (uri.isEmpty()) continue;
-                result.put(uri, new SongStat(
-                        uri,
-                        clean(object.optString(FIELD_TITLE, "")),
-                        clean(object.optString(FIELD_ARTIST, "")),
-                        Math.max(0L, object.optLong(FIELD_PLAY_COUNT, 0L)),
-                        Math.max(0L, object.optLong(FIELD_LAST_PLAYED, 0L))
-                ));
+                result.put(uri, new SongStat(uri, clean(object.optString(FIELD_TITLE, "")), clean(object.optString(FIELD_ARTIST, "")), Math.max(0L, object.optLong(FIELD_PLAY_COUNT, 0L)), Math.max(0L, object.optLong(FIELD_LAST_PLAYED, 0L))));
             }
         } catch (Exception ignored) {
             result.clear();
@@ -218,13 +203,9 @@ public class PlaybackStatsManager {
         try { return Long.parseLong(value); } catch (NumberFormatException ignored) { return Long.MAX_VALUE; }
     }
 
-    private String clean(String value) {
-        return value == null ? "" : value.trim();
-    }
+    private String clean(String value) { return value == null ? "" : value.trim(); }
 
-    private boolean isEmpty(String value) {
-        return value == null || value.trim().isEmpty();
-    }
+    private boolean isEmpty(String value) { return value == null || value.trim().isEmpty(); }
 
     private <T> ArrayList<T> limit(ArrayList<T> values, int limit) {
         if (limit <= 0 || values.size() <= limit) return values;
@@ -237,33 +218,20 @@ public class PlaybackStatsManager {
         public String artist;
         public long playCount;
         public long lastPlayed;
-
         public SongStat(String uri, String title, String artist, long playCount, long lastPlayed) {
-            this.uri = uri;
-            this.title = title;
-            this.artist = artist;
-            this.playCount = playCount;
-            this.lastPlayed = lastPlayed;
+            this.uri = uri; this.title = title; this.artist = artist; this.playCount = playCount; this.lastPlayed = lastPlayed;
         }
     }
 
     public static final class ArtistStat {
         public final String artist;
         public long playCount;
-
-        public ArtistStat(String artist, long playCount) {
-            this.artist = artist;
-            this.playCount = playCount;
-        }
+        public ArtistStat(String artist, long playCount) { this.artist = artist; this.playCount = playCount; }
     }
 
     public static final class UsagePoint {
         public final long day;
         public final long minutes;
-
-        public UsagePoint(long day, long minutes) {
-            this.day = day;
-            this.minutes = minutes;
-        }
+        public UsagePoint(long day, long minutes) { this.day = day; this.minutes = minutes; }
     }
 }
