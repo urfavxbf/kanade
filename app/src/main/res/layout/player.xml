@@ -36,7 +36,6 @@
                 android:gravity="center"
                 android:padding="20dp"
                 android:visibility="gone">
-
                 <TextView
                     android:id="@+id/lyricsPrevious"
                     android:layout_width="match_parent"
@@ -49,7 +48,6 @@
                     android:textSize="17sp"
                     android:fontFamily="sans-serif-medium"
                     android:alpha="0.65" />
-
                 <TextView
                     android:id="@+id/lyricsCurrent"
                     android:layout_width="match_parent"
@@ -62,7 +60,6 @@
                     android:textColor="#F1F1F6"
                     android:textSize="25sp"
                     android:fontFamily="sans-serif-medium" />
-
                 <TextView
                     android:id="@+id/lyricsNext"
                     android:layout_width="match_parent"
@@ -80,15 +77,11 @@
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent">
-
                 <androidx.cardview.widget.CardView
                     android:id="@+id/fullPlayerAlbumCard"
                     android:layout_width="0dp"
                     android:layout_height="0dp"
-                    android:layout_marginStart="12dp"
-                    android:layout_marginEnd="12dp"
-                    android:layout_marginTop="12dp"
-                    android:layout_marginBottom="12dp"
+                    android:layout_margin="12dp"
                     android:elevation="10dp"
                     app:cardBackgroundColor="#1A1B27"
                     app:cardCornerRadius="28dp"
@@ -99,7 +92,6 @@
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintBottom_toBottomOf="parent">
-
                     <ImageView
                         android:id="@+id/fullPlayerAlbumArt"
                         android:layout_width="match_parent"
@@ -116,12 +108,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
-
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp">
-
                 <TextView
                     android:id="@+id/fullPlayerTitle"
                     android:layout_width="0dp"
@@ -139,7 +129,6 @@
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintBottom_toBottomOf="parent" />
-
                 <ImageButton
                     android:id="@+id/playerMore"
                     android:layout_width="44dp"
@@ -154,7 +143,6 @@
                     app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintBottom_toBottomOf="parent" />
             </androidx.constraintlayout.widget.ConstraintLayout>
-
             <TextView
                 android:id="@+id/fullPlayerArtist"
                 android:layout_width="match_parent"
@@ -178,7 +166,6 @@
             android:layout_marginEnd="12dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
-
             <TextView
                 android:id="@+id/fullPlayerElapsed"
                 android:layout_width="wrap_content"
@@ -188,7 +175,6 @@
                 android:textColor="#9294A7"
                 android:textSize="12sp"
                 android:fontFamily="sans-serif-medium" />
-
             <com.urfavxbf.kanade.ui.player.PlayerAudioAnalysisSeekBar
                 android:id="@+id/seekFullPlayer"
                 android:layout_width="0dp"
@@ -200,7 +186,6 @@
                 android:progress="0"
                 android:max="1000"
                 android:splitTrack="false" />
-
             <TextView
                 android:id="@+id/fullPlayerDuration"
                 android:layout_width="wrap_content"
@@ -215,9 +200,7 @@
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/fullPlayerControls"
             android:layout_width="match_parent"
-            android:layout_height="78dp"
-            android:layout_marginTop="0dp">
-
+            android:layout_height="78dp">
             <ImageButton
                 android:id="@+id/btnFullPrevious"
                 android:layout_width="56dp"
@@ -230,7 +213,6 @@
                 app:layout_constraintEnd_toStartOf="@id/btnFullPlayPause"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent" />
-
             <ImageButton
                 android:id="@+id/btnFullPlayPause"
                 android:layout_width="72dp"
@@ -245,7 +227,6 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent" />
-
             <ImageButton
                 android:id="@+id/btnFullNext"
                 android:layout_width="56dp"
@@ -263,25 +244,7 @@
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/playerExtraControls"
             android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:layout_marginTop="0dp">
-
-            <ImageButton
-                android:id="@+id/btnEqualizer"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:padding="10dp"
-                android:src="@drawable/ic_equalizer"
-                android:tint="#A8ABB9"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:clickable="false"
-                android:focusable="false"
-                android:contentDescription="Equalizer unavailable"
-                android:visibility="gone"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintBottom_toBottomOf="parent" />
-
+            android:layout_height="46dp">
             <LinearLayout
                 android:id="@+id/playerRightControls"
                 android:layout_width="wrap_content"
@@ -292,7 +255,6 @@
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent">
-
                 <com.urfavxbf.kanade.ui.player.PlayerServiceActionButton
                     android:id="@+id/btnShuffle"
                     android:layout_width="44dp"
@@ -302,7 +264,6 @@
                     android:tint="#A8ABB9"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Shuffle" />
-
                 <com.urfavxbf.kanade.ui.player.PlayerServiceActionButton
                     android:id="@+id/btnRepeat"
                     android:layout_width="44dp"
@@ -312,8 +273,7 @@
                     android:tint="#A8ABB9"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Repeat" />
-
-                <ImageButton
+                <com.urfavxbf.kanade.ui.player.PlayerQueueButton
                     android:id="@+id/btnQueue"
                     android:layout_width="44dp"
                     android:layout_height="44dp"
