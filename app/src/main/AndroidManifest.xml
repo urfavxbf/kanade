@@ -17,6 +17,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
+        android:name=".KanadeApplication"
         android:allowBackup="true"
         android:icon="@drawable/ic_kanade"
         android:roundIcon="@drawable/ic_kanade"
