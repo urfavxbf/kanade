@@ -1,26 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="72dp"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:paddingStart="16dp"
-    android:paddingEnd="12dp"
-    android:layout_marginStart="8dp"
-    android:layout_marginEnd="8dp"
+    android:layout_height="76dp"
+    android:layout_marginStart="10dp"
+    android:layout_marginEnd="10dp"
     android:layout_marginTop="3dp"
     android:layout_marginBottom="3dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingEnd="8dp"
     android:background="@drawable/queue_item_background">
 
     <ImageView
         android:id="@+id/queueAlbumArt"
-        android:layout_width="54dp"
-        android:layout_height="54dp"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:contentDescription="Album art"
         android:scaleType="centerCrop"
-        android:src="@drawable/ic_play"
-        android:contentDescription="Album art" />
+        android:src="@drawable/album_art" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -34,33 +32,41 @@
             android:id="@+id/queueSongTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:maxLines="1"
             android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
             android:text="Song title"
-            android:textSize="15sp"
             android:textColor="#FFFFFF"
-            android:textStyle="bold" />
+            android:textSize="15sp" />
 
         <TextView
             android:id="@+id/queueSongArtist"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:maxLines="1"
+            android:layout_marginTop="3dp"
             android:ellipsize="end"
+            android:maxLines="1"
             android:text="Artist"
-            android:textSize="12sp"
             android:textColor="#AAAAAA"
-            android:layout_marginTop="3dp" />
-
+            android:textSize="12sp" />
     </LinearLayout>
 
     <ImageView
         android:id="@+id/queueCurrentIndicator"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:src="@drawable/ic_play"
-        android:padding="3dp"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginEnd="2dp"
         android:contentDescription="Currently playing"
+        android:padding="4dp"
+        android:src="@drawable/ic_queue_playing"
         android:visibility="invisible" />
 
+    <ImageView
+        android:id="@+id/queueDragHandle"
+        android:layout_width="40dp"
+        android:layout_height="48dp"
+        android:contentDescription="Drag to reorder"
+        android:padding="10dp"
+        android:src="@drawable/ic_drag_handle"
+        android:tint="#777A89" />
 </LinearLayout>
