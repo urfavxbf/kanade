@@ -45,6 +45,11 @@ public class DashboardSongAdapter extends RecyclerView.Adapter<DashboardSongAdap
         notifyDataSetChanged();
     }
 
+    public void setAccentColor(int accentColor) {
+        this.accentColor = accentColor;
+        if (getItemCount() > 0) notifyItemRangeChanged(0, getItemCount());
+    }
+
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
