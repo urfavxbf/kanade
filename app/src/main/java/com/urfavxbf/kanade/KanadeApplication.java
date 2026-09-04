@@ -404,7 +404,7 @@ public class KanadeApplication extends Application
         }
 
         @Override
-        public boolean setLevel(int level) {
+        protected boolean onLevelChange(int level) {
             boolean changed = source.setLevel(level);
             if (changed) {
                 dirty = true;
