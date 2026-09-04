@@ -7,7 +7,6 @@
     android:layout_height="match_parent"
     android:background="#10111A"
     tools:context=".ui.dashboard.DashboardFragment">
-
     <androidx.core.widget.NestedScrollView
         android:id="@+id/dashboardScroll"
         android:layout_width="0dp"
@@ -22,278 +21,49 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
-
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/text_dashboard"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
-                android:text="Dashboard"
-                android:textColor="#FFFFFF"
-                android:textSize="30sp"
-                android:includeFontPadding="false" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="5dp"
-                android:text="Your listening, at a glance"
-                android:textColor="#A9AAB5"
-                android:textSize="14sp" />
-
-            <androidx.cardview.widget.CardView
-                android:id="@+id/topArtistCard"
-                android:layout_width="match_parent"
-                android:layout_height="190dp"
-                android:layout_marginTop="20dp"
-                app:cardCornerRadius="26dp"
-                app:cardElevation="0dp">
-
-                <FrameLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent">
-
-                    <ImageView
-                        android:id="@+id/topArtistPhoto"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:scaleType="centerCrop"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_music_note" />
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:background="#99000000" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:gravity="bottom"
-                        android:orientation="vertical"
-                        android:padding="20dp">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="TOP LISTENED ARTIST"
-                            android:textColor="#E5E5EA"
-                            android:textSize="11sp"
-                            android:letterSpacing="0.12" />
-
-                        <TextView
-                            android:id="@+id/topArtistName"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="5dp"
-                            android:ellipsize="end"
-                            android:maxLines="1"
-                            android:text="No listening data yet"
-                            android:textColor="#FFFFFF"
-                            android:textSize="25sp"
-                            android:fontFamily="sans-serif-medium" />
-
-                        <TextView
-                            android:id="@+id/topArtistPlays"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Play something to build your stats"
-                            android:textColor="#D0D0D8"
-                            android:textSize="13sp" />
+            <TextView android:id="@+id/text_dashboard" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="Dashboard" android:textColor="#FFFFFF" android:textSize="30sp" android:includeFontPadding="false" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="Your listening, at a glance" android:textColor="#A9AAB5" android:textSize="14sp" />
+            <androidx.cardview.widget.CardView android:id="@+id/topArtistCard" android:layout_width="match_parent" android:layout_height="190dp" android:layout_marginTop="20dp" app:cardCornerRadius="26dp" app:cardElevation="0dp">
+                <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+                    <ImageView android:id="@+id/topArtistPhoto" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:contentDescription="@null" android:src="@drawable/ic_artist_blank" />
+                    <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="#99000000" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="bottom" android:orientation="vertical" android:padding="20dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TOP LISTENED ARTIST" android:textColor="#E5E5EA" android:textSize="11sp" android:letterSpacing="0.12" />
+                        <TextView android:id="@+id/topArtistName" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:ellipsize="end" android:maxLines="1" android:text="No listening data yet" android:textColor="#FFFFFF" android:textSize="25sp" android:fontFamily="sans-serif-medium" />
+                        <TextView android:id="@+id/topArtistPlays" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Play something to build your stats" android:textColor="#D0D0D8" android:textSize="13sp" />
                     </LinearLayout>
                 </FrameLayout>
             </androidx.cardview.widget.CardView>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="26dp"
-                android:text="Listening activity"
-                android:textColor="#FFFFFF"
-                android:textSize="19sp"
-                android:fontFamily="sans-serif-medium" />
-
-            <androidx.cardview.widget.CardView
-                android:id="@+id/usageCard"
-                android:layout_width="match_parent"
-                android:layout_height="190dp"
-                android:layout_marginTop="11dp"
-                app:cardCornerRadius="22dp"
-                app:cardElevation="0dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="Last 7 days"
-                            android:textColor="#A9AAB5"
-                            android:textSize="13sp" />
-
-                        <TextView
-                            android:id="@+id/usageSummary"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="0 min"
-                            android:textColor="#FFFFFF"
-                            android:textSize="14sp"
-                            android:fontFamily="sans-serif-medium" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="26dp" android:text="Listening activity" android:textColor="#FFFFFF" android:textSize="19sp" android:fontFamily="sans-serif-medium" />
+            <androidx.cardview.widget.CardView android:id="@+id/usageCard" android:layout_width="match_parent" android:layout_height="190dp" android:layout_marginTop="11dp" app:cardCornerRadius="22dp" app:cardElevation="0dp">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Last 7 days" android:textColor="#A9AAB5" android:textSize="13sp" />
+                        <TextView android:id="@+id/usageSummary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0 min" android:textColor="#FFFFFF" android:textSize="14sp" android:fontFamily="sans-serif-medium" />
                     </LinearLayout>
-
-                    <com.urfavxbf.kanade.ui.dashboard.UsageChartView
-                        android:id="@+id/usageChart"
-                        android:layout_width="match_parent"
-                        android:layout_height="140dp"
-                        android:layout_marginTop="5dp" />
+                    <com.urfavxbf.kanade.ui.dashboard.UsageChartView android:id="@+id/usageChart" android:layout_width="match_parent" android:layout_height="140dp" android:layout_marginTop="5dp" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="26dp"
-                android:text="Most played"
-                android:textColor="#FFFFFF"
-                android:textSize="19sp"
-                android:fontFamily="sans-serif-medium" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/mostPlayedRecycler"
-                android:layout_width="match_parent"
-                android:layout_height="190dp"
-                android:layout_marginTop="11dp"
-                android:clipToPadding="false"
-                android:overScrollMode="never"
-                android:paddingEnd="2dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="26dp"
-                android:text="Favorites"
-                android:textColor="#FFFFFF"
-                android:textSize="19sp"
-                android:fontFamily="sans-serif-medium" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/favoritesRecycler"
-                android:layout_width="match_parent"
-                android:layout_height="190dp"
-                android:layout_marginTop="11dp"
-                android:clipToPadding="false"
-                android:overScrollMode="never"
-                android:paddingEnd="2dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="26dp"
-                android:text="Recently played"
-                android:textColor="#FFFFFF"
-                android:textSize="19sp"
-                android:fontFamily="sans-serif-medium" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recentRecycler"
-                android:layout_width="match_parent"
-                android:layout_height="190dp"
-                android:layout_marginTop="11dp"
-                android:clipToPadding="false"
-                android:overScrollMode="never"
-                android:paddingEnd="2dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="26dp"
-                android:text="Least played"
-                android:textColor="#FFFFFF"
-                android:textSize="19sp"
-                android:fontFamily="sans-serif-medium" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/leastPlayedRecycler"
-                android:layout_width="match_parent"
-                android:layout_height="190dp"
-                android:layout_marginTop="11dp"
-                android:clipToPadding="false"
-                android:overScrollMode="never"
-                android:paddingEnd="2dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
-                android:text="Library overview"
-                android:textColor="#FFFFFF"
-                android:textSize="19sp"
-                android:fontFamily="sans-serif-medium" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="11dp"
-                android:orientation="horizontal">
-
-                <androidx.cardview.widget.CardView
-                    android:id="@+id/songsCard"
-                    android:layout_width="0dp"
-                    android:layout_height="105dp"
-                    android:layout_weight="1"
-                    android:layout_marginEnd="5dp"
-                    app:cardCornerRadius="18dp"
-                    app:cardElevation="0dp" />
-
-                <androidx.cardview.widget.CardView
-                    android:id="@+id/artistsCard"
-                    android:layout_width="0dp"
-                    android:layout_height="105dp"
-                    android:layout_weight="1"
-                    android:layout_marginStart="5dp"
-                    app:cardCornerRadius="18dp"
-                    app:cardElevation="0dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="26dp" android:text="Most played" android:textColor="#FFFFFF" android:textSize="19sp" android:fontFamily="sans-serif-medium" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/mostPlayedRecycler" android:layout_width="match_parent" android:layout_height="190dp" android:layout_marginTop="11dp" android:clipToPadding="false" android:overScrollMode="never" android:paddingEnd="2dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="26dp" android:text="Favorites" android:textColor="#FFFFFF" android:textSize="19sp" android:fontFamily="sans-serif-medium" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/favoritesRecycler" android:layout_width="match_parent" android:layout_height="190dp" android:layout_marginTop="11dp" android:clipToPadding="false" android:overScrollMode="never" android:paddingEnd="2dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="26dp" android:text="Recently played" android:textColor="#FFFFFF" android:textSize="19sp" android:fontFamily="sans-serif-medium" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/recentRecycler" android:layout_width="match_parent" android:layout_height="190dp" android:layout_marginTop="11dp" android:clipToPadding="false" android:overScrollMode="never" android:paddingEnd="2dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="26dp" android:text="Least played" android:textColor="#FFFFFF" android:textSize="19sp" android:fontFamily="sans-serif-medium" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/leastPlayedRecycler" android:layout_width="match_parent" android:layout_height="190dp" android:layout_marginTop="11dp" android:clipToPadding="false" android:overScrollMode="never" android:paddingEnd="2dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:text="Library overview" android:textColor="#FFFFFF" android:textSize="19sp" android:fontFamily="sans-serif-medium" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="11dp" android:orientation="horizontal">
+                <androidx.cardview.widget.CardView android:id="@+id/songsCard" android:layout_width="0dp" android:layout_height="105dp" android:layout_weight="1" android:layout_marginEnd="5dp" app:cardCornerRadius="18dp" app:cardElevation="0dp" />
+                <androidx.cardview.widget.CardView android:id="@+id/artistsCard" android:layout_width="0dp" android:layout_height="105dp" android:layout_weight="1" android:layout_marginStart="5dp" app:cardCornerRadius="18dp" app:cardElevation="0dp" />
             </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:orientation="horizontal">
-
-                <androidx.cardview.widget.CardView
-                    android:id="@+id/albumsCard"
-                    android:layout_width="0dp"
-                    android:layout_height="105dp"
-                    android:layout_weight="1"
-                    android:layout_marginEnd="5dp"
-                    app:cardCornerRadius="18dp"
-                    app:cardElevation="0dp" />
-
-                <androidx.cardview.widget.CardView
-                    android:id="@+id/favoritesCard"
-                    android:layout_width="0dp"
-                    android:layout_height="105dp"
-                    android:layout_weight="1"
-                    android:layout_marginStart="5dp"
-                    app:cardCornerRadius="18dp"
-                    app:cardElevation="0dp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal">
+                <androidx.cardview.widget.CardView android:id="@+id/albumsCard" android:layout_width="0dp" android:layout_height="105dp" android:layout_weight="1" android:layout_marginEnd="5dp" app:cardCornerRadius="18dp" app:cardElevation="0dp" />
+                <androidx.cardview.widget.CardView android:id="@+id/favoritesCard" android:layout_width="0dp" android:layout_height="105dp" android:layout_weight="1" android:layout_marginStart="5dp" app:cardCornerRadius="18dp" app:cardElevation="0dp" />
             </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
