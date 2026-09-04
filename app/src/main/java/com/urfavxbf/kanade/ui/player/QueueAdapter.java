@@ -16,6 +16,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.urfavxbf.kanade.AlbumArtManager;
 import com.urfavxbf.kanade.AudioFile;
 import com.urfavxbf.kanade.MusicPlayerService;
 import com.urfavxbf.kanade.R;
@@ -37,6 +38,7 @@ public class QueueAdapter extends RecyclerView.Adapter<QueueAdapter.QueueViewHol
     private final Context context;
     private final ArrayList<AudioFile> songs;
     private final QueueListener listener;
+    private final AlbumArtManager albumArtManager;
     private final ExecutorService artworkExecutor = Executors.newFixedThreadPool(2);
 
     private int currentIndex = -1;
@@ -53,6 +55,7 @@ public class QueueAdapter extends RecyclerView.Adapter<QueueAdapter.QueueViewHol
         this.currentIndex = currentIndex;
         this.accentColor = accentColor;
         this.listener = listener;
+        this.albumArtManager = new AlbumArtManager(this.context);
         setHasStableIds(false);
     }
 
@@ -134,11 +137,7 @@ public class QueueAdapter extends RecyclerView.Adapter<QueueAdapter.QueueViewHol
             return;
         }
 
-        IntentHelper.sendQueueOrder(
-                context,
-                uris,
-                currentIndex
-        );
+        IntentHelper.sendQueueOrder(context, uris, currentIndex);
     }
 
     public void shutdown() {
@@ -184,7 +183,7 @@ public class QueueAdapter extends RecyclerView.Adapter<QueueAdapter.QueueViewHol
         holder.itemView.setAlpha(current ? 1f : 0.92f);
 
         holder.itemView.setOnClickListener(v -> {
-            int adapterPosition = holder.getBindingAdapterPosition();
+            int adapterPosition = holder.getAdapterPosition();
             if (adapterPosition == RecyclerView.NO_POSITION || listener == null) {
                 return;
             }
@@ -211,22 +210,15 @@ public class QueueAdapter extends RecyclerView.Adapter<QueueAdapter.QueueViewHol
 
         artworkExecutor.execute(() -> {
             Bitmap bitmap = null;
-            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
 
             try {
-                retriever.setDataSource(context, Uri.parse(uriString));
-                byte[] artwork = retriever.getEmbeddedPicture();
-                if (artwork != null && artwork.length > 0) {
-                    bitmap = decodeArtwork(artwork);
-                }
+                bitmap = albumArtManager.loadCachedBitmap(song);
             } catch (Exception ignored) {
-                // Missing/unsupported artwork is handled by the placeholder.
-            } finally {
-                try {
-                    retriever.release();
-                } catch (Exception ignored) {
-                    // Retriever cleanup is best effort.
-                }
+                // Cache lookup is optional; continue with embedded artwork.
+            }
+
+            if (bitmap == null) {
+                bitmap = loadEmbeddedArtwork(uriString);
             }
 
             Bitmap result = bitmap;
@@ -237,6 +229,26 @@ public class QueueAdapter extends RecyclerView.Adapter<QueueAdapter.QueueViewHol
                 }
             });
         });
+    }
+
+    private Bitmap loadEmbeddedArtwork(String uriString) {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        try {
+            retriever.setDataSource(context, Uri.parse(uriString));
+            byte[] artwork = retriever.getEmbeddedPicture();
+            if (artwork == null || artwork.length == 0) {
+                return null;
+            }
+            return decodeArtwork(artwork);
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            try {
+                retriever.release();
+            } catch (Exception ignored) {
+                // Best-effort cleanup.
+            }
+        }
     }
 
     private Bitmap decodeArtwork(byte[] artwork) {
