@@ -39,7 +39,6 @@ public class PlaylistActivity extends AppCompatActivity {
     private AppCompatButton btnEmptyCreatePlaylist;
     private TextView txtPlaylistSubtitle;
     private PlaylistAdapter adapter;
-
     private final ArrayList<String> playlists = new ArrayList<>();
 
     @Override
@@ -49,7 +48,6 @@ public class PlaylistActivity extends AppCompatActivity {
 
         playlistManager = new PlaylistManager(getApplicationContext());
         musicRepository = new MusicRepository(getApplicationContext());
-
         recyclerView = findViewById(R.id.rvPlaylists);
         emptyState = findViewById(R.id.playlistEmptyState);
         btnBack = findViewById(R.id.btnPlaylistBack);
@@ -58,12 +56,7 @@ public class PlaylistActivity extends AppCompatActivity {
         txtPlaylistSubtitle = findViewById(R.id.txtPlaylistSubtitle);
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
-
-        adapter = new PlaylistAdapter(
-                this,
-                playlists,
-                playlistManager,
-                musicRepository,
+        adapter = new PlaylistAdapter(this, playlists, playlistManager, musicRepository,
                 new PlaylistAdapter.Listener() {
                     @Override
                     public void onPlaylistClick(String playlistName) {
@@ -74,14 +67,11 @@ public class PlaylistActivity extends AppCompatActivity {
                     public void onMoreClick(String playlistName, View anchor) {
                         showPlaylistMenu(playlistName, anchor);
                     }
-                }
-        );
-
+                });
         recyclerView.setAdapter(adapter);
         btnBack.setOnClickListener(v -> finish());
         btnAddPlaylist.setOnClickListener(v -> showCreatePlaylistDialog());
         btnEmptyCreatePlaylist.setOnClickListener(v -> showCreatePlaylistDialog());
-
         loadPlaylists();
     }
 
@@ -97,13 +87,9 @@ public class PlaylistActivity extends AppCompatActivity {
         playlists.clear();
         playlists.addAll(playlistManager.getPlaylists());
         adapter.notifyDataSetChanged();
-
         int playlistCount = playlists.size();
-        txtPlaylistSubtitle.setText(
-                playlistCount + (playlistCount == 1 ? " playlist" : " playlists")
-                        + " • tap to browse songs"
-        );
-
+        txtPlaylistSubtitle.setText(playlistCount + (playlistCount == 1 ? " playlist" : " playlists")
+                + " • tap to browse songs");
         boolean empty = playlists.isEmpty();
         recyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
         emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
@@ -116,14 +102,12 @@ public class PlaylistActivity extends AppCompatActivity {
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         int padding = dp(16);
         input.setPadding(padding, padding, padding, padding);
-
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Create playlist")
                 .setView(input)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Create", null)
                 .create();
-
         dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String name = input.getText().toString().trim();
             if (name.isEmpty()) {
@@ -149,7 +133,6 @@ public class PlaylistActivity extends AppCompatActivity {
         } else {
             popupMenu.getMenu().add("Clear Favorites");
         }
-
         popupMenu.setOnMenuItemClickListener(item -> {
             String action = item.getTitle().toString();
             if ("Rename".equals(action)) {
@@ -169,14 +152,12 @@ public class PlaylistActivity extends AppCompatActivity {
         input.setSingleLine(true);
         input.setText(playlistName);
         input.setSelection(input.length());
-
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Rename playlist")
                 .setView(input)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Save", null)
                 .create();
-
         dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String newName = input.getText().toString().trim();
             if (newName.isEmpty()) {
@@ -224,7 +205,6 @@ public class PlaylistActivity extends AppCompatActivity {
     }
 
     private static final class PlaylistAdapter extends RecyclerView.Adapter<PlaylistAdapter.ViewHolder> {
-
         interface Listener {
             void onPlaylistClick(String playlistName);
             void onMoreClick(String playlistName, View anchor);
@@ -257,8 +237,7 @@ public class PlaylistActivity extends AppCompatActivity {
         @NonNull
         @Override
         public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = LayoutInflater.from(parent.getContext())
-                    .inflate(R.layout.playlist_item, parent, false);
+            View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.playlist_item, parent, false);
             return new ViewHolder(view);
         }
 
@@ -267,19 +246,16 @@ public class PlaylistActivity extends AppCompatActivity {
             String name = playlists.get(position);
             int count = playlistManager.getPlaylistSongCount(name);
             boolean expanded = expandedPlaylists.contains(name);
-
             holder.name.setText(name);
             holder.count.setText(count + (count == 1 ? " song" : " songs"));
             holder.icon.setImageResource(
                     PlaylistManager.FAVORITES_PLAYLIST.equalsIgnoreCase(name)
-                            ? R.drawable.ic_favorite : R.drawable.ic_playlist
-            );
+                            ? R.drawable.heart_blank : R.drawable.ic_playlist);
             holder.icon.setColorFilter(AlbumColorManager.getInstance(context).getCurrentAccentColor());
             holder.songsContainer.setVisibility(expanded ? View.VISIBLE : View.GONE);
             holder.itemView.setContentDescription(name + ", " + count + " songs");
             holder.itemView.setOnClickListener(v -> listener.onPlaylistClick(name));
             holder.more.setOnClickListener(v -> listener.onMoreClick(name, v));
-
             if (expanded) {
                 bindSongs(holder.songsContainer, name);
             } else {
@@ -299,7 +275,6 @@ public class PlaylistActivity extends AppCompatActivity {
             if (cached != null) {
                 return cached;
             }
-
             ArrayList<String> uris = playlistManager.getPlaylistSongs(playlistName);
             ArrayList<AudioFile> allSongs = musicRepository.getAllSongs();
             Map<String, AudioFile> byUri = new HashMap<>();
@@ -308,7 +283,6 @@ public class PlaylistActivity extends AppCompatActivity {
                     byUri.put(song.getUri(), song);
                 }
             }
-
             ArrayList<AudioFile> result = new ArrayList<>();
             for (String uri : uris) {
                 AudioFile song = byUri.get(uri);
@@ -360,12 +334,10 @@ public class PlaylistActivity extends AppCompatActivity {
             row.setGravity(android.view.Gravity.CENTER_VERTICAL);
             int horizontal = Math.round(8 * parent.getResources().getDisplayMetrics().density);
             row.setPadding(horizontal, 5, horizontal, 5);
-
             TextView number = new TextView(parent.getContext());
             number.setTextColor(Color.rgb(130, 132, 145));
             number.setTextSize(12);
             row.addView(number, new LinearLayout.LayoutParams(dp(parent, 30), dp(parent, 48)));
-
             LinearLayout text = new LinearLayout(parent.getContext());
             text.setOrientation(LinearLayout.VERTICAL);
             TextView title = new TextView(parent.getContext());
@@ -387,10 +359,8 @@ public class PlaylistActivity extends AppCompatActivity {
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
             AudioFile song = songs.get(position);
-            String title = song.getTitle() == null || song.getTitle().trim().isEmpty()
-                    ? "Unknown song" : song.getTitle().trim();
-            String artist = song.getArtist() == null || song.getArtist().trim().isEmpty()
-                    ? "Unknown artist" : song.getArtist().trim();
+            String title = song.getTitle() == null || song.getTitle().trim().isEmpty() ? "Unknown song" : song.getTitle().trim();
+            String artist = song.getArtist() == null || song.getArtist().trim().isEmpty() ? "Unknown artist" : song.getArtist().trim();
             holder.number.setText(String.valueOf(position + 1));
             holder.title.setText(title);
             holder.artist.setText(artist);
@@ -416,7 +386,6 @@ public class PlaylistActivity extends AppCompatActivity {
             final TextView number;
             final TextView title;
             final TextView artist;
-
             ViewHolder(View itemView, TextView number, TextView title, TextView artist) {
                 super(itemView);
                 this.number = number;
