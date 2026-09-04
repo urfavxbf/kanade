@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Color;
 import android.os.Build;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
@@ -12,6 +13,7 @@ import android.widget.ListView;
 import androidx.appcompat.widget.AppCompatImageButton;
 import androidx.core.content.ContextCompat;
 
+import com.urfavxbf.kanade.AlbumColorManager;
 import com.urfavxbf.kanade.MusicPlayerService;
 
 import java.util.ArrayList;
@@ -24,6 +26,7 @@ public class PlayerQueueButton extends AppCompatImageButton {
 
     private boolean receiverRegistered = false;
     private AlertDialog queueDialog;
+    private int accentColor = Color.rgb(201, 196, 255);
 
     private final BroadcastReceiver queueReceiver = new BroadcastReceiver() {
         @Override
@@ -45,6 +48,22 @@ public class PlayerQueueButton extends AppCompatImageButton {
             );
 
             showQueue(titles, artists, currentIndex);
+        }
+    };
+
+    private final BroadcastReceiver colorReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null
+                    || !AlbumColorManager.ACTION_COLORS_CHANGED.equals(intent.getAction())) {
+                return;
+            }
+
+            accentColor = intent.getIntExtra(
+                    AlbumColorManager.EXTRA_ACCENT_COLOR,
+                    accentColor
+            );
+            setColorFilter(accentColor);
         }
     };
 
@@ -78,27 +97,39 @@ public class PlayerQueueButton extends AppCompatImageButton {
             return;
         }
 
-        IntentFilter filter = new IntentFilter(
+        Context context = getContext().getApplicationContext();
+        IntentFilter queueFilter = new IntentFilter(
                 MusicPlayerService.ACTION_QUEUE_CHANGED
         );
-
-        Context context = getContext().getApplicationContext();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(
                     queueReceiver,
-                    filter,
+                    queueFilter,
+                    Context.RECEIVER_NOT_EXPORTED
+            );
+            context.registerReceiver(
+                    colorReceiver,
+                    new IntentFilter(AlbumColorManager.ACTION_COLORS_CHANGED),
                     Context.RECEIVER_NOT_EXPORTED
             );
         } else {
             ContextCompat.registerReceiver(
                     context,
                     queueReceiver,
-                    filter,
+                    queueFilter,
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+            );
+            ContextCompat.registerReceiver(
+                    context,
+                    colorReceiver,
+                    new IntentFilter(AlbumColorManager.ACTION_COLORS_CHANGED),
                     ContextCompat.RECEIVER_NOT_EXPORTED
             );
         }
 
+        accentColor = AlbumColorManager.getInstance(context).getCurrentAccentColor();
+        setColorFilter(accentColor);
         receiverRegistered = true;
     }
 
@@ -107,8 +138,14 @@ public class PlayerQueueButton extends AppCompatImageButton {
         dismissQueue();
 
         if (receiverRegistered) {
+            Context context = getContext().getApplicationContext();
             try {
-                getContext().getApplicationContext().unregisterReceiver(queueReceiver);
+                context.unregisterReceiver(queueReceiver);
+            } catch (IllegalArgumentException ignored) {
+                // Already unregistered.
+            }
+            try {
+                context.unregisterReceiver(colorReceiver);
             } catch (IllegalArgumentException ignored) {
                 // Already unregistered.
             }
