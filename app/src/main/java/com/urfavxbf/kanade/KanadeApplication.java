@@ -1,5 +1,6 @@
 package com.urfavxbf.kanade;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Application;
 import android.content.BroadcastReceiver;
@@ -16,6 +17,7 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -26,7 +28,6 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.content.ContextCompat;
 
 import java.lang.ref.WeakReference;
 import java.util.Map;
@@ -153,16 +154,7 @@ public class KanadeApplication extends Application
                     .getInstance(activity.getApplicationContext())
                     .getCurrentAccentColor();
 
-            IntentFilter filter = new IntentFilter(
-                    AlbumColorManager.ACTION_COLORS_CHANGED
-            );
-
-            ContextCompat.registerReceiver(
-                    activity.getApplicationContext(),
-                    colorReceiver,
-                    filter,
-                    ContextCompat.RECEIVER_NOT_EXPORTED
-            );
+            registerColorReceiver(activity.getApplicationContext());
 
             View decor = activity.getWindow().getDecorView();
             ViewTreeObserver observer = decor.getViewTreeObserver();
@@ -171,6 +163,26 @@ public class KanadeApplication extends Application
             }
 
             scheduleScan();
+        }
+
+        @SuppressLint("UnspecifiedRegisterReceiverFlag")
+        private void registerColorReceiver(@NonNull Context context) {
+            IntentFilter filter = new IntentFilter(
+                    AlbumColorManager.ACTION_COLORS_CHANGED
+            );
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(
+                        colorReceiver,
+                        filter,
+                        Context.RECEIVER_NOT_EXPORTED
+                );
+            } else {
+                context.registerReceiver(
+                        colorReceiver,
+                        filter
+                );
+            }
         }
 
         private void stop() {
