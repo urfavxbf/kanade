@@ -4,17 +4,14 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -24,12 +21,12 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.urfavxbf.kanade.AlbumColorManager;
-import com.urfavxbf.kanade.AlbumArtManager;
 import com.urfavxbf.kanade.AudioFile;
 import com.urfavxbf.kanade.MusicBrainzArtistPhotoClient;
 import com.urfavxbf.kanade.MusicRepository;
 import com.urfavxbf.kanade.PlaybackStatsManager;
 import com.urfavxbf.kanade.PlaylistManager;
+import com.urfavxbf.kanade.R;
 import com.urfavxbf.kanade.databinding.FragmentDashboardBinding;
 
 import java.util.ArrayList;
@@ -45,6 +42,7 @@ public class DashboardFragment extends Fragment {
 
     private FragmentDashboardBinding binding;
     private ExecutorService statsExecutor;
+    private ExecutorService artistExecutor;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private DashboardSongAdapter mostPlayedAdapter;
     private DashboardSongAdapter favoritesAdapter;
@@ -65,9 +63,10 @@ public class DashboardFragment extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         binding = FragmentDashboardBinding.inflate(inflater, container, false);
-        AlbumColorManager manager = AlbumColorManager.getInstance(requireContext().getApplicationContext());
+        Context appContext = requireContext().getApplicationContext();
+        AlbumColorManager manager = AlbumColorManager.getInstance(appContext);
         applyColors(manager.getCurrentAccentColor(), manager.getCurrentBackgroundColor());
-        setupSongRecyclerViews();
+        setupSongRecyclerViews(appContext);
         return binding.getRoot();
     }
 
@@ -92,8 +91,7 @@ public class DashboardFragment extends Fragment {
         super.onStop();
     }
 
-    private void setupSongRecyclerViews() {
-        Context context = requireContext().getApplicationContext();
+    private void setupSongRecyclerViews(Context context) {
         mostPlayedAdapter = new DashboardSongAdapter(context, accentColor);
         favoritesAdapter = new DashboardSongAdapter(context, accentColor);
         recentAdapter = new DashboardSongAdapter(context, accentColor);
@@ -114,7 +112,6 @@ public class DashboardFragment extends Fragment {
         if (statsExecutor != null) statsExecutor.shutdownNow();
         statsExecutor = Executors.newSingleThreadExecutor();
         final Context appContext = requireContext().getApplicationContext();
-
         statsExecutor.execute(() -> {
             try {
                 MusicRepository repository = new MusicRepository(appContext);
@@ -123,7 +120,6 @@ public class DashboardFragment extends Fragment {
                 PlaylistManager playlists = new PlaylistManager(appContext);
                 int favorites = playlists.getPlaylistSongCount(PlaylistManager.FAVORITES_PLAYLIST);
                 DashboardData data = buildData(songs, favorites, playbackStats, playlists);
-
                 mainHandler.post(() -> {
                     if (!isAdded() || binding == null) return;
                     renderData(data, appContext);
@@ -142,7 +138,6 @@ public class DashboardFragment extends Fragment {
         Set<String> albums = new HashSet<>();
         Map<String, AudioFile> byUri = new HashMap<>();
         long totalDuration = 0L;
-
         if (songs != null) {
             for (AudioFile song : songs) {
                 if (song == null) continue;
@@ -154,7 +149,6 @@ public class DashboardFragment extends Fragment {
                 if (song.getDuration() > 0L) totalDuration += song.getDuration();
             }
         }
-
         ArrayList<AudioFile> most = resolve(stats.getMostPlayed(8), byUri);
         ArrayList<AudioFile> least = resolve(stats.getLeastPlayed(8), byUri);
         ArrayList<AudioFile> recent = resolve(stats.getRecentlyPlayed(8), byUri);
@@ -164,20 +158,8 @@ public class DashboardFragment extends Fragment {
             if (song != null) favoriteSongs.add(song);
         }
         if (favoriteSongs.size() > 8) favoriteSongs = new ArrayList<>(favoriteSongs.subList(0, 8));
-
-        return new DashboardData(
-                songs == null ? 0 : songs.size(),
-                artists.size(),
-                albums.size(),
-                Math.max(0, favorites),
-                totalDuration,
-                most,
-                favoriteSongs,
-                recent,
-                least,
-                stats.getUsageLast7Days(),
-                stats.getTopArtists(1)
-        );
+        return new DashboardData(songs == null ? 0 : songs.size(), artists.size(), albums.size(), Math.max(0, favorites), totalDuration,
+                most, favoriteSongs, recent, least, stats.getUsageLast7Days(), stats.getTopArtists(1));
     }
 
     private ArrayList<AudioFile> resolve(ArrayList<PlaybackStatsManager.SongStat> stats, Map<String, AudioFile> byUri) {
@@ -197,17 +179,14 @@ public class DashboardFragment extends Fragment {
         setStatCard(binding.artistsCard, data.artistCount, "Artists");
         setStatCard(binding.albumsCard, data.albumCount, "Albums");
         setStatCard(binding.favoritesCard, data.favoriteCount, "Favorites");
-
         mostPlayedAdapter.submitSongs(data.mostPlayed, accentColor);
         favoritesAdapter.submitSongs(data.favorites, accentColor);
         recentAdapter.submitSongs(data.recent, accentColor);
         leastPlayedAdapter.submitSongs(data.leastPlayed, accentColor);
         binding.usageChart.setData(data.usage, accentColor);
-
         long totalMinutes = 0L;
         for (PlaybackStatsManager.UsagePoint point : data.usage) totalMinutes += point.minutes;
         binding.usageSummary.setText(totalMinutes + " min");
-
         if (!data.topArtists.isEmpty()) {
             PlaybackStatsManager.ArtistStat top = data.topArtists.get(0);
             binding.topArtistName.setText(top.artist);
@@ -216,13 +195,15 @@ public class DashboardFragment extends Fragment {
         } else {
             binding.topArtistName.setText("No listening data yet");
             binding.topArtistPlays.setText("Play something to build your stats");
-            binding.topArtistPhoto.setImageResource(com.urfavxbf.kanade.R.drawable.ic_music_note);
+            binding.topArtistPhoto.setImageResource(R.drawable.ic_artist_blank);
         }
     }
 
     private void loadArtistPhoto(String artist, Context context) {
+        if (artistExecutor != null) artistExecutor.shutdownNow();
+        artistExecutor = Executors.newSingleThreadExecutor();
         binding.topArtistPhoto.setTag(artist);
-        Executors.newSingleThreadExecutor().execute(() -> {
+        artistExecutor.execute(() -> {
             MusicBrainzArtistPhotoClient.ArtistPhoto photo = new MusicBrainzArtistPhotoClient().resolve(artist);
             mainHandler.post(() -> {
                 if (!isAdded() || binding == null || !artist.equals(binding.topArtistPhoto.getTag())) return;
@@ -242,6 +223,7 @@ public class DashboardFragment extends Fragment {
         binding.usageChart.setData(new ArrayList<>(), accentColor);
         binding.topArtistName.setText("No listening data yet");
         binding.topArtistPlays.setText("Play something to build your stats");
+        binding.topArtistPhoto.setImageResource(R.drawable.ic_artist_blank);
     }
 
     private void setStatCard(androidx.cardview.widget.CardView card, int value, String label) {
@@ -282,12 +264,6 @@ public class DashboardFragment extends Fragment {
         binding.topArtistPlays.setTextColor(0xFFD0D0D8);
         binding.usageSummary.setTextColor(accent);
         binding.libraryHeroCard.setCardBackgroundColor(cardColor);
-        if (mostPlayedAdapter != null) {
-            mostPlayedAdapter.submitSongs(new ArrayList<>(), accent);
-            favoritesAdapter.submitSongs(new ArrayList<>(), accent);
-            recentAdapter.submitSongs(new ArrayList<>(), accent);
-            leastPlayedAdapter.submitSongs(new ArrayList<>(), accent);
-        }
     }
 
     private String normalizeKey(String value) {
@@ -307,10 +283,10 @@ public class DashboardFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
-        if (statsExecutor != null) {
-            statsExecutor.shutdownNow();
-            statsExecutor = null;
-        }
+        if (statsExecutor != null) statsExecutor.shutdownNow();
+        if (artistExecutor != null) artistExecutor.shutdownNow();
+        statsExecutor = null;
+        artistExecutor = null;
         if (mostPlayedAdapter != null) mostPlayedAdapter.shutdown();
         if (favoritesAdapter != null) favoritesAdapter.shutdown();
         if (recentAdapter != null) recentAdapter.shutdown();
