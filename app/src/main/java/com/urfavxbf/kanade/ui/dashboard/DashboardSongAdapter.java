@@ -3,6 +3,7 @@ package com.urfavxbf.kanade.ui.dashboard;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.view.LayoutInflater;
@@ -17,7 +18,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.urfavxbf.kanade.AlbumArtManager;
 import com.urfavxbf.kanade.AudioFile;
 import com.urfavxbf.kanade.MusicPlayerService;
-import com.urfavxbf.kanade.PlaybackStatsManager;
 import com.urfavxbf.kanade.R;
 
 import java.util.ArrayList;
@@ -55,12 +55,8 @@ public class DashboardSongAdapter extends RecyclerView.Adapter<DashboardSongAdap
         AudioFile song = songs.get(position);
         holder.title.setText(song.getTitle() == null || song.getTitle().trim().isEmpty() ? "Unknown title" : song.getTitle());
         holder.artist.setText(song.getArtist() == null || song.getArtist().trim().isEmpty() ? "Unknown artist" : song.getArtist());
-        holder.art.setImageResource(R.drawable.ic_music_note);
+        holder.art.setImageResource(R.drawable.album_art);
         holder.art.setTag(song.getUri());
-
-        PlaybackStatsManager stats = new PlaybackStatsManager(context);
-        PlaybackStatsManager.SongStat stat = stats.getSongStat(song.getUri());
-        holder.itemView.setContentDescription(song.getTitle() + ", " + song.getArtist());
 
         Bitmap cached = AlbumArtManager.getInstance(context).loadCachedBitmap(song);
         if (cached != null) {
@@ -69,13 +65,14 @@ public class DashboardSongAdapter extends RecyclerView.Adapter<DashboardSongAdap
             executor.execute(() -> {
                 Bitmap bitmap = loadEmbeddedArt(song);
                 holder.art.post(() -> {
-                    if (song.getUri() != null && song.getUri().equals(holder.art.getTag())) {
-                        if (bitmap != null) holder.art.setImageBitmap(bitmap);
+                    if (song.getUri() != null && song.getUri().equals(holder.art.getTag()) && bitmap != null) {
+                        holder.art.setImageBitmap(bitmap);
                     }
                 });
             });
         }
 
+        holder.itemView.setContentDescription(song.getTitle() + ", " + song.getArtist());
         holder.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(context, MusicPlayerService.class);
             intent.setAction(MusicPlayerService.ACTION_PLAY);
@@ -91,8 +88,12 @@ public class DashboardSongAdapter extends RecyclerView.Adapter<DashboardSongAdap
             retriever.setDataSource(context, Uri.parse(song.getUri()));
             byte[] data = retriever.getEmbeddedPicture();
             if (data == null || data.length == 0) return null;
-            return android.graphics.BitmapFactory.decodeByteArray(data, 0, data.length);
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inPreferredConfig = Bitmap.Config.RGB_565;
+            return BitmapFactory.decodeByteArray(data, 0, data.length, options);
         } catch (Exception ignored) {
+            return null;
+        } catch (OutOfMemoryError ignored) {
             return null;
         } finally {
             try { retriever.release(); } catch (Exception ignored) { }
