@@ -33,6 +33,7 @@ public class PlayerQueueButton extends androidx.appcompat.widget.AppCompatImageB
     private BottomSheetDialog queueSheet;
     private QueueAdapter queueAdapter;
     private int accentColor = Color.rgb(201, 196, 255);
+    private int backgroundColor = Color.rgb(16, 17, 26);
 
     private final BroadcastReceiver queueReceiver = new BroadcastReceiver() {
         @Override
@@ -72,9 +73,23 @@ public class PlayerQueueButton extends androidx.appcompat.widget.AppCompatImageB
                     AlbumColorManager.EXTRA_ACCENT_COLOR,
                     accentColor
             );
+            backgroundColor = intent.getIntExtra(
+                    AlbumColorManager.EXTRA_BACKGROUND_COLOR,
+                    backgroundColor
+            );
             setColorFilter(accentColor);
             if (queueAdapter != null) {
                 queueAdapter.setAccentColor(accentColor);
+            }
+            if (queueSheet != null) {
+                View root = queueSheet.findViewById(R.id.queueSheetRoot);
+                if (root != null) {
+                    root.setBackgroundColor(backgroundColor);
+                }
+                TextView title = queueSheet.findViewById(R.id.txtQueueTitle);
+                if (title != null) {
+                    title.setTextColor(accentColor);
+                }
             }
         }
     };
@@ -109,7 +124,9 @@ public class PlayerQueueButton extends androidx.appcompat.widget.AppCompatImageB
         }
 
         Context context = getContext().getApplicationContext();
-        accentColor = AlbumColorManager.getInstance(context).getCurrentAccentColor();
+        AlbumColorManager colorManager = AlbumColorManager.getInstance(context);
+        accentColor = colorManager.getCurrentAccentColor();
+        backgroundColor = colorManager.getCurrentBackgroundColor();
         setColorFilter(accentColor);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -172,13 +189,10 @@ public class PlayerQueueButton extends androidx.appcompat.widget.AppCompatImageB
                 continue;
             }
 
-            String title = safeAt(titles, i);
-            String artist = safeAt(artists, i);
-
             songs.add(new AudioFile(
                     0L,
-                    safeValue(title, "Unknown song"),
-                    safeValue(artist, "Unknown artist"),
+                    safeValue(safeAt(titles, i), "Unknown song"),
+                    safeValue(safeAt(artists, i), "Unknown artist"),
                     "",
                     uri,
                     "",
@@ -188,7 +202,7 @@ public class PlayerQueueButton extends androidx.appcompat.widget.AppCompatImageB
         }
 
         int normalizedCurrentIndex = currentIndex;
-        if (currentIndex >= 0 && songs.size() != size) {
+        if (currentIndex >= 0) {
             normalizedCurrentIndex = Math.min(currentIndex, songs.size() - 1);
         }
 
@@ -197,6 +211,7 @@ public class PlayerQueueButton extends androidx.appcompat.widget.AppCompatImageB
         View content = LayoutInflater.from(getContext())
                 .inflate(R.layout.queue_bottom_sheet, null, false);
 
+        View sheetRoot = content.findViewById(R.id.queueSheetRoot);
         TextView title = content.findViewById(R.id.txtQueueTitle);
         TextView empty = content.findViewById(R.id.txtQueueEmpty);
         RecyclerView recycler = content.findViewById(R.id.recyclerQueue);
@@ -205,8 +220,9 @@ public class PlayerQueueButton extends androidx.appcompat.widget.AppCompatImageB
         ImageButton close = content.findViewById(R.id.btnQueueClose);
         View save = content.findViewById(R.id.btnQueueSave);
 
-        title.setText("Queue");
+        sheetRoot.setBackgroundColor(backgroundColor);
         title.setTextColor(accentColor);
+        title.setText("Queue");
         shuffle.setColorFilter(accentColor);
         clear.setColorFilter(accentColor);
         close.setColorFilter(Color.rgb(170, 172, 185));
@@ -293,8 +309,8 @@ public class PlayerQueueButton extends androidx.appcompat.widget.AppCompatImageB
                         return false;
                     }
                     queueAdapter.moveItem(
-                            viewHolder.getBindingAdapterPosition(),
-                            target.getBindingAdapterPosition()
+                            viewHolder.getAdapterPosition(),
+                            target.getAdapterPosition()
                     );
                     return true;
                 }
