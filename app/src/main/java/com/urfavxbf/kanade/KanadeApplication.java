@@ -26,6 +26,7 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 
 import java.lang.ref.WeakReference;
 import java.util.Map;
@@ -34,9 +35,8 @@ import java.util.WeakHashMap;
 /**
  * Application entry point for Kanade-wide visual behavior.
  *
- * Icon vectors remain reusable resources while their rendered color follows
- * the active album palette at runtime. The implementation is intentionally
- * drawable-based so existing view IDs, layouts and click behavior stay intact.
+ * Existing vector geometry is preserved while icon rendering follows the
+ * active album palette. This keeps view IDs, click behavior and layouts intact.
  */
 public class KanadeApplication extends Application
         implements Application.ActivityLifecycleCallbacks {
@@ -157,10 +157,11 @@ public class KanadeApplication extends Application
                     AlbumColorManager.ACTION_COLORS_CHANGED
             );
 
-            activity.getApplicationContext().registerReceiver(
+            ContextCompat.registerReceiver(
+                    activity.getApplicationContext(),
                     colorReceiver,
                     filter,
-                    Context.RECEIVER_NOT_EXPORTED
+                    ContextCompat.RECEIVER_NOT_EXPORTED
             );
 
             View decor = activity.getWindow().getDecorView();
@@ -287,14 +288,14 @@ public class KanadeApplication extends Application
 
     /**
      * Renders an existing vector as an alpha mask over an album-derived
-     * gradient. The original vector geometry is preserved; only its visual
-     * treatment changes.
+     * gradient. The source vector remains the shape definition.
      */
-    private static final class GradientIconDrawable extends Drawable {
+    private static final class GradientIconDrawable extends Drawable
+            implements Drawable.Callback {
 
         private final Drawable source;
-        private final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint gradientPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint gradientPaint =
+                new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Rect sourceBounds = new Rect();
 
         private Bitmap maskBitmap;
@@ -315,7 +316,6 @@ public class KanadeApplication extends Application
                     : drawable.mutate();
             source.setCallback(this);
             this.accentColor = accentColor;
-            setBounds(drawable.getBounds());
         }
 
         @Override
@@ -332,7 +332,9 @@ public class KanadeApplication extends Application
                 rebuild(width, height);
             }
 
-            Paint outputPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            Paint outputPaint = new Paint(
+                    Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG
+            );
             canvas.drawBitmap(outputBitmap, null, bounds, outputPaint);
         }
 
@@ -356,7 +358,7 @@ public class KanadeApplication extends Application
 
         @Override
         public void setColorFilter(@Nullable android.graphics.ColorFilter colorFilter) {
-            // Album-aware gradient intentionally owns the icon color treatment.
+            // The album-derived gradient owns icon color treatment.
         }
 
         @Override
@@ -410,6 +412,27 @@ public class KanadeApplication extends Application
                 invalidateSelf();
             }
             return changed;
+        }
+
+        @Override
+        public void invalidateDrawable(@NonNull Drawable who) {
+            dirty = true;
+            invalidateSelf();
+        }
+
+        @Override
+        public void scheduleDrawable(
+                @NonNull Drawable who,
+                @NonNull Runnable what,
+                long when) {
+            scheduleSelf(what, when);
+        }
+
+        @Override
+        public void unscheduleDrawable(
+                @NonNull Drawable who,
+                @NonNull Runnable what) {
+            unscheduleSelf(what);
         }
 
         private void setColors(int newAccentColor) {
@@ -517,16 +540,6 @@ public class KanadeApplication extends Application
             outputCanvas = null;
             lastWidth = 0;
             lastHeight = 0;
-        }
-
-        @Override
-        protected void finalize() throws Throwable {
-            try {
-                source.setCallback(null);
-                recycleBitmaps();
-            } finally {
-                super.finalize();
-            }
         }
     }
 }
