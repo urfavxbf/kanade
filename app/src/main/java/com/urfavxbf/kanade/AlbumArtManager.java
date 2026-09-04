@@ -78,8 +78,8 @@ public class AlbumArtManager {
             connection.setRequestProperty("User-Agent", "Kanade Music Player/1.0");
             connection.connect();
 
-            if (connection.getResponseCode() < 200 ||
-                    connection.getResponseCode() >= 300) {
+            int responseCode = connection.getResponseCode();
+            if (responseCode < 200 || responseCode >= 300) {
                 return null;
             }
 
@@ -88,19 +88,23 @@ public class AlbumArtManager {
                 return null;
             }
 
+            if (!cacheDirectory.exists() && !cacheDirectory.mkdirs()) {
+                return null;
+            }
+
             File targetFile = getCachedAlbumArtFile(song);
-            tempFile = new File(targetFile.getAbsolutePath() + ".tmp");
-
-            InputStream input = new BufferedInputStream(
-                    connection.getInputStream()
+            tempFile = new File(
+                    targetFile.getAbsolutePath() + ".tmp-" + System.nanoTime()
             );
-            FileOutputStream output = new FileOutputStream(tempFile);
 
-            byte[] buffer = new byte[8192];
-            int read;
-            long total = 0;
+            try (InputStream input = new BufferedInputStream(
+                    connection.getInputStream());
+                 FileOutputStream output = new FileOutputStream(tempFile)) {
 
-            try {
+                byte[] buffer = new byte[8192];
+                int read;
+                long total = 0;
+
                 while ((read = input.read(buffer)) != -1) {
                     total += read;
 
@@ -110,23 +114,16 @@ public class AlbumArtManager {
 
                     output.write(buffer, 0, read);
                 }
-            } finally {
-                try {
-                    output.close();
-                } catch (Exception ignored) {
-                }
-                try {
-                    input.close();
-                } catch (Exception ignored) {
-                }
+
+                output.getFD().sync();
             }
 
             if (!isValidImage(tempFile)) {
                 return null;
             }
 
-            if (targetFile.exists()) {
-                targetFile.delete();
+            if (targetFile.exists() && !targetFile.delete()) {
+                return null;
             }
 
             if (!tempFile.renameTo(targetFile)) {
