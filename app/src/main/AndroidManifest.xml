@@ -27,12 +27,10 @@
         <activity
             android:name="MainActivity"
             android:exported="true">
-
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
         </activity>
         <activity
             android:name=".DebugActivity"
@@ -44,6 +42,13 @@
             android:name=".MusicPlayerService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <receiver
+            android:name=".PlaybackStatsReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.urfavxbf.kanade.ACTION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
