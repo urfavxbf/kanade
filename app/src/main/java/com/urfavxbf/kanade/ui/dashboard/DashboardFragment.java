@@ -122,7 +122,7 @@ public class DashboardFragment extends Fragment {
                 DashboardData data = buildData(songs, favorites, playbackStats, playlists);
                 mainHandler.post(() -> {
                     if (!isAdded() || binding == null) return;
-                    renderData(data, appContext);
+                    renderData(data);
                 });
             } catch (Exception ignored) {
                 mainHandler.post(() -> {
@@ -172,7 +172,7 @@ public class DashboardFragment extends Fragment {
         return result;
     }
 
-    private void renderData(DashboardData data, Context context) {
+    private void renderData(DashboardData data) {
         setStatCard(binding.songsCard, data.songCount, "Songs");
         setStatCard(binding.artistsCard, data.artistCount, "Artists");
         setStatCard(binding.albumsCard, data.albumCount, "Albums");
@@ -256,10 +256,10 @@ public class DashboardFragment extends Fragment {
         binding.topArtistName.setTextColor(Color.WHITE);
         binding.topArtistPlays.setTextColor(0xFFD0D0D8);
         binding.usageSummary.setTextColor(accent);
-        if (mostPlayedAdapter != null) mostPlayedAdapter.submitSongs(null, accent);
-        if (favoritesAdapter != null) favoritesAdapter.submitSongs(null, accent);
-        if (recentAdapter != null) recentAdapter.submitSongs(null, accent);
-        if (leastPlayedAdapter != null) leastPlayedAdapter.submitSongs(null, accent);
+        if (mostPlayedAdapter != null) mostPlayedAdapter.setAccentColor(accent);
+        if (favoritesAdapter != null) favoritesAdapter.setAccentColor(accent);
+        if (recentAdapter != null) recentAdapter.setAccentColor(accent);
+        if (leastPlayedAdapter != null) leastPlayedAdapter.setAccentColor(accent);
     }
 
     private String normalizeKey(String value) {
