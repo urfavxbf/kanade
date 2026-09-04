@@ -43,12 +43,13 @@ public class MusicRepository {
 
                     applyOverrides(songs);
 
-                    cachedSongs = new ArrayList<>(songs);
+                    cachedSongs = copySongs(songs);
+                    songs = cachedSongs;
                 }
             }
         }
 
-        return new ArrayList<>(songs);
+        return copySongs(songs);
     }
 
     public ArrayList<AudioFile> searchSongs(
@@ -118,9 +119,9 @@ public class MusicRepository {
 
             applyOverrides(songs);
 
-            cachedSongs = new ArrayList<>(songs);
+            cachedSongs = copySongs(songs);
 
-            return new ArrayList<>(cachedSongs);
+            return copySongs(cachedSongs);
         }
     }
 
@@ -148,5 +149,51 @@ public class MusicRepository {
 
             metadataOverrideManager.apply(song);
         }
+    }
+
+    private ArrayList<AudioFile> copySongs(
+            ArrayList<AudioFile> songs) {
+
+        ArrayList<AudioFile> copies =
+                new ArrayList<>();
+
+        if (songs == null || songs.isEmpty()) {
+            return copies;
+        }
+
+        copies.ensureCapacity(songs.size());
+
+        for (AudioFile song : songs) {
+
+            if (song != null) {
+                copies.add(copySong(song));
+            }
+        }
+
+        return copies;
+    }
+
+    private AudioFile copySong(AudioFile song) {
+
+        AudioFile copy = new AudioFile(
+                song.getId(),
+                song.getTitle(),
+                song.getArtist(),
+                song.getAlbum(),
+                song.getUri(),
+                song.getPath(),
+                song.getDuration(),
+                song.getDateAdded()
+        );
+
+        copy.setAlbumArtUri(song.getAlbumArtUri());
+        copy.setAlbumArtist(song.getAlbumArtist());
+        copy.setGenre(song.getGenre());
+        copy.setComposer(song.getComposer());
+        copy.setYear(song.getYear());
+        copy.setTrackNumber(song.getTrackNumber());
+        copy.setDiscNumber(song.getDiscNumber());
+
+        return copy;
     }
 }
