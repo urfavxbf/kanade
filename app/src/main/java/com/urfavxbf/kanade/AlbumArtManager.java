@@ -7,11 +7,11 @@ import android.net.Uri;
 
 import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 public class AlbumArtManager {
@@ -20,6 +20,7 @@ public class AlbumArtManager {
     private static final int CONNECT_TIMEOUT = 15000;
     private static final int READ_TIMEOUT = 15000;
     private static final long MAX_FILE_SIZE = 10L * 1024L * 1024L;
+    private static final int MAX_DECODE_DIMENSION = 1024;
 
     private final Context context;
     private final File cacheDirectory;
@@ -155,8 +156,26 @@ public class AlbumArtManager {
             return null;
         }
 
+        String path = file.getAbsolutePath();
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(path, bounds);
+
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return null;
+        }
+
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = calculateInSampleSize(
+                bounds.outWidth,
+                bounds.outHeight
+        );
+        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+
         try {
-            return BitmapFactory.decodeFile(file.getAbsolutePath());
+            return BitmapFactory.decodeFile(path, options);
+        } catch (OutOfMemoryError error) {
+            return null;
         } catch (Exception e) {
             return null;
         }
@@ -206,6 +225,20 @@ public class AlbumArtManager {
         return options.outWidth > 0 && options.outHeight > 0;
     }
 
+    private int calculateInSampleSize(int width, int height) {
+        int sampleSize = 1;
+        int largestDimension = Math.max(width, height);
+
+        while (largestDimension / sampleSize > MAX_DECODE_DIMENSION) {
+            if (sampleSize > Integer.MAX_VALUE / 2) {
+                break;
+            }
+            sampleSize *= 2;
+        }
+
+        return sampleSize;
+    }
+
     private String createCacheKey(AudioFile song) {
         String source = null;
 
@@ -236,15 +269,16 @@ public class AlbumArtManager {
                     MessageDigest.getInstance("SHA-256");
 
             byte[] bytes = digest.digest(
-                    value.getBytes("UTF-8")
+                    value.getBytes(StandardCharsets.UTF_8)
             );
 
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new StringBuilder(bytes.length * 2);
+            final char[] hex = "0123456789abcdef".toCharArray();
 
             for (byte b : bytes) {
-                builder.append(
-                        String.format("%02x", b & 0xff)
-                );
+                int unsigned = b & 0xff;
+                builder.append(hex[unsigned >>> 4]);
+                builder.append(hex[unsigned & 0x0f]);
             }
 
             return builder.toString();
