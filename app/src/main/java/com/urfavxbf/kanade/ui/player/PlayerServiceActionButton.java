@@ -11,6 +11,7 @@ import android.util.AttributeSet;
 import androidx.appcompat.widget.AppCompatImageButton;
 import androidx.core.content.ContextCompat;
 
+import com.urfavxbf.kanade.AlbumColorManager;
 import com.urfavxbf.kanade.MusicPlayerService;
 import com.urfavxbf.kanade.R;
 
@@ -39,6 +40,22 @@ public class PlayerServiceActionButton extends AppCompatImageButton {
             repeatMode = intent.getIntExtra(
                     MusicPlayerService.EXTRA_REPEAT_STATE,
                     repeatMode
+            );
+            updateVisualState();
+        }
+    };
+
+    private final BroadcastReceiver colorReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null
+                    || !AlbumColorManager.ACTION_COLORS_CHANGED.equals(intent.getAction())) {
+                return;
+            }
+
+            accentColor = intent.getIntExtra(
+                    AlbumColorManager.EXTRA_ACCENT_COLOR,
+                    accentColor
             );
             updateVisualState();
         }
@@ -86,16 +103,21 @@ public class PlayerServiceActionButton extends AppCompatImageButton {
             return;
         }
 
-        IntentFilter filter = new IntentFilter(
-                MusicPlayerService.ACTION_STATE_CHANGED
-        );
-
         Context context = getContext().getApplicationContext();
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(MusicPlayerService.ACTION_STATE_CHANGED);
+        filter.addAction(AlbumColorManager.ACTION_COLORS_CHANGED);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(
                     stateReceiver,
                     filter,
+                    Context.RECEIVER_NOT_EXPORTED
+            );
+            context.registerReceiver(
+                    colorReceiver,
+                    new IntentFilter(AlbumColorManager.ACTION_COLORS_CHANGED),
                     Context.RECEIVER_NOT_EXPORTED
             );
         } else {
@@ -105,17 +127,30 @@ public class PlayerServiceActionButton extends AppCompatImageButton {
                     filter,
                     ContextCompat.RECEIVER_NOT_EXPORTED
             );
+            ContextCompat.registerReceiver(
+                    context,
+                    colorReceiver,
+                    new IntentFilter(AlbumColorManager.ACTION_COLORS_CHANGED),
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+            );
         }
 
         receiverRegistered = true;
-        requestState();
+        accentColor = AlbumColorManager.getInstance(context).getCurrentAccentColor();
+        updateVisualState();
     }
 
     @Override
     protected void onDetachedFromWindow() {
         if (receiverRegistered) {
+            Context context = getContext().getApplicationContext();
             try {
-                getContext().getApplicationContext().unregisterReceiver(stateReceiver);
+                context.unregisterReceiver(stateReceiver);
+            } catch (IllegalArgumentException ignored) {
+                // Already unregistered.
+            }
+            try {
+                context.unregisterReceiver(colorReceiver);
             } catch (IllegalArgumentException ignored) {
                 // Already unregistered.
             }
@@ -123,15 +158,6 @@ public class PlayerServiceActionButton extends AppCompatImageButton {
         }
 
         super.onDetachedFromWindow();
-    }
-
-    private void requestState() {
-        Intent intent = new Intent(
-                getContext(),
-                MusicPlayerService.class
-        );
-        intent.setAction(MusicPlayerService.ACTION_REQUEST_QUEUE);
-        getContext().startService(intent);
     }
 
     public void setAccentColor(int color) {
