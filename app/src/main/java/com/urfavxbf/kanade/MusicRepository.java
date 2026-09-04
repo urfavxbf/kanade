@@ -3,6 +3,7 @@ package com.urfavxbf.kanade;
 import android.content.Context;
 
 import java.util.ArrayList;
+import java.util.Locale;
 
 public class MusicRepository {
 
@@ -66,7 +67,7 @@ public class MusicRepository {
         }
 
         String searchQuery =
-                query.trim().toLowerCase();
+                query.trim().toLowerCase(Locale.ROOT);
 
         for (AudioFile song : allSongs) {
 
@@ -76,7 +77,7 @@ public class MusicRepository {
 
             if (song.getTitle() != null &&
                     song.getTitle()
-                            .toLowerCase()
+                            .toLowerCase(Locale.ROOT)
                             .contains(searchQuery)) {
 
                 results.add(song);
@@ -85,7 +86,7 @@ public class MusicRepository {
 
             if (song.getArtist() != null &&
                     song.getArtist()
-                            .toLowerCase()
+                            .toLowerCase(Locale.ROOT)
                             .contains(searchQuery)) {
 
                 results.add(song);
@@ -94,7 +95,7 @@ public class MusicRepository {
 
             if (song.getAlbum() != null &&
                     song.getAlbum()
-                            .toLowerCase()
+                            .toLowerCase(Locale.ROOT)
                             .contains(searchQuery)) {
 
                 results.add(song);
