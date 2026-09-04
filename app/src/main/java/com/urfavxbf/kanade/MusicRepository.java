@@ -8,6 +8,9 @@ public class MusicRepository {
 
     private final MusicScanner musicScanner;
     private final MetadataOverrideManager metadataOverrideManager;
+    private final Object cacheLock = new Object();
+
+    private volatile ArrayList<AudioFile> cachedSongs;
 
     public MusicRepository(Context context) {
 
@@ -20,21 +23,37 @@ public class MusicRepository {
 
     public ArrayList<AudioFile> getAllSongs() {
 
-        ArrayList<AudioFile> songs =
-                musicScanner.scanMusic();
+        ArrayList<AudioFile> songs = cachedSongs;
 
-        applyOverrides(songs);
+        if (songs == null) {
 
-        return songs;
+            synchronized (cacheLock) {
+
+                songs = cachedSongs;
+
+                if (songs == null) {
+
+                    songs = musicScanner.scanMusic();
+
+                    applyOverrides(songs);
+
+                    if (songs == null) {
+                        songs = new ArrayList<>();
+                    }
+
+                    cachedSongs = new ArrayList<>(songs);
+                }
+            }
+        }
+
+        return new ArrayList<>(songs);
     }
 
     public ArrayList<AudioFile> searchSongs(
             String query) {
 
         ArrayList<AudioFile> allSongs =
-                musicScanner.scanMusic();
-
-        applyOverrides(allSongs);
+                getAllSongs();
 
         ArrayList<AudioFile> results =
                 new ArrayList<>();
@@ -86,17 +105,30 @@ public class MusicRepository {
 
     public ArrayList<AudioFile> refreshMusic() {
 
-        ArrayList<AudioFile> songs =
-                musicScanner.refreshMusic();
+        synchronized (cacheLock) {
 
-        applyOverrides(songs);
+            ArrayList<AudioFile> songs =
+                    musicScanner.refreshMusic();
 
-        return songs;
+            applyOverrides(songs);
+
+            if (songs == null) {
+                songs = new ArrayList<>();
+            }
+
+            cachedSongs = new ArrayList<>(songs);
+
+            return new ArrayList<>(cachedSongs);
+        }
     }
 
     public void clearMusicCache() {
 
-        musicScanner.clearCache();
+        synchronized (cacheLock) {
+
+            cachedSongs = null;
+            musicScanner.clearCache();
+        }
     }
 
     private void applyOverrides(
