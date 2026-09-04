@@ -29,10 +29,12 @@ public class DashboardSongAdapter extends RecyclerView.Adapter<DashboardSongAdap
     private final Context context;
     private final ArrayList<AudioFile> songs = new ArrayList<>();
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
+    private final AlbumArtManager albumArtManager;
     private int accentColor;
 
     public DashboardSongAdapter(Context context, int accentColor) {
         this.context = context.getApplicationContext();
+        this.albumArtManager = new AlbumArtManager(this.context);
         this.accentColor = accentColor;
     }
 
@@ -58,7 +60,7 @@ public class DashboardSongAdapter extends RecyclerView.Adapter<DashboardSongAdap
         holder.art.setImageResource(R.drawable.album_art);
         holder.art.setTag(song.getUri());
 
-        Bitmap cached = AlbumArtManager.getInstance(context).loadCachedBitmap(song);
+        Bitmap cached = albumArtManager.loadCachedBitmap(song);
         if (cached != null) {
             holder.art.setImageBitmap(cached);
         } else {
