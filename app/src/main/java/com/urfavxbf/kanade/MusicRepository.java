@@ -6,11 +6,12 @@ import java.util.ArrayList;
 
 public class MusicRepository {
 
+    private static final Object cacheLock = new Object();
+
+    private static volatile ArrayList<AudioFile> cachedSongs;
+
     private final MusicScanner musicScanner;
     private final MetadataOverrideManager metadataOverrideManager;
-    private final Object cacheLock = new Object();
-
-    private volatile ArrayList<AudioFile> cachedSongs;
 
     public MusicRepository(Context context) {
 
@@ -35,11 +36,11 @@ public class MusicRepository {
 
                     songs = musicScanner.scanMusic();
 
-                    applyOverrides(songs);
-
                     if (songs == null) {
                         songs = new ArrayList<>();
                     }
+
+                    applyOverrides(songs);
 
                     cachedSongs = new ArrayList<>(songs);
                 }
@@ -110,11 +111,11 @@ public class MusicRepository {
             ArrayList<AudioFile> songs =
                     musicScanner.refreshMusic();
 
-            applyOverrides(songs);
-
             if (songs == null) {
                 songs = new ArrayList<>();
             }
+
+            applyOverrides(songs);
 
             cachedSongs = new ArrayList<>(songs);
 
