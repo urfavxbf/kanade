@@ -173,8 +173,6 @@ public class DashboardFragment extends Fragment {
     }
 
     private void renderData(DashboardData data, Context context) {
-        binding.librarySongCount.setText(data.songCount + " " + (data.songCount == 1 ? "song" : "songs"));
-        binding.libraryDuration.setText(formatDuration(data.totalDurationMs));
         setStatCard(binding.songsCard, data.songCount, "Songs");
         setStatCard(binding.artistsCard, data.artistCount, "Artists");
         setStatCard(binding.albumsCard, data.albumCount, "Albums");
@@ -191,7 +189,7 @@ public class DashboardFragment extends Fragment {
             PlaybackStatsManager.ArtistStat top = data.topArtists.get(0);
             binding.topArtistName.setText(top.artist);
             binding.topArtistPlays.setText(top.playCount + (top.playCount == 1 ? " play" : " plays"));
-            loadArtistPhoto(top.artist, context);
+            loadArtistPhoto(top.artist);
         } else {
             binding.topArtistName.setText("No listening data yet");
             binding.topArtistPlays.setText("Play something to build your stats");
@@ -199,7 +197,7 @@ public class DashboardFragment extends Fragment {
         }
     }
 
-    private void loadArtistPhoto(String artist, Context context) {
+    private void loadArtistPhoto(String artist) {
         if (artistExecutor != null) artistExecutor.shutdownNow();
         artistExecutor = Executors.newSingleThreadExecutor();
         binding.topArtistPhoto.setTag(artist);
@@ -213,8 +211,6 @@ public class DashboardFragment extends Fragment {
     }
 
     private void renderEmptyState() {
-        binding.librarySongCount.setText("0 songs");
-        binding.libraryDuration.setText("No listening data yet");
         setStatCard(binding.songsCard, 0, "Songs");
         setStatCard(binding.artistsCard, 0, "Artists");
         setStatCard(binding.albumsCard, 0, "Albums");
@@ -249,7 +245,6 @@ public class DashboardFragment extends Fragment {
     private void applyColors(int accent, int background) {
         accentColor = accent;
         if (binding == null) return;
-        int cardColor = ColorUtils.blendARGB(background, accent, 0.16f);
         int subtle = ColorUtils.blendARGB(background, accent, 0.08f);
         binding.getRoot().setBackgroundColor(background);
         binding.topArtistCard.setCardBackgroundColor(Color.BLACK);
@@ -258,23 +253,17 @@ public class DashboardFragment extends Fragment {
         binding.artistsCard.setCardBackgroundColor(subtle);
         binding.albumsCard.setCardBackgroundColor(subtle);
         binding.favoritesCard.setCardBackgroundColor(subtle);
-        binding.librarySongCount.setTextColor(Color.WHITE);
-        binding.libraryDuration.setTextColor(ColorUtils.blendARGB(Color.WHITE, accent, 0.2f));
         binding.topArtistName.setTextColor(Color.WHITE);
         binding.topArtistPlays.setTextColor(0xFFD0D0D8);
         binding.usageSummary.setTextColor(accent);
-        binding.libraryHeroCard.setCardBackgroundColor(cardColor);
+        if (mostPlayedAdapter != null) mostPlayedAdapter.submitSongs(null, accent);
+        if (favoritesAdapter != null) favoritesAdapter.submitSongs(null, accent);
+        if (recentAdapter != null) recentAdapter.submitSongs(null, accent);
+        if (leastPlayedAdapter != null) leastPlayedAdapter.submitSongs(null, accent);
     }
 
     private String normalizeKey(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private String formatDuration(long durationMs) {
-        long totalMinutes = durationMs / 60000L;
-        long hours = totalMinutes / 60L;
-        long minutes = totalMinutes % 60L;
-        return hours > 0L ? "About " + hours + "h " + minutes + "m of music" : "About " + minutes + " min of music";
     }
 
     private int dp(int value) {
