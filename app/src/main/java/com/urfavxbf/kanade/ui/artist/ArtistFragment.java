@@ -47,14 +47,11 @@ public class ArtistFragment extends Fragment {
     private MusicRepository musicRepository;
     private ExecutorService executor;
     private RecyclerView recyclerView;
-    private LinearLayout root;
     private TextView titleView;
     private TextView subtitleView;
     private ImageButton backButton;
     private ArtistAdapter artistAdapter;
-    private SongAdapter songAdapter;
     private ArrayList<AudioFile> allSongs = new ArrayList<>();
-    private String selectedArtist;
 
     @Nullable
     @Override
@@ -67,10 +64,9 @@ public class ArtistFragment extends Fragment {
         musicRepository = new MusicRepository(context.getApplicationContext());
         executor = Executors.newSingleThreadExecutor();
 
-        root = new LinearLayout(context);
+        LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BACKGROUND);
-
         root.addView(createToolbar(context), new LinearLayout.LayoutParams(-1, dp(76)));
 
         recyclerView = new RecyclerView(context);
@@ -93,7 +89,8 @@ public class ArtistFragment extends Fragment {
         backButton.setColorFilter(PRIMARY);
         backButton.setBackgroundResource(android.R.drawable.btn_default);
         backButton.setContentDescription("Back");
-        backButton.setOnClickListener(v -> showArtistList());
+        backButton.setVisibility(View.GONE);
+        backButton.setOnClickListener(v -> loadArtists());
         toolbar.addView(backButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
         LinearLayout text = new LinearLayout(context);
@@ -119,12 +116,17 @@ public class ArtistFragment extends Fragment {
     }
 
     private void loadArtists() {
-        recyclerView.setAdapter(null);
+        if (executor == null || recyclerView == null) {
+            return;
+        }
+        titleView.setText("Artists");
         subtitleView.setText("Loading artists…");
+        backButton.setVisibility(View.GONE);
+
         executor.execute(() -> {
             ArrayList<AudioFile> songs = musicRepository.getAllSongs();
             ArrayList<ArtistItem> artists = buildArtists(songs);
-            if (!isAdded() || getView() == null) {
+            if (!isAdded()) {
                 return;
             }
             requireActivity().runOnUiThread(() -> {
@@ -132,9 +134,7 @@ public class ArtistFragment extends Fragment {
                     return;
                 }
                 allSongs = songs;
-                titleView.setText("Artists");
                 subtitleView.setText(artists.size() + (artists.size() == 1 ? " artist" : " artists"));
-                backButton.setVisibility(View.GONE);
                 artistAdapter = new ArtistAdapter(requireContext(), artists, this::showArtistDetail);
                 recyclerView.setAdapter(artistAdapter);
             });
@@ -148,23 +148,21 @@ public class ArtistFragment extends Fragment {
                 continue;
             }
             String artist = clean(song.getArtist(), "Unknown artist");
-            ArtistItem item = map.get(artist.toLowerCase(Locale.ROOT));
+            String key = artist.toLowerCase(Locale.ROOT);
+            ArtistItem item = map.get(key);
             if (item == null) {
                 item = new ArtistItem(artist);
-                map.put(artist.toLowerCase(Locale.ROOT), item);
+                map.put(key, item);
             }
             item.songCount++;
-            String album = clean(song.getAlbum(), "Unknown album");
-            item.albums.add(album);
+            item.albums.add(clean(song.getAlbum(), "Unknown album"));
         }
-
         ArrayList<ArtistItem> result = new ArrayList<>(map.values());
         Collections.sort(result, Comparator.comparing(item -> item.name.toLowerCase(Locale.ROOT)));
         return result;
     }
 
     private void showArtistDetail(String artist) {
-        selectedArtist = artist;
         ArrayList<AudioFile> songs = new ArrayList<>();
         Set<String> albums = new LinkedHashSet<>();
         long totalDuration = 0L;
@@ -179,9 +177,8 @@ public class ArtistFragment extends Fragment {
         }
 
         Collections.sort(songs, (left, right) -> {
-            String albumLeft = clean(left.getAlbum(), "Unknown album");
-            String albumRight = clean(right.getAlbum(), "Unknown album");
-            int album = albumLeft.compareToIgnoreCase(albumRight);
+            int album = clean(left.getAlbum(), "Unknown album")
+                    .compareToIgnoreCase(clean(right.getAlbum(), "Unknown album"));
             if (album != 0) {
                 return album;
             }
@@ -195,8 +192,8 @@ public class ArtistFragment extends Fragment {
                 + " • " + formatDuration(totalDuration));
         backButton.setVisibility(View.VISIBLE);
 
-        LinearLayout detail = createDetailHeader(requireContext(), artist, songs.size(), albums.size());
-        recyclerView.setAdapter(new HeaderSongAdapter(requireContext(), detail, songs));
+        LinearLayout detailHeader = createDetailHeader(requireContext(), artist, songs.size(), albums.size());
+        recyclerView.setAdapter(new HeaderSongAdapter(requireContext(), detailHeader, songs));
     }
 
     private LinearLayout createDetailHeader(Context context, String artist, int songs, int albums) {
@@ -251,23 +248,8 @@ public class ArtistFragment extends Fragment {
         return header;
     }
 
-    private void showArtistList() {
-        selectedArtist = null;
-        titleView.setText("Artists");
-        subtitleView.setText(artistAdapter == null ? "Your music, by artist" : subtitleView.getText());
-        backButton.setVisibility(View.GONE);
-        if (artistAdapter != null) {
-            recyclerView.setAdapter(artistAdapter);
-        } else {
-            loadArtists();
-        }
-    }
-
     private static String clean(String value, String fallback) {
-        if (value == null || value.trim().isEmpty()) {
-            return fallback;
-        }
-        return value.trim();
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
     }
 
     private static String initials(String name) {
@@ -306,7 +288,6 @@ public class ArtistFragment extends Fragment {
             executor = null;
         }
         recyclerView = null;
-        root = null;
         super.onDestroyView();
     }
 
@@ -341,14 +322,14 @@ public class ArtistFragment extends Fragment {
             LinearLayout row = new LinearLayout(parent.getContext());
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(parent, 12), dp(parent, 8), dp(parent, 12), dp(parent, 8));
-            row.setBackground(round(CARD, 20));
+            row.setBackground(round(CARD, parent, 20));
 
             TextView avatar = new TextView(parent.getContext());
             avatar.setGravity(Gravity.CENTER);
             avatar.setTextColor(BACKGROUND);
             avatar.setTextSize(16);
             avatar.setTypeface(null, android.graphics.Typeface.BOLD);
-            avatar.setBackground(round(ACCENT, 100));
+            avatar.setBackground(round(ACCENT, parent, 100));
             row.addView(avatar, new LinearLayout.LayoutParams(dp(parent, 52), dp(parent, 52)));
 
             LinearLayout text = new LinearLayout(parent.getContext());
@@ -416,11 +397,21 @@ public class ArtistFragment extends Fragment {
             return Math.round(value * view.getResources().getDisplayMetrics().density);
         }
 
-        private static GradientDrawable round(int color, float radius) {
+        private static GradientDrawable round(int color, View view, float radiusDp) {
             GradientDrawable drawable = new GradientDrawable();
             drawable.setColor(color);
-            drawable.setCornerRadius(radius * 3f);
+            drawable.setCornerRadius(radiusDp * view.getResources().getDisplayMetrics().density);
             return drawable;
+        }
+
+        private static String initials(String name) {
+            String value = name == null || name.trim().isEmpty() ? "?" : name.trim();
+            String[] parts = value.split("\\s+");
+            if (parts.length == 1) {
+                return value.substring(0, 1).toUpperCase(Locale.ROOT);
+            }
+            return (parts[0].substring(0, 1) + parts[parts.length - 1].substring(0, 1))
+                    .toUpperCase(Locale.ROOT);
         }
     }
 
@@ -446,10 +437,11 @@ public class ArtistFragment extends Fragment {
             if (viewType == 0) {
                 return new ViewHolder(header);
             }
+
             LinearLayout row = new LinearLayout(parent.getContext());
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(parent, 12), dp(parent, 7), dp(parent, 12), dp(parent, 7));
-            row.setBackground(round(CARD, 18));
+            row.setBackground(round(CARD, parent, 18));
 
             TextView number = new TextView(parent.getContext());
             number.setTextColor(SECONDARY);
@@ -487,6 +479,7 @@ public class ArtistFragment extends Fragment {
             holder.number.setText(String.valueOf(position));
             holder.title.setText(clean(song.getTitle(), "Unknown song"));
             holder.album.setText(clean(song.getAlbum(), "Unknown album"));
+            holder.itemView.setContentDescription(song.getTitle() + ", " + song.getAlbum());
             holder.itemView.setOnClickListener(v -> {
                 Intent intent = new Intent(context, MusicPlayerService.class);
                 intent.setAction(MusicPlayerService.ACTION_PLAY);
@@ -501,15 +494,12 @@ public class ArtistFragment extends Fragment {
         }
 
         static final class ViewHolder extends RecyclerView.ViewHolder {
-            final TextView number;
-            final TextView title;
-            final TextView album;
+            TextView number;
+            TextView title;
+            TextView album;
 
             ViewHolder(View itemView) {
                 super(itemView);
-                number = itemView.findViewById(android.R.id.text1);
-                title = itemView.findViewById(android.R.id.text2);
-                album = itemView.findViewById(android.R.id.content);
             }
 
             ViewHolder(View itemView, TextView number, TextView title, TextView album) {
@@ -524,11 +514,15 @@ public class ArtistFragment extends Fragment {
             return Math.round(value * view.getResources().getDisplayMetrics().density);
         }
 
-        private static GradientDrawable round(int color, float radius) {
+        private static GradientDrawable round(int color, View view, float radiusDp) {
             GradientDrawable drawable = new GradientDrawable();
             drawable.setColor(color);
-            drawable.setCornerRadius(radius * 3f);
+            drawable.setCornerRadius(radiusDp * view.getResources().getDisplayMetrics().density);
             return drawable;
+        }
+
+        private static String clean(String value, String fallback) {
+            return value == null || value.trim().isEmpty() ? fallback : value.trim();
         }
     }
 }
