@@ -80,19 +80,21 @@ public class PlayerServiceActionButton extends AppCompatImageButton {
     }
 
     private void initialize() {
-        setOnClickListener(view -> {
-            Intent intent = new Intent(getContext(), MusicPlayerService.class);
+        setOnClickListener(view -> toggleState());
+    }
 
-            if (getId() == R.id.btnShuffle) {
-                intent.setAction(MusicPlayerService.ACTION_TOGGLE_SHUFFLE);
-            } else if (getId() == R.id.btnRepeat) {
-                intent.setAction(MusicPlayerService.ACTION_TOGGLE_REPEAT);
-            } else {
-                return;
-            }
+    private void toggleState() {
+        Intent intent = new Intent(getContext(), MusicPlayerService.class);
 
-            getContext().startService(intent);
-        });
+        if (getId() == R.id.btnShuffle) {
+            intent.setAction(MusicPlayerService.ACTION_TOGGLE_SHUFFLE);
+        } else if (getId() == R.id.btnRepeat) {
+            intent.setAction(MusicPlayerService.ACTION_TOGGLE_REPEAT);
+        } else {
+            return;
+        }
+
+        getContext().startService(intent);
     }
 
     @Override
@@ -105,14 +107,10 @@ public class PlayerServiceActionButton extends AppCompatImageButton {
 
         Context context = getContext().getApplicationContext();
 
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(MusicPlayerService.ACTION_STATE_CHANGED);
-        filter.addAction(AlbumColorManager.ACTION_COLORS_CHANGED);
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(
                     stateReceiver,
-                    filter,
+                    new IntentFilter(MusicPlayerService.ACTION_STATE_CHANGED),
                     Context.RECEIVER_NOT_EXPORTED
             );
             context.registerReceiver(
@@ -124,7 +122,7 @@ public class PlayerServiceActionButton extends AppCompatImageButton {
             ContextCompat.registerReceiver(
                     context,
                     stateReceiver,
-                    filter,
+                    new IntentFilter(MusicPlayerService.ACTION_STATE_CHANGED),
                     ContextCompat.RECEIVER_NOT_EXPORTED
             );
             ContextCompat.registerReceiver(
@@ -160,17 +158,47 @@ public class PlayerServiceActionButton extends AppCompatImageButton {
         super.onDetachedFromWindow();
     }
 
+    public void setPlayerState(boolean shuffleEnabled, int repeatMode) {
+        this.shuffleEnabled = shuffleEnabled;
+        this.repeatMode = repeatMode;
+        updateVisualState();
+    }
+
     public void setAccentColor(int color) {
         accentColor = color;
         updateVisualState();
     }
 
     private void updateVisualState() {
-        boolean active = getId() == R.id.btnShuffle
-                ? shuffleEnabled
-                : repeatMode != MusicPlayerService.REPEAT_OFF;
+        if (getId() == R.id.btnShuffle) {
+            boolean active = shuffleEnabled;
+            setImageResource(
+                    active
+                            ? R.drawable.ic_shuffle
+                            : R.drawable.ic_no_shuffle
+            );
+            setColorFilter(
+                    active
+                            ? accentColor
+                            : Color.rgb(168, 171, 185)
+            );
+            setAlpha(1f);
+            return;
+        }
 
-        setColorFilter(active ? accentColor : Color.rgb(168, 171, 185));
-        setAlpha(active ? 1f : 0.82f);
+        if (getId() == R.id.btnRepeat) {
+            boolean active = repeatMode != MusicPlayerService.REPEAT_OFF;
+            setImageResource(
+                    active
+                            ? R.drawable.ic_repeat
+                            : R.drawable.ic_no_repeat
+            );
+            setColorFilter(
+                    active
+                            ? accentColor
+                            : Color.rgb(168, 171, 185)
+            );
+            setAlpha(1f);
+        }
     }
 }
