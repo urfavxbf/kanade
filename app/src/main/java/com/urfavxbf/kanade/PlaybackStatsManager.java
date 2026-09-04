@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -131,8 +132,8 @@ public class PlaybackStatsManager {
         JSONArray array = new JSONArray();
         for (Map.Entry<String, Long> entry : usage.entrySet()) {
             JSONObject object = new JSONObject();
-            object.put(FIELD_DAY, entry.getKey());
-            object.put(FIELD_MINUTES, entry.getValue());
+            putJson(object, FIELD_DAY, entry.getKey());
+            putJson(object, FIELD_MINUTES, entry.getValue());
             array.put(object);
         }
         preferences.edit().putString(KEY_DAYS, array.toString()).apply();
@@ -161,14 +162,22 @@ public class PlaybackStatsManager {
         JSONArray array = new JSONArray();
         for (SongStat stat : stats.values()) {
             JSONObject object = new JSONObject();
-            object.put(FIELD_URI, stat.uri);
-            object.put(FIELD_TITLE, stat.title);
-            object.put(FIELD_ARTIST, stat.artist);
-            object.put(FIELD_PLAY_COUNT, stat.playCount);
-            object.put(FIELD_LAST_PLAYED, stat.lastPlayed);
+            putJson(object, FIELD_URI, stat.uri);
+            putJson(object, FIELD_TITLE, stat.title);
+            putJson(object, FIELD_ARTIST, stat.artist);
+            putJson(object, FIELD_PLAY_COUNT, stat.playCount);
+            putJson(object, FIELD_LAST_PLAYED, stat.lastPlayed);
             array.put(object);
         }
         preferences.edit().putString(KEY_SONGS, array.toString()).apply();
+    }
+
+    private void putJson(JSONObject object, String key, Object value) {
+        try {
+            object.put(key, value);
+        } catch (JSONException ignored) {
+            // JSONObject.put() is checked in this Android JSON API; an invalid value is skipped.
+        }
     }
 
     private Map<String, Long> readUsage() {
