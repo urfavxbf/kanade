@@ -81,47 +81,19 @@ public final class YouTubePlaybackManager {
     private YouTubePlaybackManager() {
     }
 
-    public static boolean isActive() {
-        return player != null && !videoId.isEmpty();
-    }
-
-    public static boolean isPlaying() {
-        return playing;
-    }
-
-    public static boolean isAudioOnly() {
-        return audioOnly;
-    }
-
-    public static boolean isRadioEnabled() {
-        return radio;
-    }
-
-    public static String getVideoId() {
-        return videoId;
-    }
-
-    public static String getTitle() {
-        return title;
-    }
-
-    public static String getChannel() {
-        return channel;
-    }
-
-    public static String getThumbnailUrl() {
-        return thumbnailUrl;
-    }
-
-    public static List<QueueItem> getQueue() {
-        return Collections.unmodifiableList(new ArrayList<>(queue));
-    }
+    public static boolean isActive() { return player != null && !videoId.isEmpty(); }
+    public static boolean isPlaying() { return playing; }
+    public static boolean isAudioOnly() { return audioOnly; }
+    public static boolean isRadioEnabled() { return radio; }
+    public static String getVideoId() { return videoId; }
+    public static String getTitle() { return title; }
+    public static String getChannel() { return channel; }
+    public static String getThumbnailUrl() { return thumbnailUrl; }
+    public static List<QueueItem> getQueue() { return Collections.unmodifiableList(new ArrayList<>(queue)); }
 
     public static void addToQueue(String id, String songTitle, String songChannel, String thumb) {
         if (TextUtils.isEmpty(id)) return;
-        for (QueueItem item : queue) {
-            if (id.equals(item.videoId)) return;
-        }
+        for (QueueItem item : queue) if (id.equals(item.videoId)) return;
         queue.add(new QueueItem(id, songTitle, songChannel, thumb));
         if (queueIndex < 0) queueIndex = 0;
         broadcastState();
@@ -167,7 +139,7 @@ public final class YouTubePlaybackManager {
         videoId = id;
         title = TextUtils.isEmpty(songTitle) ? "YouTube video" : songTitle;
         channel = TextUtils.isEmpty(songChannel) ? "YouTube" : songChannel;
-        thumbnailUrl = thumb == null ? "" : thumb;
+        thumbnailUrl = TextUtils.isEmpty(thumb) ? "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg" : thumb;
         playing = false;
         audioOnly = compact;
 
@@ -185,19 +157,14 @@ public final class YouTubePlaybackManager {
         String escapedId = escapeJs(id);
         String html = "<!doctype html><html><head>"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-                + "<style>html,body,#player{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden;}"
-                + "iframe{border:0;width:100%;height:100%;display:block;}</style></head><body>"
+                + "<style>html,body,#player{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden;}iframe{border:0;width:100%;height:100%;display:block;}</style></head><body>"
                 + "<div id=\"player\"></div><script>var player;"
-                + "function onYouTubeIframeAPIReady(){player=new YT.Player('player',{height:'100%',width:'100%',"
-                + "videoId:'" + escapedId + "',playerVars:{playsinline:1,rel:0,controls:1,enablejsapi:1,"
-                + "origin:'https://com.urfavxbf.kanade'},events:{onReady:onReady,onStateChange:onState,onError:onError,"
-                + "onAutoplayBlocked:onBlocked}});}"
-                + "function onReady(){KanadePlayer.ready();}"
-                + "function onState(e){KanadePlayer.state(e.data);}"
-                + "function onError(e){KanadePlayer.error(e.data);}"
-                + "function onBlocked(){KanadePlayer.blocked();}"
-                + "function playYT(){if(player)player.playVideo();}"
-                + "function pauseYT(){if(player)player.pauseVideo();}"
+                + "function onYouTubeIframeAPIReady(){player=new YT.Player('player',{height:'100%',width:'100%',videoId:'" + escapedId + "',"
+                + "playerVars:{playsinline:1,rel:0,controls:1,enablejsapi:1,origin:'https://com.urfavxbf.kanade'},"
+                + "events:{onReady:onReady,onStateChange:onState,onError:onError,onAutoplayBlocked:onBlocked}});}"
+                + "function onReady(){KanadePlayer.ready();}function onState(e){KanadePlayer.state(e.data);}"
+                + "function onError(e){KanadePlayer.error(e.data);}function onBlocked(){KanadePlayer.blocked();}"
+                + "function playYT(){if(player)player.playVideo();}function pauseYT(){if(player)player.pauseVideo();}"
                 + "</script><script src=\"https://www.youtube.com/iframe_api\"></script></body></html>";
         player.setAlpha(compact ? 0f : 1f);
         player.loadDataWithBaseURL(APP_ORIGIN + "/", html, "text/html", "UTF-8", APP_ORIGIN + "/");
@@ -281,9 +248,7 @@ public final class YouTubePlaybackManager {
     }
 
     private static int findQueueIndex(String id) {
-        for (int i = 0; i < queue.size(); i++) {
-            if (id.equals(queue.get(i).videoId)) return i;
-        }
+        for (int i = 0; i < queue.size(); i++) if (id.equals(queue.get(i).videoId)) return i;
         return -1;
     }
 
@@ -294,8 +259,7 @@ public final class YouTubePlaybackManager {
     }
 
     private static String escapeJs(String value) {
-        return value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
-                .replace("\r", "\\r");
+        return value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");
     }
 
     private static void updateMini() {
@@ -313,9 +277,7 @@ public final class YouTubePlaybackManager {
                 playPause.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
                 playPause.setContentDescription(playing ? "Pause YouTube playback" : "Play YouTube playback");
             }
-            if (thumb != null && thumbnailUrl.isEmpty()) {
-                thumb.setImageResource(android.R.drawable.ic_menu_gallery);
-            }
+            if (thumb != null && thumbnailUrl.isEmpty()) thumb.setImageResource(android.R.drawable.ic_menu_gallery);
         });
     }
 
@@ -400,24 +362,12 @@ public final class YouTubePlaybackManager {
                 }
                 MAIN.post(() -> {
                     radioLoading = false;
-                    for (QueueItem item : additions) {
-                        if (findQueueIndex(item.videoId) < 0) queue.add(item);
-                    }
-                    if (queueIndex + 1 < queue.size()) {
-                        playQueueItem(queueIndex + 1);
-                    } else {
-                        playing = false;
-                        updateMini();
-                        broadcastState();
-                    }
+                    for (QueueItem item : additions) if (findQueueIndex(item.videoId) < 0) queue.add(item);
+                    if (queueIndex + 1 < queue.size()) playQueueItem(queueIndex + 1);
+                    else { playing = false; updateMini(); broadcastState(); }
                 });
             } catch (Exception ignored) {
-                MAIN.post(() -> {
-                    radioLoading = false;
-                    playing = false;
-                    updateMini();
-                    broadcastState();
-                });
+                MAIN.post(() -> { radioLoading = false; playing = false; updateMini(); broadcastState(); });
             } finally {
                 if (connection != null) connection.disconnect();
             }
@@ -458,7 +408,9 @@ public final class YouTubePlaybackManager {
             this.videoId = videoId;
             this.title = TextUtils.isEmpty(title) ? "YouTube video" : title;
             this.channel = TextUtils.isEmpty(channel) ? "YouTube" : channel;
-            this.thumbnailUrl = thumbnailUrl == null ? "" : thumbnailUrl;
+            this.thumbnailUrl = TextUtils.isEmpty(thumbnailUrl)
+                    ? "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg"
+                    : thumbnailUrl;
         }
     }
 
