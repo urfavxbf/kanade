@@ -55,6 +55,7 @@ public final class YouTubePlayerController {
     private static boolean installed;
     private static boolean receiverRegistered;
     private static boolean localPlaying;
+    private static int localDuration;
 
     private static final Runnable BIND_POLL = new Runnable() {
         @Override
@@ -95,6 +96,9 @@ public final class YouTubePlayerController {
             localPlaying = intent.getBooleanExtra(
                     MusicPlayerService.EXTRA_IS_PLAYING,
                     false);
+            localDuration = intent.getIntExtra(
+                    MusicPlayerService.EXTRA_DURATION,
+                    localDuration);
 
             if (localPlaying && YouTubePlaybackManager.isActive()) {
                 YouTubePlaybackManager.stop();
@@ -313,8 +317,7 @@ public final class YouTubePlayerController {
                 if (total <= 0d) {
                     return;
                 }
-                double position = (progressValue / 1000d) * total;
-                elapsed.setText(formatTime(position));
+                elapsed.setText(formatTime((progressValue / 1000d) * total));
             }
 
             @Override
@@ -329,8 +332,7 @@ public final class YouTubePlayerController {
                 }
                 double total = YouTubePlaybackManager.getDurationSeconds();
                 if (total > 0d) {
-                    double position = (bar.getProgress() / 1000d) * total;
-                    YouTubePlaybackManager.seekTo(position);
+                    YouTubePlaybackManager.seekTo((bar.getProgress() / 1000d) * total);
                 }
                 fromUser = false;
             }
@@ -388,14 +390,13 @@ public final class YouTubePlayerController {
 
             @Override
             public void onStopTrackingTouch(SeekBar bar) {
-                if (!localPlaying) {
+                if (!localPlaying || localDuration <= 0) {
                     return;
                 }
+                int position = Math.round((bar.getProgress() / 1000f) * localDuration);
                 Intent intent = new Intent(bar.getContext(), MusicPlayerService.class);
                 intent.setAction(MusicPlayerService.ACTION_SEEK);
-                intent.putExtra(
-                        MusicPlayerService.EXTRA_SEEK_POSITION,
-                        bar.getProgress());
+                intent.putExtra(MusicPlayerService.EXTRA_SEEK_POSITION, position);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     bar.getContext().startForegroundService(intent);
                 } else {
