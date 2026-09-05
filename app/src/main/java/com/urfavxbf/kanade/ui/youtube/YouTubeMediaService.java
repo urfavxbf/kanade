@@ -128,6 +128,10 @@ public final class YouTubeMediaService extends Service {
         mediaSession.setCallback(new MediaSessionCompat.Callback() {
             @Override
             public void onPlay() {
+                if (YouTubePlaybackManager.isAudioOnly() && nativePlayer != null) {
+                    nativePlayer.play();
+                    return;
+                }
                 if (!YouTubePlaybackManager.isPlaying()) {
                     YouTubePlaybackManager.toggle();
                 }
@@ -135,6 +139,10 @@ public final class YouTubeMediaService extends Service {
 
             @Override
             public void onPause() {
+                if (YouTubePlaybackManager.isAudioOnly() && nativePlayer != null) {
+                    nativePlayer.pause();
+                    return;
+                }
                 if (YouTubePlaybackManager.isPlaying()) {
                     YouTubePlaybackManager.toggle();
                 }
@@ -192,10 +200,18 @@ public final class YouTubeMediaService extends Service {
                 stopSelf();
                 return START_NOT_STICKY;
             }
-            if (ACTION_PLAY.equals(action) && !YouTubePlaybackManager.isPlaying()) {
-                YouTubePlaybackManager.toggle();
-            } else if (ACTION_PAUSE.equals(action) && YouTubePlaybackManager.isPlaying()) {
-                YouTubePlaybackManager.toggle();
+            if (ACTION_PLAY.equals(action)) {
+                if (YouTubePlaybackManager.isAudioOnly() && nativePlayer != null) {
+                    nativePlayer.play();
+                } else if (!YouTubePlaybackManager.isPlaying()) {
+                    YouTubePlaybackManager.toggle();
+                }
+            } else if (ACTION_PAUSE.equals(action)) {
+                if (YouTubePlaybackManager.isAudioOnly() && nativePlayer != null) {
+                    nativePlayer.pause();
+                } else if (YouTubePlaybackManager.isPlaying()) {
+                    YouTubePlaybackManager.toggle();
+                }
             } else if (ACTION_NEXT.equals(action)) {
                 YouTubePlaybackManager.next();
             } else if (ACTION_PREVIOUS.equals(action)) {
@@ -264,15 +280,6 @@ public final class YouTubeMediaService extends Service {
 
         if (!currentId.equals(resolvedVideoId) && !resolving) {
             resolveAndPlay(currentId);
-            return;
-        }
-
-        if (currentId.equals(resolvedVideoId)) {
-            if (YouTubePlaybackManager.isPlaying()) {
-                nativePlayer.play();
-            } else {
-                nativePlayer.pause();
-            }
         }
     }
 
@@ -282,6 +289,7 @@ public final class YouTubeMediaService extends Service {
         nativePlayer.pause();
         nativePlayer.clearMediaItems();
 
+        final boolean shouldPlay = YouTubePlaybackManager.isPlaying();
         YouTubeNativeAudioResolver.resolve(this, currentId,
                 new YouTubeNativeAudioResolver.Callback() {
                     @Override
@@ -297,7 +305,7 @@ public final class YouTubeMediaService extends Service {
                             resolvedVideoId = currentId;
                             nativePlayer.setMediaItem(MediaItem.fromUri(url));
                             nativePlayer.prepare();
-                            if (YouTubePlaybackManager.isPlaying()) {
+                            if (shouldPlay || YouTubePlaybackManager.isPlaying()) {
                                 nativePlayer.play();
                             }
                             updateSession();
@@ -334,8 +342,7 @@ public final class YouTubeMediaService extends Service {
     }
 
     private void playPrevious() {
-        java.util.List<YouTubePlaybackManager.QueueItem> items =
-                YouTubePlaybackManager.getQueue();
+        java.util.List<YouTubePlaybackManager.QueueItem> items = YouTubePlaybackManager.getQueue();
         String currentId = YouTubePlaybackManager.getVideoId();
         for (int i = 0; i < items.size(); i++) {
             if (currentId.equals(items.get(i).videoId)) {
@@ -368,28 +375,21 @@ public final class YouTubeMediaService extends Service {
             position = Math.max(0L, nativePlayer.getCurrentPosition());
             duration = Math.max(0L, nativePlayer.getDuration());
         } else {
-            position = Math.max(0L,
-                    Math.round(YouTubePlaybackManager.getPositionSeconds() * 1000d));
-            duration = Math.max(0L,
-                    Math.round(YouTubePlaybackManager.getDurationSeconds() * 1000d));
+            position = Math.max(0L, Math.round(YouTubePlaybackManager.getPositionSeconds() * 1000d));
+            duration = Math.max(0L, Math.round(YouTubePlaybackManager.getDurationSeconds() * 1000d));
         }
 
         MediaMetadataCompat.Builder metadata = new MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, safeTitle())
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, safeChannel())
-                .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID,
-                        YouTubePlaybackManager.getVideoId());
+                .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, YouTubePlaybackManager.getVideoId());
         if (duration > 0L) {
             metadata.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration);
         }
         mediaSession.setMetadata(metadata.build());
 
-        boolean playing = nativeMode
-                ? nativePlayer.isPlaying()
-                : YouTubePlaybackManager.isPlaying();
-        int state = playing
-                ? PlaybackStateCompat.STATE_PLAYING
-                : PlaybackStateCompat.STATE_PAUSED;
+        boolean playing = nativeMode ? nativePlayer.isPlaying() : YouTubePlaybackManager.isPlaying();
+        int state = playing ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
         long actions = PlaybackStateCompat.ACTION_PLAY
                 | PlaybackStateCompat.ACTION_PAUSE
                 | PlaybackStateCompat.ACTION_PLAY_PAUSE
@@ -413,11 +413,8 @@ public final class YouTubeMediaService extends Service {
         Intent launchIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
         PendingIntent contentIntent = launchIntent == null
                 ? null
-                : PendingIntent.getActivity(
-                        this,
-                        0,
-                        launchIntent,
-                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                : PendingIntent.getActivity(this, 0, launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         boolean playing = YouTubePlaybackManager.isAudioOnly() && nativePlayer != null
                 ? nativePlayer.isPlaying()
@@ -434,43 +431,30 @@ public final class YouTubeMediaService extends Service {
                 .setStyle(new MediaStyle()
                         .setMediaSession(mediaSession == null ? null : mediaSession.getSessionToken())
                         .setShowActionsInCompactView(0, 1, 2))
-                .addAction(new NotificationCompat.Action(
-                        android.R.drawable.ic_media_previous,
-                        "Previous",
-                        actionPendingIntent(ACTION_PREVIOUS, 10)))
+                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_previous,
+                        "Previous", actionPendingIntent(ACTION_PREVIOUS, 10)))
                 .addAction(new NotificationCompat.Action(
                         playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                         playing ? "Pause" : "Play",
                         actionPendingIntent(playing ? ACTION_PAUSE : ACTION_PLAY, 11)))
-                .addAction(new NotificationCompat.Action(
-                        android.R.drawable.ic_media_next,
-                        "Next",
-                        actionPendingIntent(ACTION_NEXT, 12)))
+                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_next,
+                        "Next", actionPendingIntent(ACTION_NEXT, 12)))
                 .build();
     }
 
     private PendingIntent actionPendingIntent(String action, int requestCode) {
         Intent intent = new Intent(this, YouTubeMediaService.class).setAction(action);
-        return PendingIntent.getService(
-                this,
-                requestCode,
-                intent,
+        return PendingIntent.getService(this, requestCode, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            return;
-        }
-        NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID,
-                "YouTube playback",
-                NotificationManager.IMPORTANCE_LOW);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
+                "YouTube playback", NotificationManager.IMPORTANCE_LOW);
         channel.setDescription("Background controls for Kanade YouTube playback");
         NotificationManager manager = getSystemService(NotificationManager.class);
-        if (manager != null) {
-            manager.createNotificationChannel(channel);
-        }
+        if (manager != null) manager.createNotificationChannel(channel);
     }
 
     @NonNull
