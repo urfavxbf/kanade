@@ -92,6 +92,7 @@ public final class YouTubePlaybackManager {
     private static WeakReference<TextView> miniTitle = new WeakReference<>(null);
     private static WeakReference<TextView> miniArtist = new WeakReference<>(null);
     private static WeakReference<ImageButton> miniPlayPause = new WeakReference<>(null);
+    private static WeakReference<View> fullPlayerAlbumCard = new WeakReference<>(null);
 
     private YouTubePlaybackManager() {
     }
@@ -228,6 +229,13 @@ public final class YouTubePlaybackManager {
                     Gravity.CENTER);
             group.addView(player, 0, params);
         }
+
+        View albumCard = group.findViewById(R.id.fullPlayerAlbumCard);
+        if (albumCard != null) {
+            fullPlayerAlbumCard = new WeakReference<>(albumCard);
+            albumCard.setVisibility(View.GONE);
+        }
+
         player.setAlpha(audioOnly ? 0f : 1f);
         player.post(() -> resizeVideoPlayer(group));
     }
@@ -292,6 +300,10 @@ public final class YouTubePlaybackManager {
         if (player != null) player.evaluateJavascript("pauseYT();", null);
         playing = false;
         MAIN.removeCallbacks(PROGRESS_POLL);
+        View albumCard = fullPlayerAlbumCard.get();
+        if (albumCard != null) {
+            albumCard.setVisibility(View.VISIBLE);
+        }
         updateMini();
         broadcastState();
     }
