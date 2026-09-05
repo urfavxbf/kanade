@@ -85,6 +85,7 @@ public final class YouTubePlaybackManager {
     public static boolean isPlaying() { return playing; }
     public static boolean isAudioOnly() { return audioOnly; }
     public static boolean isRadioEnabled() { return radio; }
+    public static boolean isRadioLoading() { return radioLoading; }
     public static String getVideoId() { return videoId; }
     public static String getTitle() { return title; }
     public static String getChannel() { return channel; }
@@ -92,8 +93,7 @@ public final class YouTubePlaybackManager {
     public static List<QueueItem> getQueue() { return Collections.unmodifiableList(new ArrayList<>(queue)); }
 
     public static void addToQueue(String id, String songTitle, String songChannel, String thumb) {
-        if (TextUtils.isEmpty(id)) return;
-        for (QueueItem item : queue) if (id.equals(item.videoId)) return;
+        if (TextUtils.isEmpty(id) || findQueueIndex(id) >= 0) return;
         queue.add(new QueueItem(id, songTitle, songChannel, thumb));
         if (queueIndex < 0) queueIndex = 0;
         broadcastState();
@@ -106,8 +106,16 @@ public final class YouTubePlaybackManager {
     }
 
     public static void setRadioEnabled(boolean enabled) {
+        if (radio == enabled) {
+            broadcastState();
+            return;
+        }
         radio = enabled;
-        broadcastState();
+        if (enabled && isActive() && !hasUpcomingItem() && !radioLoading) {
+            fetchRadioAndPlay();
+        } else {
+            broadcastState();
+        }
     }
 
     public static void playQueueItem(int index) {
@@ -139,13 +147,18 @@ public final class YouTubePlaybackManager {
         videoId = id;
         title = TextUtils.isEmpty(songTitle) ? "YouTube video" : songTitle;
         channel = TextUtils.isEmpty(songChannel) ? "YouTube" : songChannel;
-        thumbnailUrl = TextUtils.isEmpty(thumb) ? "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg" : thumb;
+        thumbnailUrl = TextUtils.isEmpty(thumb)
+                ? "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg" : thumb;
         playing = false;
         audioOnly = compact;
 
         int existingIndex = findQueueIndex(id);
         if (existingIndex >= 0) {
             queueIndex = existingIndex;
+            QueueItem existing = queue.get(existingIndex);
+            if (TextUtils.isEmpty(existing.thumbnailUrl) && !thumbnailUrl.isEmpty()) {
+                queue.set(existingIndex, new QueueItem(id, title, channel, thumbnailUrl));
+            }
         } else {
             queue.add(new QueueItem(id, title, channel, thumbnailUrl));
             queueIndex = queue.size() - 1;
@@ -218,10 +231,7 @@ public final class YouTubePlaybackManager {
     }
 
     public static void showVideo() {
-        audioOnly = false;
-        if (player != null) player.setAlpha(1f);
-        updateMini();
-        broadcastState();
+        setAudioOnly(false);
     }
 
     public static void stop() {
@@ -248,8 +258,14 @@ public final class YouTubePlaybackManager {
     }
 
     private static int findQueueIndex(String id) {
-        for (int i = 0; i < queue.size(); i++) if (id.equals(queue.get(i).videoId)) return i;
+        for (int i = 0; i < queue.size(); i++) {
+            if (id.equals(queue.get(i).videoId)) return i;
+        }
         return -1;
+    }
+
+    private static boolean hasUpcomingItem() {
+        return queueIndex >= 0 && queueIndex + 1 < queue.size();
     }
 
     private static void detachFromParent() {
@@ -259,7 +275,10 @@ public final class YouTubePlaybackManager {
     }
 
     private static String escapeJs(String value) {
-        return value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");
+        return value.replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     private static void updateMini() {
@@ -272,12 +291,17 @@ public final class YouTubePlaybackManager {
             if (root == null) return;
             root.setVisibility(isActive() ? View.VISIBLE : View.GONE);
             if (titleView != null) titleView.setText(title);
-            if (artistView != null) artistView.setText(audioOnly ? channel + " • Audio only" : channel);
+            if (artistView != null) {
+                artistView.setText(audioOnly ? channel + " • Audio only" : channel);
+            }
             if (playPause != null) {
                 playPause.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
-                playPause.setContentDescription(playing ? "Pause YouTube playback" : "Play YouTube playback");
+                playPause.setContentDescription(playing
+                        ? "Pause YouTube playback" : "Play YouTube playback");
             }
-            if (thumb != null && thumbnailUrl.isEmpty()) thumb.setImageResource(android.R.drawable.ic_menu_gallery);
+            if (thumb != null && thumbnailUrl.isEmpty()) {
+                thumb.setImageResource(android.R.drawable.ic_menu_gallery);
+            }
         });
     }
 
@@ -312,18 +336,25 @@ public final class YouTubePlaybackManager {
     }
 
     private static void fetchRadioAndPlay() {
-        if (appContext == null || TextUtils.isEmpty(BuildConfig.YOUTUBE_API_KEY)) {
+        if (appContext == null || TextUtils.isEmpty(BuildConfig.YOUTUBE_API_KEY)
+                || TextUtils.isEmpty(videoId)) {
+            radioLoading = false;
             playing = false;
             updateMini();
             broadcastState();
             return;
         }
+
         radioLoading = true;
         broadcastState();
+        final String seedVideoId = videoId;
+        final String seedTitle = title;
+        final String seedChannel = channel;
+
         RADIO_EXECUTOR.execute(() -> {
             HttpURLConnection connection = null;
             try {
-                String query = URLEncoder.encode(title + " " + channel, "UTF-8");
+                String query = URLEncoder.encode(seedTitle + " " + seedChannel, "UTF-8");
                 String endpoint = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video"
                         + "&videoCategoryId=10&videoEmbeddable=true&videoSyndicated=true&maxResults=10&q="
                         + query + "&key=" + URLEncoder.encode(BuildConfig.YOUTUBE_API_KEY, "UTF-8");
@@ -336,7 +367,10 @@ public final class YouTubePlaybackManager {
                         ? connection.getInputStream() : connection.getErrorStream();
                 if (stream == null) throw new IllegalStateException("No YouTube radio response");
                 String response = readResponse(stream);
-                if (responseCode < 200 || responseCode >= 300) throw new IllegalStateException("YouTube radio failed");
+                if (responseCode < 200 || responseCode >= 300) {
+                    throw new IllegalStateException("YouTube radio failed");
+                }
+
                 JSONArray items = new JSONObject(response).optJSONArray("items");
                 ArrayList<QueueItem> additions = new ArrayList<>();
                 if (items != null) {
@@ -352,22 +386,45 @@ public final class YouTubePlaybackManager {
                         JSONObject thumbs = snippet.optJSONObject("thumbnails");
                         String thumb = "";
                         if (thumbs != null) {
+                            JSONObject high = thumbs.optJSONObject("high");
                             JSONObject medium = thumbs.optJSONObject("medium");
-                            if (medium != null) thumb = medium.optString("url", "").trim();
+                            if (high != null) thumb = high.optString("url", "").trim();
+                            if (TextUtils.isEmpty(thumb) && medium != null) {
+                                thumb = medium.optString("url", "").trim();
+                            }
                         }
-                        if (!TextUtils.isEmpty(idValue) && !idValue.equals(videoId)) {
+                        if (!TextUtils.isEmpty(idValue)
+                                && !idValue.equals(seedVideoId)
+                                && findQueueIndex(idValue) < 0) {
                             additions.add(new QueueItem(idValue, itemTitle, itemChannel, thumb));
                         }
                     }
                 }
+
                 MAIN.post(() -> {
                     radioLoading = false;
-                    for (QueueItem item : additions) if (findQueueIndex(item.videoId) < 0) queue.add(item);
-                    if (queueIndex + 1 < queue.size()) playQueueItem(queueIndex + 1);
-                    else { playing = false; updateMini(); broadcastState(); }
+                    if (!radio) {
+                        broadcastState();
+                        return;
+                    }
+                    for (QueueItem item : additions) {
+                        if (findQueueIndex(item.videoId) < 0) queue.add(item);
+                    }
+                    if (queueIndex + 1 < queue.size()) {
+                        playQueueItem(queueIndex + 1);
+                    } else {
+                        playing = false;
+                        updateMini();
+                        broadcastState();
+                    }
                 });
             } catch (Exception ignored) {
-                MAIN.post(() -> { radioLoading = false; playing = false; updateMini(); broadcastState(); });
+                MAIN.post(() -> {
+                    radioLoading = false;
+                    playing = false;
+                    updateMini();
+                    broadcastState();
+                });
             } finally {
                 if (connection != null) connection.disconnect();
             }
@@ -409,8 +466,7 @@ public final class YouTubePlaybackManager {
             this.title = TextUtils.isEmpty(title) ? "YouTube video" : title;
             this.channel = TextUtils.isEmpty(channel) ? "YouTube" : channel;
             this.thumbnailUrl = TextUtils.isEmpty(thumbnailUrl)
-                    ? "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg"
-                    : thumbnailUrl;
+                    ? "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg" : thumbnailUrl;
         }
     }
 
