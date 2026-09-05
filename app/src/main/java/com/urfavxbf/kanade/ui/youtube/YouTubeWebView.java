@@ -2,8 +2,6 @@ package com.urfavxbf.kanade.ui.youtube;
 
 import android.content.Context;
 import android.net.Uri;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.AttributeSet;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -28,21 +26,25 @@ public class YouTubeWebView extends WebView {
     private static final String APP_REFERRER = "https://" + APP_ID;
     private static final String YOUTUBE_EMBED = "https://www.youtube.com/embed/";
     private static final Pattern VIDEO_ID_PATTERN = Pattern.compile("videoId:'([^']+)'");
-    private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     public YouTubeWebView(Context context) {
         super(context);
-        configureClient();
+        installInternalClient();
     }
 
     public YouTubeWebView(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
-        configureClient();
+        installInternalClient();
     }
 
     public YouTubeWebView(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-        configureClient();
+        installInternalClient();
+    }
+
+    @Override
+    public void setWebViewClient(WebViewClient client) {
+        installInternalClient();
     }
 
     @Override
@@ -77,8 +79,8 @@ public class YouTubeWebView extends WebView {
         super.loadUrl(embedUrl, headers);
     }
 
-    private void configureClient() {
-        setWebViewClient(new WebViewClient() {
+    private void installInternalClient() {
+        super.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
