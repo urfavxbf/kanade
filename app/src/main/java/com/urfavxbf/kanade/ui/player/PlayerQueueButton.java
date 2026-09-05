@@ -7,23 +7,27 @@ import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.Build;
 import android.util.AttributeSet;
+import android.view.View;
 
 import androidx.appcompat.widget.AppCompatImageButton;
 import androidx.core.content.ContextCompat;
 
 import com.urfavxbf.kanade.AlbumColorManager;
+import com.urfavxbf.kanade.ui.youtube.YouTubePlaybackManager;
+import com.urfavxbf.kanade.ui.youtube.YouTubeQueueDialog;
 
 /**
  * Queue action button.
  *
- * Queue presentation is owned by PlayerFragment/QueueBottomSheet.
- * This view intentionally contains no second queue receiver or sheet
- * controller, preventing one queue request from opening two sheets.
+ * Local playback continues to use the existing QueueBottomSheet. When the
+ * process-scoped YouTube player is active, this button routes to the dedicated
+ * YouTube queue UI instead of the local music queue.
  */
 public class PlayerQueueButton extends AppCompatImageButton {
 
     private boolean colorReceiverRegistered;
     private int accentColor = Color.rgb(201, 196, 255);
+    private OnClickListener delegatedClickListener;
 
     private final BroadcastReceiver colorReceiver = new BroadcastReceiver() {
         @Override
@@ -51,6 +55,21 @@ public class PlayerQueueButton extends AppCompatImageButton {
 
     public PlayerQueueButton(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+    }
+
+    @Override
+    public void setOnClickListener(OnClickListener listener) {
+        delegatedClickListener = listener;
+        super.setOnClickListener(v -> {
+            if (YouTubePlaybackManager.isActive()) {
+                new YouTubeQueueDialog(getContext()).show();
+                return;
+            }
+
+            if (delegatedClickListener != null) {
+                delegatedClickListener.onClick(v);
+            }
+        });
     }
 
     @Override
