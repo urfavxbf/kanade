@@ -12,7 +12,6 @@ import androidx.annotation.Nullable;
  */
 public class YouTubeWebView extends WebView {
     private static final String APP_ORIGIN = "https://com.urfavxbf.kanade";
-    private static final String YOUTUBE_ORIGIN = "https://www.youtube.com";
 
     public YouTubeWebView(Context context) {
         super(context);
@@ -43,10 +42,5 @@ public class YouTubeWebView extends WebView {
                 mimeType,
                 encoding,
                 APP_ORIGIN + "/");
-    }
-
-    @Override
-    public void loadUrl(String url) {
-        super.loadUrl(url);
     }
 }
