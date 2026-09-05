@@ -1,6 +1,8 @@
 package com.urfavxbf.kanade.ui.youtube;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.AttributeSet;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
@@ -19,7 +21,20 @@ import androidx.annotation.Nullable;
 public final class YouTubeGestureOverlay extends View {
 
     private static final double SEEK_SECONDS = 10d;
+    private static final long STATE_POLL_MS = 250L;
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final GestureDetector gestureDetector;
+    private final Runnable statePoll = new Runnable() {
+        @Override
+        public void run() {
+            if (!isAttachedToWindow()) {
+                return;
+            }
+            setVisibility(YouTubePlaybackManager.isActive() ? VISIBLE : GONE);
+            mainHandler.postDelayed(this, STATE_POLL_MS);
+        }
+    };
 
     public YouTubeGestureOverlay(Context context) {
         this(context, null);
@@ -60,6 +75,19 @@ public final class YouTubeGestureOverlay extends View {
                 return true;
             }
         });
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        mainHandler.removeCallbacks(statePoll);
+        mainHandler.post(statePoll);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        mainHandler.removeCallbacks(statePoll);
+        super.onDetachedFromWindow();
     }
 
     @Override
