@@ -19,7 +19,9 @@ public final class YouTubeMediaPlaybackReceiver extends BroadcastReceiver {
         }
 
         Context applicationContext = context.getApplicationContext();
-        YouTubePlaybackKeepAlive.install((android.app.Application) applicationContext);
+        if (!intent.getBooleanExtra(YouTubePlaybackManager.EXTRA_AUDIO_ONLY, false)) {
+            YouTubePlaybackKeepAlive.install((android.app.Application) applicationContext);
+        }
 
         Intent serviceIntent = new Intent(applicationContext, YouTubeMediaService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
