@@ -8,15 +8,14 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Build;
 import android.text.TextUtils;
+import android.util.AttributeSet;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 
 import com.urfavxbf.kanade.R;
@@ -116,9 +115,14 @@ public class YouTubeFullPlayerView extends LinearLayout {
             String current = YouTubePlaybackManager.getVideoId();
             int index = -1;
             for (int i = 0; i < items.size(); i++) {
-                if (current.equals(items.get(i).videoId)) { index = i; break; }
+                if (current.equals(items.get(i).videoId)) {
+                    index = i;
+                    break;
+                }
             }
-            if (index > 0) YouTubePlaybackManager.playQueueItem(index - 1);
+            if (index > 0) {
+                YouTubePlaybackManager.playQueueItem(index - 1);
+            }
         });
 
         playPause = button(R.drawable.ic_play, "Play or pause YouTube playback");
@@ -147,6 +151,14 @@ public class YouTubeFullPlayerView extends LinearLayout {
             }
         };
         registerReceiver();
+    }
+
+    public YouTubeFullPlayerView(Context context, AttributeSet attrs) {
+        this(context);
+    }
+
+    public YouTubeFullPlayerView(Context context, AttributeSet attrs, int defStyleAttr) {
+        this(context);
     }
 
     private ImageButton button(int drawable, String description) {
@@ -187,7 +199,9 @@ public class YouTubeFullPlayerView extends LinearLayout {
         post(() -> {
             boolean active = YouTubePlaybackManager.isActive();
             setVisibility(active ? VISIBLE : GONE);
-            if (!active) return;
+            if (!active) {
+                return;
+            }
 
             title.setText(YouTubePlaybackManager.getTitle());
             channel.setText(YouTubePlaybackManager.getChannel());
@@ -244,17 +258,25 @@ public class YouTubeFullPlayerView extends LinearLayout {
         }
         imageExecutor.execute(() -> {
             Bitmap bitmap = download(url);
-            if (bitmap != null) mainHandler.post(() -> {
-                if (url.equals(YouTubePlaybackManager.getThumbnailUrl())) artwork.setImageBitmap(bitmap);
-            });
+            if (bitmap != null) {
+                mainHandler.post(() -> {
+                    if (url.equals(YouTubePlaybackManager.getThumbnailUrl())) {
+                        artwork.setImageBitmap(bitmap);
+                    }
+                });
+            }
         });
     }
 
     private void loadRowArtwork(ImageView target, String url) {
-        if (TextUtils.isEmpty(url)) return;
+        if (TextUtils.isEmpty(url)) {
+            return;
+        }
         imageExecutor.execute(() -> {
             Bitmap bitmap = download(url);
-            if (bitmap != null) mainHandler.post(() -> target.setImageBitmap(bitmap));
+            if (bitmap != null) {
+                mainHandler.post(() -> target.setImageBitmap(bitmap));
+            }
         });
     }
 
@@ -271,7 +293,9 @@ public class YouTubeFullPlayerView extends LinearLayout {
         } catch (Exception ignored) {
             return null;
         } finally {
-            if (connection != null) connection.disconnect();
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
