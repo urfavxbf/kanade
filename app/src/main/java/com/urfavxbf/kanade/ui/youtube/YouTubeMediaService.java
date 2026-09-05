@@ -22,6 +22,7 @@ import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
+import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
@@ -114,6 +115,12 @@ public final class YouTubeMediaService extends Service {
         createNotificationChannel();
 
         nativePlayer = new ExoPlayer.Builder(this).build();
+        nativePlayer.setAudioAttributes(
+                new AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                        .build(),
+                true);
         nativePlayer.setWakeMode(C.WAKE_MODE_NETWORK);
         nativePlayer.addListener(playerListener);
 
@@ -197,7 +204,18 @@ public final class YouTubeMediaService extends Service {
         }
         syncNativePlayback();
         updateSession();
-        return START_NOT_STICKY;
+        return START_STICKY;
+    }
+
+    @Override
+    public void onTaskRemoved(@Nullable Intent rootIntent) {
+        if (nativePlayer != null && nativePlayer.isPlaying()) {
+            return;
+        }
+        if (YouTubePlaybackManager.isPlaying() && YouTubePlaybackManager.isAudioOnly()) {
+            return;
+        }
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
@@ -262,6 +280,7 @@ public final class YouTubeMediaService extends Service {
         resolving = true;
         resolvedVideoId = "";
         nativePlayer.pause();
+        nativePlayer.clearMediaItems();
 
         YouTubeNativeAudioResolver.resolve(this, currentId,
                 new YouTubeNativeAudioResolver.Callback() {
