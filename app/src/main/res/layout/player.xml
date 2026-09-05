@@ -102,6 +102,13 @@
                 </androidx.cardview.widget.CardView>
             </androidx.constraintlayout.widget.ConstraintLayout>
 
+            <com.urfavxbf.kanade.ui.youtube.YouTubeGestureOverlay
+                android:id="@+id/youtubeGestureOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:elevation="20dp"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/btnYouTubeAudioOnly"
                 android:layout_width="wrap_content"
