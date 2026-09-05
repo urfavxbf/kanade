@@ -13,7 +13,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.SeekBar;
@@ -21,7 +20,6 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
-import androidx.core.content.ContextCompat;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.urfavxbf.kanade.MusicPlayerService;
@@ -37,8 +35,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Bridges the process-scoped YouTube playback state into Kanade's existing
- * full player. This class owns no player UI of its own.
+ * Bridges process-scoped YouTube playback into Kanade's existing full player.
+ * This class owns no player layout of its own.
  */
 public final class YouTubePlayerController {
 
@@ -51,9 +49,9 @@ public final class YouTubePlayerController {
             });
 
     private static WeakReference<Activity> activityReference = new WeakReference<>(null);
+    private static WeakReference<View> boundPlayerRoot = new WeakReference<>(null);
     private static boolean installed;
     private static boolean receiverRegistered;
-    private static boolean controlsBound;
 
     private static final Runnable BIND_POLL = new Runnable() {
         @Override
@@ -72,7 +70,8 @@ public final class YouTubePlayerController {
     private static final BroadcastReceiver youtubeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent == null || !YouTubePlaybackManager.ACTION_STATE_CHANGED.equals(intent.getAction())) {
+            if (intent == null
+                    || !YouTubePlaybackManager.ACTION_STATE_CHANGED.equals(intent.getAction())) {
                 return;
             }
             Activity activity = activityReference.get();
@@ -85,7 +84,8 @@ public final class YouTubePlayerController {
     private static final BroadcastReceiver localPlayerReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent == null || !MusicPlayerService.ACTION_STATE_CHANGED.equals(intent.getAction())) {
+            if (intent == null
+                    || !MusicPlayerService.ACTION_STATE_CHANGED.equals(intent.getAction())) {
                 return;
             }
 
@@ -125,10 +125,6 @@ public final class YouTubePlayerController {
             return;
         }
 
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(YouTubePlaybackManager.ACTION_STATE_CHANGED);
-        filter.addAction(MusicPlayerService.ACTION_STATE_CHANGED);
-
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.registerReceiver(
@@ -156,7 +152,9 @@ public final class YouTubePlayerController {
     private static void registerLifecycleCallbacks(Application application) {
         application.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
             @Override
-            public void onActivityCreated(@NonNull Activity activity, android.os.Bundle savedInstanceState) {
+            public void onActivityCreated(
+                    @NonNull Activity activity,
+                    android.os.Bundle savedInstanceState) {
                 activityReference = new WeakReference<>(activity);
                 MAIN.post(() -> bind(activity));
             }
@@ -181,7 +179,9 @@ public final class YouTubePlayerController {
             }
 
             @Override
-            public void onActivitySaveInstanceState(@NonNull Activity activity, @NonNull android.os.Bundle outState) {
+            public void onActivitySaveInstanceState(
+                    @NonNull Activity activity,
+                    @NonNull android.os.Bundle outState) {
             }
 
             @Override
@@ -190,12 +190,17 @@ public final class YouTubePlayerController {
                 if (current == activity) {
                     activityReference.clear();
                 }
+                View root = boundPlayerRoot.get();
+                if (root != null && root.getContext() == activity) {
+                    boundPlayerRoot.clear();
+                }
             }
         });
     }
 
     private static void bind(Activity activity) {
-        if (activity.isFinishing() || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1
+        if (activity.isFinishing()
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1
                 && activity.isDestroyed())) {
             return;
         }
@@ -220,24 +225,33 @@ public final class YouTubePlayerController {
         TextView audioOnlyButton = activity.findViewById(R.id.btnYouTubeAudioOnly);
         TextView radioButton = activity.findViewById(R.id.btnYouTubeRadio);
 
-        if (title == null || artist == null || elapsed == null || duration == null
-                || artwork == null || seekBar == null || playPause == null
-                || previous == null || next == null || queueButton == null
-                || audioOnlyButton == null || radioButton == null) {
+        if (title == null
+                || artist == null
+                || elapsed == null
+                || duration == null
+                || artwork == null
+                || seekBar == null
+                || playPause == null
+                || previous == null
+                || next == null
+                || queueButton == null
+                || audioOnlyButton == null
+                || radioButton == null) {
             return;
         }
 
         boolean youtubeActive = YouTubePlaybackManager.isActive();
         if (!youtubeActive) {
-            if (shuffleButton != null) {
-                shuffleButton.setVisibility(View.VISIBLE);
-            }
-            if (repeatButton != null) {
-                repeatButton.setVisibility(View.VISIBLE);
-            }
-            audioOnlyButton.setVisibility(View.GONE);
-            radioButton.setVisibility(View.GONE);
-            controlsBound = false;
+            restoreLocalPlayerControls(
+                    playPause,
+                    previous,
+                    next,
+                    queueButton,
+                    seekBar,
+                    shuffleButton,
+                    repeatButton,
+                    audioOnlyButton,
+                    radioButton);
             return;
         }
 
@@ -257,70 +271,112 @@ public final class YouTubePlayerController {
         elapsed.setText(formatTime(YouTubePlaybackManager.getPositionSeconds()));
         duration.setText(formatTime(YouTubePlaybackManager.getDurationSeconds()));
 
-        int max = 1000;
-        seekBar.setMax(max);
+        seekBar.setMax(1000);
         double currentDuration = YouTubePlaybackManager.getDurationSeconds();
         double currentPosition = YouTubePlaybackManager.getPositionSeconds();
         int progress = currentDuration > 0d
-                ? (int) Math.round((currentPosition / currentDuration) * max)
+                ? (int) Math.round((currentPosition / currentDuration) * 1000d)
                 : 0;
-        seekBar.setProgress(Math.max(0, Math.min(max, progress)));
+        seekBar.setProgress(Math.max(0, Math.min(1000, progress)));
 
         loadArtwork(artwork, YouTubePlaybackManager.getThumbnailUrl());
         updatePlayPause(playPause);
         updateModeButtons(audioOnlyButton, radioButton);
 
-        if (!controlsBound) {
-            controlsBound = true;
+        View previousRoot = boundPlayerRoot.get();
+        if (previousRoot == playerVisualContainer) {
+            return;
+        }
 
-            playPause.setOnClickListener(v -> YouTubePlaybackManager.toggle());
-            previous.setOnClickListener(v -> previousYouTubeItem());
-            next.setOnClickListener(v -> YouTubePlaybackManager.next());
+        boundPlayerRoot = new WeakReference<>(playerVisualContainer);
+        playPause.setOnClickListener(v -> YouTubePlaybackManager.toggle());
+        previous.setOnClickListener(v -> previousYouTubeItem());
+        next.setOnClickListener(v -> YouTubePlaybackManager.next());
+        audioOnlyButton.setOnClickListener(v ->
+                YouTubePlaybackManager.setAudioOnly(!YouTubePlaybackManager.isAudioOnly()));
+        radioButton.setOnClickListener(v ->
+                YouTubePlaybackManager.setRadioEnabled(!YouTubePlaybackManager.isRadioEnabled()));
+        queueButton.setOnClickListener(v -> showYouTubeQueue(activity));
 
-            audioOnlyButton.setOnClickListener(v ->
-                    YouTubePlaybackManager.setAudioOnly(!YouTubePlaybackManager.isAudioOnly()));
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            private boolean fromUser;
 
-            radioButton.setOnClickListener(v ->
-                    YouTubePlaybackManager.setRadioEnabled(!YouTubePlaybackManager.isRadioEnabled()));
-
-            queueButton.setOnClickListener(v -> showYouTubeQueue(activity));
-
-            seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                private boolean fromUser;
-
-                @Override
-                public void onProgressChanged(SeekBar bar, int progressValue, boolean user) {
-                    fromUser = user;
-                    if (!user) {
-                        return;
-                    }
-                    double total = YouTubePlaybackManager.getDurationSeconds();
-                    if (total <= 0d) {
-                        return;
-                    }
-                    double position = (progressValue / 1000d) * total;
-                    elapsed.setText(formatTime(position));
+            @Override
+            public void onProgressChanged(
+                    SeekBar bar,
+                    int progressValue,
+                    boolean user) {
+                fromUser = user;
+                if (!user) {
+                    return;
                 }
-
-                @Override
-                public void onStartTrackingTouch(SeekBar bar) {
-                    fromUser = true;
+                double total = YouTubePlaybackManager.getDurationSeconds();
+                if (total <= 0d) {
+                    return;
                 }
+                double position = (progressValue / 1000d) * total;
+                elapsed.setText(formatTime(position));
+            }
 
-                @Override
-                public void onStopTrackingTouch(SeekBar bar) {
-                    if (!fromUser) {
-                        return;
-                    }
-                    double total = YouTubePlaybackManager.getDurationSeconds();
-                    if (total <= 0d) {
-                        return;
-                    }
+            @Override
+            public void onStartTrackingTouch(SeekBar bar) {
+                fromUser = true;
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar bar) {
+                if (!fromUser) {
+                    return;
+                }
+                double total = YouTubePlaybackManager.getDurationSeconds();
+                if (total > 0d) {
                     double position = (bar.getProgress() / 1000d) * total;
                     YouTubePlaybackManager.seekTo(position);
-                    fromUser = false;
                 }
-            });
+                fromUser = false;
+            }
+        });
+    }
+
+    private static void restoreLocalPlayerControls(
+            ImageButton playPause,
+            ImageButton previous,
+            ImageButton next,
+            View queueButton,
+            SeekBar seekBar,
+            View shuffleButton,
+            View repeatButton,
+            TextView audioOnlyButton,
+            TextView radioButton) {
+        if (shuffleButton != null) {
+            shuffleButton.setVisibility(View.VISIBLE);
+        }
+        if (repeatButton != null) {
+            repeatButton.setVisibility(View.VISIBLE);
+        }
+        audioOnlyButton.setVisibility(View.GONE);
+        radioButton.setVisibility(View.GONE);
+
+        playPause.setOnClickListener(v -> sendLocalAction(v, MusicPlayerService.ACTION_PLAY));
+        previous.setOnClickListener(v -> sendLocalAction(v, MusicPlayerService.ACTION_PREVIOUS));
+        next.setOnClickListener(v -> sendLocalAction(v, MusicPlayerService.ACTION_NEXT));
+        queueButton.setOnClickListener(v -> {
+            // PlayerFragment owns the local queue sheet; this listener is restored
+            // by recreating the destination view when the local player is opened.
+        });
+
+        seekBar.setOnSeekBarChangeListener(null);
+        boundPlayerRoot.clear();
+    }
+
+    private static void sendLocalAction(View view, String action) {
+        Context context = view.getContext();
+        Intent intent = new Intent(context, MusicPlayerService.class);
+        intent.setAction(action);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent);
+        } else {
+            context.startService(intent);
         }
     }
 
@@ -352,8 +408,10 @@ public final class YouTubePlayerController {
     }
 
     private static void updateModeButtons(TextView audioOnlyButton, TextView radioButton) {
-        audioOnlyButton.setText(YouTubePlaybackManager.isAudioOnly() ? "VIDEO" : "AUDIO");
-        radioButton.setText(YouTubePlaybackManager.isRadioEnabled() ? "MIX ON" : "MIX");
+        audioOnlyButton.setText(
+                YouTubePlaybackManager.isAudioOnly() ? "VIDEO" : "AUDIO");
+        radioButton.setText(
+                YouTubePlaybackManager.isRadioEnabled() ? "MIX ON" : "MIX");
     }
 
     private static void showYouTubeQueue(Activity activity) {
@@ -373,17 +431,18 @@ public final class YouTubePlayerController {
             }
         }
 
-        final AlertDialog[] dialogHolder = new AlertDialog[1];
-        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity)
-                .setTitle(YouTubePlaybackManager.isRadioEnabled() ? "YouTube Mix Queue" : "YouTube Queue")
-                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+        AlertDialog dialog = new MaterialAlertDialogBuilder(activity)
+                .setTitle(
+                        YouTubePlaybackManager.isRadioEnabled()
+                                ? "YouTube Mix Queue"
+                                : "YouTube Queue")
+                .setSingleChoiceItems(labels, checked, (dialogInterface, which) -> {
                     YouTubePlaybackManager.playQueueItem(which);
-                    dialog.dismiss();
+                    dialogInterface.dismiss();
                 })
-                .setNegativeButton("Close", null);
-
-        dialogHolder[0] = builder.create();
-        dialogHolder[0].show();
+                .setNegativeButton("Close", null)
+                .create();
+        dialog.show();
     }
 
     private static void loadArtwork(ImageView target, String url) {
@@ -437,9 +496,18 @@ public final class YouTubePlayerController {
         if (minutes >= 60L) {
             long hours = minutes / 60L;
             minutes %= 60L;
-            return String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, remainingSeconds);
+            return String.format(
+                    Locale.getDefault(),
+                    "%d:%02d:%02d",
+                    hours,
+                    minutes,
+                    remainingSeconds);
         }
-        return String.format(Locale.getDefault(), "%d:%02d", minutes, remainingSeconds);
+        return String.format(
+                Locale.getDefault(),
+                "%d:%02d",
+                minutes,
+                remainingSeconds);
     }
 
     private static String safeText(String value, String fallback) {
