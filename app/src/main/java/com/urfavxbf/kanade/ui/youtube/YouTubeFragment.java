@@ -9,16 +9,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
-import android.util.LruCache;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
-import android.webkit.JavascriptInterface;
-import android.webkit.WebSettings;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -103,14 +99,46 @@ public class YouTubeFragment extends Fragment {
         adapter = new ResultAdapter(this::playVideo, searchExecutor, mainHandler);
         resultsRecycler.setLayoutManager(new LinearLayoutManager(requireContext()));
         resultsRecycler.setAdapter(adapter);
-        configurePlayer();
+
+        View globalMiniRoot = requireActivity().findViewById(R.id.bottomPart);
+        View globalMini = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniPlayerRoot);
+        ImageView globalThumb = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniAlbumArt);
+        TextView globalTitle = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniTitle);
+        TextView globalArtist = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniArtist);
+        ImageButton globalPlayPause = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniPlayPause);
+        if (globalMini != null && globalThumb != null && globalTitle != null && globalArtist != null
+                && globalPlayPause != null) {
+            YouTubePlaybackManager.setMiniViews(globalMini, globalThumb, globalTitle, globalArtist, globalPlayPause);
+            android.content.Context appContext = requireContext().getApplicationContext();
+            globalPlayPause.setOnClickListener(v -> {
+                if (YouTubePlaybackManager.isActive()) {
+                    YouTubePlaybackManager.toggle();
+                } else {
+                    android.content.Intent intent = new android.content.Intent(appContext,
+                            com.urfavxbf.kanade.MusicPlayerService.class);
+                    intent.setAction(com.urfavxbf.kanade.MusicPlayerService.ACTION_PLAY);
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        androidx.core.content.ContextCompat.startForegroundService(appContext, intent);
+                    } else {
+                        appContext.startService(intent);
+                    }
+                }
+            });
+        }
 
         audioOnlyCheck.setOnCheckedChangeListener((buttonView, checked) -> {
             isAudioOnly = checked;
-            updatePlayerMode();
+            YouTubePlaybackManager.setAudioOnly(checked);
+            if (checked) {
+                miniPlayer.setVisibility(View.VISIBLE);
+                statusText.setText("Audio only • YouTube playback");
+            } else {
+                miniPlayer.setVisibility(View.GONE);
+                statusText.setText("YouTube video");
+            }
         });
 
-        miniPlayPause.setOnClickListener(v -> toggleYouTubePlayback());
+        miniPlayPause.setOnClickListener(v -> YouTubePlaybackManager.toggle());
         miniExpand.setOnClickListener(v -> showVideoPlayer());
         miniPlayer.setOnClickListener(v -> showVideoPlayer());
 
@@ -122,6 +150,13 @@ public class YouTubeFragment extends Fragment {
             }
             return false;
         });
+
+        if (YouTubePlaybackManager.isActive()) {
+            playerFrame.setVisibility(View.VISIBLE);
+            YouTubePlaybackManager.attachTo(playerFrame);
+            isAudioOnly = false;
+            miniPlayer.setVisibility(View.GONE);
+        }
     }
 
     private void searchOrPlayDirectLink() {
@@ -151,10 +186,9 @@ public class YouTubeFragment extends Fragment {
             HttpURLConnection connection = null;
             try {
                 String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8.name());
-                String endpoint = "https://www.googleapis.com/youtube/v3/search"
-                        + "?part=snippet&type=video&videoCategoryId=10"
-                        + "&videoEmbeddable=true&videoSyndicated=true&maxResults=15"
-                        + "&q=" + encodedQuery + "&key="
+                String endpoint = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video"
+                        + "&videoCategoryId=10&videoEmbeddable=true&videoSyndicated=true&maxResults=15&q="
+                        + encodedQuery + "&key="
                         + URLEncoder.encode(BuildConfig.YOUTUBE_API_KEY, StandardCharsets.UTF_8.name());
                 connection = (HttpURLConnection) new URL(endpoint).openConnection();
                 connection.setConnectTimeout(10000);
@@ -164,16 +198,12 @@ public class YouTubeFragment extends Fragment {
                 int responseCode = connection.getResponseCode();
                 InputStream stream = responseCode >= 200 && responseCode < 300
                         ? connection.getInputStream() : connection.getErrorStream();
-                if (stream == null) {
-                    throw new IllegalStateException("YouTube returned no response");
-                }
+                if (stream == null) throw new IllegalStateException("YouTube returned no response");
                 String response = readResponse(stream);
                 if (responseCode < 200 || responseCode >= 300) {
-                    JSONObject error = new JSONObject(response);
-                    JSONObject errorObject = error.optJSONObject("error");
-                    String message = errorObject == null ? "YouTube search failed"
-                            : errorObject.optString("message", "YouTube search failed");
-                    throw new IllegalStateException(message);
+                    JSONObject error = new JSONObject(response).optJSONObject("error");
+                    throw new IllegalStateException(error == null ? "YouTube search failed"
+                            : error.optString("message", "YouTube search failed"));
                 }
                 JSONArray items = new JSONObject(response).optJSONArray("items");
                 if (items != null) {
@@ -186,33 +216,31 @@ public class YouTubeFragment extends Fragment {
                         String videoId = id.optString("videoId", "").trim();
                         String title = snippet.optString("title", "").trim();
                         String channel = snippet.optString("channelTitle", "").trim();
-                        String thumbnailUrl = "";
+                        String thumbnail = "";
                         JSONObject thumbnails = snippet.optJSONObject("thumbnails");
                         if (thumbnails != null) {
                             JSONObject medium = thumbnails.optJSONObject("medium");
                             JSONObject high = thumbnails.optJSONObject("high");
                             JSONObject selected = medium != null ? medium : high;
-                            if (selected != null) thumbnailUrl = selected.optString("url", "").trim();
+                            if (selected != null) thumbnail = selected.optString("url", "").trim();
                         }
                         if (!videoId.isEmpty() && !title.isEmpty()) {
-                            results.add(new YouTubeResult(videoId, title, channel, thumbnailUrl));
+                            results.add(new YouTubeResult(videoId, title, channel, thumbnail));
                         }
                     }
                 }
-                final ArrayList<YouTubeResult> finalResults = results;
+                ArrayList<YouTubeResult> finalResults = results;
                 mainHandler.post(() -> {
                     if (!isAdded() || getView() == null) return;
                     adapter.setItems(finalResults);
-                    statusText.setText(finalResults.isEmpty()
-                            ? "No YouTube music results found." : finalResults.size() + " results");
+                    statusText.setText(finalResults.isEmpty() ? "No YouTube music results found."
+                            : finalResults.size() + " results");
                 });
             } catch (Exception e) {
-                String message = e.getMessage();
-                if (TextUtils.isEmpty(message)) message = "Unknown YouTube error";
-                final String finalMessage = message;
+                String message = TextUtils.isEmpty(e.getMessage()) ? "Unknown YouTube error" : e.getMessage();
                 mainHandler.post(() -> {
                     if (!isAdded() || getView() == null) return;
-                    statusText.setText("YouTube search failed: " + finalMessage);
+                    statusText.setText("YouTube search failed: " + message);
                 });
             } finally {
                 if (connection != null) connection.disconnect();
@@ -220,129 +248,39 @@ public class YouTubeFragment extends Fragment {
         });
     }
 
-    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
-    private void configurePlayer() {
-        WebSettings settings = playerWebView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setMediaPlaybackRequiresUserGesture(true);
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        playerWebView.setBackgroundColor(Color.BLACK);
-        playerWebView.addJavascriptInterface(new YouTubeBridge(), "KanadePlayer");
-        playerWebView.setWebViewClient(new WebViewClient());
-    }
-
     private void playVideo(YouTubeResult result) {
         if (!isAdded() || result == null || result.videoId.isEmpty()) return;
-
         currentVideoId = result.videoId;
-        isYouTubePlaying = false;
         playerTitle.setText(result.title);
         playerFrame.setVisibility(View.VISIBLE);
         playerTitle.setVisibility(View.VISIBLE);
-        miniTitle.setText(result.title);
-        miniArtist.setText(TextUtils.isEmpty(result.channel) ? "YouTube" : result.channel);
-        miniPlayer.setVisibility(View.GONE);
-        miniPlayPause.setImageResource(R.drawable.ic_pause);
         statusText.setText(result.channel.isEmpty() ? "Opening YouTube player…" : result.channel);
-
-        if (!result.thumbnailUrl.isEmpty()) {
-            loadMiniThumbnail(result.thumbnailUrl);
-        } else {
-            miniThumbnail.setImageResource(android.R.drawable.ic_menu_gallery);
-        }
-
-        String escapedVideoId = TextUtils.htmlEncode(result.videoId);
-        String playerHtml = "<!doctype html><html><head>"
-                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-                + "<style>html,body,#player{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden;}"
-                + "iframe{border:0;width:100%;height:100%;display:block;}</style></head><body>"
-                + "<div id=\"player\"></div>"
-                + "<script>"
-                + "var player;"
-                + "function onYouTubeIframeAPIReady(){"
-                + "player=new YT.Player('player',{height:'100%',width:'100%',videoId:'" + escapedVideoId + "',"
-                + "playerVars:{playsinline:1,rel:0,controls:1,enablejsapi:1,origin:'https://com.urfavxbf.kanade'},"
-                + "events:{onReady:onPlayerReady,onStateChange:onPlayerStateChange,onError:onPlayerError}});"
-                + "}"
-                + "function onPlayerReady(){KanadePlayer.ready();}"
-                + "function onPlayerStateChange(e){KanadePlayer.state(e.data);}"
-                + "function onPlayerError(e){KanadePlayer.error(e.data);}"
-                + "function playYT(){if(player)player.playVideo();}"
-                + "function pauseYT(){if(player)player.pauseVideo();}"
-                + "</script>"
-                + "<script src=\"https://www.youtube.com/iframe_api\"></script>"
-                + "</body></html>";
-
-        playerWebView.setAlpha(1f);
-        playerWebView.loadDataWithBaseURL("https://com.urfavxbf.kanade/", playerHtml, "text/html",
-                "UTF-8", "https://com.urfavxbf.kanade/");
-        if (isAudioOnly) updatePlayerMode();
-    }
-
-    private void updatePlayerMode() {
-        if (playerFrame == null || playerWebView == null) return;
-        if (isAudioOnly && !currentVideoId.isEmpty()) {
-            playerWebView.setAlpha(0f);
+        isAudioOnly = audioOnlyCheck.isChecked();
+        YouTubePlaybackManager.play(requireContext(), result.videoId, result.title, result.channel,
+                result.thumbnailUrl, isAudioOnly);
+        YouTubePlaybackManager.attachTo(playerFrame);
+        if (isAudioOnly) {
             miniPlayer.setVisibility(View.VISIBLE);
             statusText.setText("Audio only • YouTube playback");
         } else {
-            showVideoPlayer();
+            miniPlayer.setVisibility(View.GONE);
         }
     }
 
     private void showVideoPlayer() {
         isAudioOnly = false;
-        if (audioOnlyCheck != null && audioOnlyCheck.isChecked()) {
-            audioOnlyCheck.setOnCheckedChangeListener(null);
-            audioOnlyCheck.setChecked(false);
-            audioOnlyCheck.setOnCheckedChangeListener((buttonView, checked) -> {
-                isAudioOnly = checked;
-                updatePlayerMode();
-            });
-        }
-        playerWebView.setAlpha(1f);
+        audioOnlyCheck.setOnCheckedChangeListener(null);
+        audioOnlyCheck.setChecked(false);
+        audioOnlyCheck.setOnCheckedChangeListener((buttonView, checked) -> {
+            isAudioOnly = checked;
+            YouTubePlaybackManager.setAudioOnly(checked);
+            miniPlayer.setVisibility(checked ? View.VISIBLE : View.GONE);
+        });
+        YouTubePlaybackManager.showVideo();
+        YouTubePlaybackManager.attachTo(playerFrame);
+        playerWebView.setVisibility(View.GONE);
         miniPlayer.setVisibility(View.GONE);
         if (!currentVideoId.isEmpty()) statusText.setText("YouTube video");
-    }
-
-    private void toggleYouTubePlayback() {
-        if (playerWebView == null || currentVideoId.isEmpty()) return;
-        if (isYouTubePlaying) {
-            playerWebView.evaluateJavascript("pauseYT();", null);
-        } else {
-            playerWebView.evaluateJavascript("playYT();", null);
-        }
-    }
-
-    private void loadMiniThumbnail(String thumbnailUrl) {
-        if (searchExecutor == null || mainHandler == null) return;
-        searchExecutor.execute(() -> {
-            Bitmap bitmap = loadThumbnail(thumbnailUrl);
-            if (bitmap == null) return;
-            mainHandler.post(() -> {
-                if (miniThumbnail != null && isAdded()) miniThumbnail.setImageBitmap(bitmap);
-            });
-        });
-    }
-
-    private Bitmap loadThumbnail(String thumbnailUrl) {
-        HttpURLConnection connection = null;
-        try {
-            connection = (HttpURLConnection) new URL(thumbnailUrl).openConnection();
-            connection.setConnectTimeout(8000);
-            connection.setReadTimeout(10000);
-            connection.setRequestMethod("GET");
-            connection.setInstanceFollowRedirects(true);
-            try (InputStream inputStream = connection.getInputStream()) {
-                return BitmapFactory.decodeStream(inputStream);
-            }
-        } catch (Exception ignored) {
-            return null;
-        } finally {
-            if (connection != null) connection.disconnect();
-        }
     }
 
     private String extractVideoId(String value) {
@@ -351,8 +289,8 @@ public class YouTubeFragment extends Fragment {
             String host = uri.getHost();
             if (host == null) return null;
             if (host.equalsIgnoreCase("youtu.be")) {
-                String id = uri.getPath();
-                return validVideoId(id == null ? null : id.replace("/", ""));
+                String path = uri.getPath();
+                return validVideoId(path == null ? null : path.replace("/", ""));
             }
             if (host.equalsIgnoreCase("youtube.com") || host.equalsIgnoreCase("www.youtube.com")
                     || host.equalsIgnoreCase("m.youtube.com") || host.equalsIgnoreCase("music.youtube.com")) {
@@ -389,10 +327,13 @@ public class YouTubeFragment extends Fragment {
     @Override
     public void onDestroyView() {
         if (playerWebView != null) {
-            playerWebView.stopLoading();
-            playerWebView.loadUrl("about:blank");
-            playerWebView.destroy();
-            playerWebView = null;
+            View parent = (View) playerWebView.getParent();
+            if (parent instanceof ViewGroup) ((ViewGroup) parent).removeView(playerWebView);
+            playerWebView.setVisibility(View.GONE);
+        }
+        if (YouTubePlaybackManager.isActive()) {
+            View globalHost = requireActivity().findViewById(R.id.youtubeGlobalPlayerHost);
+            YouTubePlaybackManager.moveToGlobalHost(globalHost);
         }
         if (searchExecutor != null) {
             searchExecutor.shutdownNow();
@@ -415,42 +356,6 @@ public class YouTubeFragment extends Fragment {
         super.onDestroyView();
     }
 
-    private final class YouTubeBridge {
-        @JavascriptInterface
-        public void ready() {
-            postToMain(() -> {
-                if (playerWebView == null) return;
-                playerWebView.evaluateJavascript("playYT();", null);
-            });
-        }
-
-        @JavascriptInterface
-        public void state(int state) {
-            postToMain(() -> {
-                isYouTubePlaying = state == 1 || state == 3;
-                updateMiniPlayPauseIcon();
-                if (state == 1) statusText.setText(isAudioOnly ? "Audio only • Playing" : "Playing on YouTube");
-                if (state == 2) statusText.setText(isAudioOnly ? "Audio only • Paused" : "Paused");
-                if (state == 0) isYouTubePlaying = false;
-            });
-        }
-
-        @JavascriptInterface
-        public void error(int errorCode) {
-            postToMain(() -> statusText.setText("YouTube player error: " + errorCode));
-        }
-
-        private void postToMain(Runnable runnable) {
-            if (mainHandler != null) mainHandler.post(runnable);
-        }
-    }
-
-    private void updateMiniPlayPauseIcon() {
-        if (miniPlayPause == null) return;
-        miniPlayPause.setImageResource(isYouTubePlaying ? R.drawable.ic_pause : R.drawable.ic_play);
-        miniPlayPause.setContentDescription(isYouTubePlaying ? "Pause YouTube playback" : "Play YouTube playback");
-    }
-
     private static final class YouTubeResult {
         final String videoId;
         final String title;
@@ -470,18 +375,11 @@ public class YouTubeFragment extends Fragment {
         private final Listener listener;
         private final ExecutorService imageExecutor;
         private final Handler mainHandler;
-        private final LruCache<String, Bitmap> thumbnailCache;
 
         ResultAdapter(Listener listener, ExecutorService imageExecutor, Handler mainHandler) {
             this.listener = listener;
             this.imageExecutor = imageExecutor;
             this.mainHandler = mainHandler;
-            int cacheSize = Math.max(4, (int) (Runtime.getRuntime().maxMemory() / 1024 / 8));
-            thumbnailCache = new LruCache<String, Bitmap>(cacheSize) {
-                @Override protected int sizeOf(@NonNull String key, @NonNull Bitmap value) {
-                    return Math.max(1, value.getByteCount() / 1024);
-                }
-            };
         }
 
         void setItems(ArrayList<YouTubeResult> newItems) {
@@ -515,17 +413,13 @@ public class YouTubeFragment extends Fragment {
             title.setTextSize(15);
             title.setMaxLines(2);
             title.setEllipsize(TextUtils.TruncateAt.END);
-            textContainer.addView(title, new LinearLayoutCompat.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            textContainer.addView(title);
             TextView channel = new TextView(parent.getContext());
             channel.setTextColor(Color.rgb(155, 157, 170));
             channel.setTextSize(12);
             channel.setMaxLines(1);
             channel.setEllipsize(TextUtils.TruncateAt.END);
-            LinearLayoutCompat.LayoutParams channelParams = new LinearLayoutCompat.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            channelParams.topMargin = Math.round(4 * parent.getResources().getDisplayMetrics().density);
-            textContainer.addView(channel, channelParams);
+            textContainer.addView(channel);
             return new ViewHolder(row, thumbnail, title, channel);
         }
 
@@ -535,19 +429,12 @@ public class YouTubeFragment extends Fragment {
             holder.title.setText(result.title);
             holder.channel.setText(result.channel);
             holder.itemView.setOnClickListener(v -> listener.onResult(result));
-            holder.itemView.setContentDescription("Play " + result.title);
             holder.thumbnail.setTag(result.thumbnailUrl);
             holder.thumbnail.setImageResource(android.R.drawable.ic_menu_gallery);
             if (result.thumbnailUrl.isEmpty()) return;
-            Bitmap cached = thumbnailCache.get(result.thumbnailUrl);
-            if (cached != null) {
-                holder.thumbnail.setImageBitmap(cached);
-                return;
-            }
             imageExecutor.execute(() -> {
                 Bitmap bitmap = loadThumbnail(result.thumbnailUrl);
                 if (bitmap == null) return;
-                thumbnailCache.put(result.thumbnailUrl, bitmap);
                 mainHandler.post(() -> {
                     Object tag = holder.thumbnail.getTag();
                     if (result.thumbnailUrl.equals(tag)) holder.thumbnail.setImageBitmap(bitmap);
@@ -555,14 +442,13 @@ public class YouTubeFragment extends Fragment {
             });
         }
 
-        private Bitmap loadThumbnail(String thumbnailUrl) {
+        private Bitmap loadThumbnail(String url) {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(thumbnailUrl).openConnection();
+                connection = (HttpURLConnection) new URL(url).openConnection();
                 connection.setConnectTimeout(8000);
                 connection.setReadTimeout(10000);
                 connection.setRequestMethod("GET");
-                connection.setInstanceFollowRedirects(true);
                 try (InputStream inputStream = connection.getInputStream()) {
                     return BitmapFactory.decodeStream(inputStream);
                 }
