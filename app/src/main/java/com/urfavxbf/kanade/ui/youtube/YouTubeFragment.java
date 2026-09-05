@@ -228,6 +228,9 @@ public class YouTubeFragment extends Fragment {
                 result.thumbnailUrl,
                 YouTubePlaybackManager.isAudioOnly());
 
+        View globalHost = requireActivity().findViewById(R.id.youtubeGlobalPlayerHost);
+        YouTubePlaybackManager.moveToGlobalHost(globalHost);
+        YouTubePlayerController.install(requireActivity());
         statusText.setText("Playing in Kanade's player");
     }
 
