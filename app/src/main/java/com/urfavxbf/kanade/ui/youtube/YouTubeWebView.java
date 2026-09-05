@@ -12,6 +12,7 @@ import androidx.annotation.Nullable;
  */
 public class YouTubeWebView extends WebView {
     private static final String APP_ORIGIN = "https://com.urfavxbf.kanade";
+    private static final String NOCOOKIE_HOST = "https://www.youtube-nocookie.com";
 
     public YouTubeWebView(Context context) {
         super(context);
@@ -33,9 +34,16 @@ public class YouTubeWebView extends WebView {
             @Nullable String encoding,
             @Nullable String historyUrl) {
         String safeData = data == null ? "" : data;
-        String correctedData = safeData.replace(
-                "origin=https%3A%2F%2Fwww.youtube.com",
-                "origin=https%3A%2F%2Fcom.urfavxbf.kanade");
+        String correctedData = safeData
+                .replace(
+                        "origin=https%3A%2F%2Fwww.youtube.com",
+                        "origin=https%3A%2F%2Fcom.urfavxbf.kanade")
+                .replace(
+                        "origin:'https://www.youtube.com'",
+                        "origin:'https://com.urfavxbf.kanade'")
+                .replace(
+                        "player=new YT.Player('player',{",
+                        "player=new YT.Player('player',{host:'" + NOCOOKIE_HOST + "',");
         super.loadDataWithBaseURL(
                 APP_ORIGIN + "/",
                 correctedData,
