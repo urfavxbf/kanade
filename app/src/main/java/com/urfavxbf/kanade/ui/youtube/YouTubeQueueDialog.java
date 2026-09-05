@@ -1,6 +1,5 @@
 package com.urfavxbf.kanade.ui.youtube;
 
-import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -12,9 +11,9 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -88,14 +87,15 @@ public final class YouTubeQueueDialog {
 
         LinearLayout heading = new LinearLayout(context);
         heading.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f);
 
         TextView title = textView("Queue", 20, TEXT, Typeface.BOLD);
         heading.addView(title);
 
-        String subtitle = queue.size() == 1
-                ? "1 video"
-                : queue.size() + " videos";
+        String subtitle = queue.size() == 1 ? "1 video" : queue.size() + " videos";
         if (YouTubePlaybackManager.isRadioEnabled()) {
             subtitle += " • Mix";
         }
@@ -119,21 +119,31 @@ public final class YouTubeQueueDialog {
         View divider = new View(context);
         divider.setBackgroundColor(Color.rgb(45, 46, 57));
         LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(1));
         dividerParams.topMargin = dp(14);
         dividerParams.bottomMargin = dp(8);
         root.addView(divider, dividerParams);
 
+        ScrollView scrollView = new ScrollView(context);
+        scrollView.setFillViewport(true);
+        scrollView.setClipToPadding(false);
+        scrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+
         listContainer = new LinearLayout(context);
         listContainer.setOrientation(LinearLayout.VERTICAL);
+        scrollView.addView(listContainer, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
 
         for (int i = 0; i < queue.size(); i++) {
             addQueueRow(queue.get(i), i);
         }
 
-        root.addView(listContainer, new LinearLayout.LayoutParams(
+        root.addView(scrollView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
+                0,
+                1f));
 
         return root;
     }
@@ -149,7 +159,9 @@ public final class YouTubeQueueDialog {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(4), dp(6), dp(4), dp(6));
         row.setMinimumHeight(dp(ROW_HEIGHT_DP));
-        row.setBackground(roundDrawable(current ? Color.rgb(43, 43, 58) : Color.TRANSPARENT, 16));
+        row.setBackground(roundDrawable(
+                current ? Color.rgb(43, 43, 58) : Color.TRANSPARENT,
+                16));
         row.setClickable(true);
         row.setFocusable(true);
         row.setOnClickListener(v -> {
@@ -168,7 +180,9 @@ public final class YouTubeQueueDialog {
         thumbnail.setBackground(roundDrawable(SURFACE, 10));
         thumbnail.setClipToOutline(true);
         thumbnail.setImageResource(R.drawable.ic_play);
-        row.addView(thumbnail, new LinearLayout.LayoutParams(dp(THUMB_SIZE_DP), dp(THUMB_SIZE_DP)));
+        row.addView(thumbnail, new LinearLayout.LayoutParams(
+                dp(THUMB_SIZE_DP),
+                dp(THUMB_SIZE_DP)));
 
         LinearLayout metadata = new LinearLayout(context);
         metadata.setOrientation(LinearLayout.VERTICAL);
@@ -181,7 +195,7 @@ public final class YouTubeQueueDialog {
                 TEXT,
                 current ? Typeface.BOLD : Typeface.NORMAL);
         itemTitle.setMaxLines(2);
-        itemTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        itemTitle.setEllipsize(TextUtils.TruncateAt.END);
         metadata.addView(itemTitle);
 
         TextView channel = textView(
@@ -190,11 +204,13 @@ public final class YouTubeQueueDialog {
                 SECONDARY,
                 Typeface.NORMAL);
         channel.setMaxLines(1);
-        channel.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        channel.setEllipsize(TextUtils.TruncateAt.END);
         metadata.addView(channel);
 
         LinearLayout.LayoutParams metadataParams = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f);
         row.addView(metadata, metadataParams);
 
         if (current) {
