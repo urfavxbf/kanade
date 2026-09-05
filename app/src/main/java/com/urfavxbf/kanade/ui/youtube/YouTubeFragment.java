@@ -278,6 +278,7 @@ public class YouTubeFragment extends Fragment {
         playerWebView.setAlpha(1f);
         playerWebView.loadDataWithBaseURL("https://com.urfavxbf.kanade/", playerHtml, "text/html",
                 "UTF-8", "https://com.urfavxbf.kanade/");
+        if (isAudioOnly) updatePlayerMode();
     }
 
     private void updatePlayerMode() {
