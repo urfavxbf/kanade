@@ -58,6 +58,8 @@ public final class YouTubePlayerController {
     private static boolean receiverRegistered;
     private static boolean localPlaying;
     private static int localDuration;
+    private static int previousLyricsVisibility = -1;
+    private static int previousRippleVisibility = -1;
 
     private static final Runnable BIND_POLL = new Runnable() {
         @Override
@@ -231,6 +233,8 @@ public final class YouTubePlayerController {
         View repeatButton = activity.findViewById(R.id.btnRepeat);
         TextView audioOnlyButton = activity.findViewById(R.id.btnYouTubeAudioOnly);
         TextView radioButton = activity.findViewById(R.id.btnYouTubeRadio);
+        View lyricsContainer = activity.findViewById(R.id.lyricsContainer);
+        View cutoutRippleView = activity.findViewById(R.id.cutoutRippleView);
 
         if (title == null
                 || artist == null
@@ -259,8 +263,11 @@ public final class YouTubePlayerController {
                     repeatButton,
                     audioOnlyButton,
                     radioButton);
+            restoreLocalVisualLayers(lyricsContainer, cutoutRippleView);
             return;
         }
+
+        hideLocalVisualLayers(lyricsContainer, cutoutRippleView);
 
         if (shuffleButton != null) {
             shuffleButton.setVisibility(View.GONE);
@@ -272,6 +279,7 @@ public final class YouTubePlayerController {
         radioButton.setVisibility(View.VISIBLE);
 
         YouTubePlaybackManager.attachTo(playerVisualContainer);
+        bringYouTubeOverlaysToFront(playerVisualContainer, audioOnlyButton, radioButton);
 
         title.setText(safeText(YouTubePlaybackManager.getTitle(), "YouTube video"));
         artist.setText(safeText(YouTubePlaybackManager.getChannel(), "YouTube"));
@@ -341,6 +349,46 @@ public final class YouTubePlayerController {
                 fromUser = false;
             }
         });
+    }
+
+    private static void bringYouTubeOverlaysToFront(
+            View playerVisualContainer,
+            View audioOnlyButton,
+            View radioButton) {
+        View gestureOverlay = playerVisualContainer.findViewById(R.id.youtubeGestureOverlay);
+        if (gestureOverlay != null) {
+            gestureOverlay.setVisibility(View.VISIBLE);
+            gestureOverlay.bringToFront();
+        }
+        audioOnlyButton.bringToFront();
+        radioButton.bringToFront();
+        playerVisualContainer.invalidate();
+    }
+
+    private static void hideLocalVisualLayers(View lyricsContainer, View cutoutRippleView) {
+        if (lyricsContainer != null && previousLyricsVisibility == -1) {
+            previousLyricsVisibility = lyricsContainer.getVisibility();
+        }
+        if (cutoutRippleView != null && previousRippleVisibility == -1) {
+            previousRippleVisibility = cutoutRippleView.getVisibility();
+        }
+        if (lyricsContainer != null) {
+            lyricsContainer.setVisibility(View.GONE);
+        }
+        if (cutoutRippleView != null) {
+            cutoutRippleView.setVisibility(View.GONE);
+        }
+    }
+
+    private static void restoreLocalVisualLayers(View lyricsContainer, View cutoutRippleView) {
+        if (lyricsContainer != null && previousLyricsVisibility != -1) {
+            lyricsContainer.setVisibility(previousLyricsVisibility);
+        }
+        if (cutoutRippleView != null && previousRippleVisibility != -1) {
+            cutoutRippleView.setVisibility(previousRippleVisibility);
+        }
+        previousLyricsVisibility = -1;
+        previousRippleVisibility = -1;
     }
 
     private static void bindMiniPlayer(Activity activity) {
@@ -416,6 +464,11 @@ public final class YouTubePlayerController {
         }
         audioOnlyButton.setVisibility(View.GONE);
         radioButton.setVisibility(View.GONE);
+
+        View gestureOverlay = activity.findViewById(R.id.youtubeGestureOverlay);
+        if (gestureOverlay != null) {
+            gestureOverlay.setVisibility(View.GONE);
+        }
 
         playPause.setOnClickListener(v -> sendLocalAction(v, localPlaying
                 ? MusicPlayerService.ACTION_PAUSE
