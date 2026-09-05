@@ -196,7 +196,7 @@ public final class YouTubePlaybackManager {
         String escapedId = escapeJs(id);
         String html = "<!doctype html><html><head>"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no\">"
-                + "<style>html,body,#player{margin:0;padding:0;background:transparent;width:100%;height:100%;overflow:hidden;}iframe{border:0;width:100%;height:100%;display:block;background:transparent;}</style></head><body>"
+                + "<style>html,body,#player{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden;}iframe{border:0;width:100%;height:100%;display:block;background:#000;}</style></head><body>"
                 + "<div id=\"player\"></div><script>var player;"
                 + "function onYouTubeIframeAPIReady(){player=new YT.Player('player',{height:'100%',width:'100%',videoId:'" + escapedId + "',"
                 + "playerVars:{playsinline:1,rel:0,controls:0,enablejsapi:1,modestbranding:1,iv_load_policy:3,origin:'https://com.urfavxbf.kanade'},"
@@ -242,9 +242,23 @@ public final class YouTubePlaybackManager {
 
     private static void resizeVideoPlayer(android.view.ViewGroup group) {
         if (player == null || player.getParent() != group || group.getWidth() <= 0 || group.getHeight() <= 0) return;
-        int width = group.getWidth();
-        int height = Math.min(group.getHeight(), Math.round(width * 9f / 16f));
-        if (height <= 0) return;
+
+        int containerWidth = group.getWidth();
+        int containerHeight = group.getHeight();
+        float containerRatio = containerWidth / (float) containerHeight;
+
+        int width;
+        int height;
+        if (containerRatio > 16f / 9f) {
+            height = containerHeight;
+            width = Math.round(height * 16f / 9f);
+        } else {
+            width = containerWidth;
+            height = Math.round(width * 9f / 16f);
+        }
+
+        if (width <= 0 || height <= 0) return;
+
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height, Gravity.CENTER);
         player.setLayoutParams(params);
     }
@@ -319,7 +333,7 @@ public final class YouTubePlaybackManager {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
-        player.setBackgroundColor(Color.TRANSPARENT);
+        player.setBackgroundColor(Color.BLACK);
         player.setOverScrollMode(View.OVER_SCROLL_NEVER);
         player.addJavascriptInterface(new Bridge(), "KanadePlayer");
         player.setWebViewClient(new WebViewClient());
