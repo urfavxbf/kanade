@@ -18,12 +18,17 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import com.urfavxbf.kanade.BuildConfig;
 import com.urfavxbf.kanade.R;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -47,6 +52,11 @@ public final class YouTubePlaybackManager {
         thread.setDaemon(true);
         return thread;
     });
+    private static final ExecutorService RADIO_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "Kanade-YouTube-Radio");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private static Context appContext;
     private static WebView player;
@@ -57,6 +67,7 @@ public final class YouTubePlaybackManager {
     private static boolean playing;
     private static boolean audioOnly;
     private static boolean radio;
+    private static boolean radioLoading;
 
     private static final ArrayList<QueueItem> queue = new ArrayList<>();
     private static int queueIndex = -1;
@@ -137,6 +148,10 @@ public final class YouTubePlaybackManager {
     public static void next() {
         if (queueIndex >= 0 && queueIndex + 1 < queue.size()) {
             playQueueItem(queueIndex + 1);
+            return;
+        }
+        if (radio && !radioLoading) {
+            fetchRadioAndPlay();
             return;
         }
         playing = false;
@@ -334,6 +349,91 @@ public final class YouTubePlaybackManager {
         }
     }
 
+    private static void fetchRadioAndPlay() {
+        if (appContext == null || TextUtils.isEmpty(BuildConfig.YOUTUBE_API_KEY)) {
+            playing = false;
+            updateMini();
+            broadcastState();
+            return;
+        }
+        radioLoading = true;
+        broadcastState();
+        RADIO_EXECUTOR.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                String query = URLEncoder.encode(title + " " + channel, "UTF-8");
+                String endpoint = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video"
+                        + "&videoCategoryId=10&videoEmbeddable=true&videoSyndicated=true&maxResults=10&q="
+                        + query + "&key=" + URLEncoder.encode(BuildConfig.YOUTUBE_API_KEY, "UTF-8");
+                connection = (HttpURLConnection) new URL(endpoint).openConnection();
+                connection.setConnectTimeout(10000);
+                connection.setReadTimeout(15000);
+                connection.setRequestMethod("GET");
+                int responseCode = connection.getResponseCode();
+                InputStream stream = responseCode >= 200 && responseCode < 300
+                        ? connection.getInputStream() : connection.getErrorStream();
+                if (stream == null) throw new IllegalStateException("No YouTube radio response");
+                String response = readResponse(stream);
+                if (responseCode < 200 || responseCode >= 300) throw new IllegalStateException("YouTube radio failed");
+                JSONArray items = new JSONObject(response).optJSONArray("items");
+                ArrayList<QueueItem> additions = new ArrayList<>();
+                if (items != null) {
+                    for (int i = 0; i < items.length(); i++) {
+                        JSONObject item = items.optJSONObject(i);
+                        if (item == null) continue;
+                        JSONObject id = item.optJSONObject("id");
+                        JSONObject snippet = item.optJSONObject("snippet");
+                        if (id == null || snippet == null) continue;
+                        String idValue = id.optString("videoId", "").trim();
+                        String itemTitle = snippet.optString("title", "").trim();
+                        String itemChannel = snippet.optString("channelTitle", "").trim();
+                        JSONObject thumbs = snippet.optJSONObject("thumbnails");
+                        String thumb = "";
+                        if (thumbs != null) {
+                            JSONObject medium = thumbs.optJSONObject("medium");
+                            if (medium != null) thumb = medium.optString("url", "").trim();
+                        }
+                        if (!TextUtils.isEmpty(idValue) && !idValue.equals(videoId)) {
+                            additions.add(new QueueItem(idValue, itemTitle, itemChannel, thumb));
+                        }
+                    }
+                }
+                MAIN.post(() -> {
+                    radioLoading = false;
+                    for (QueueItem item : additions) {
+                        if (findQueueIndex(item.videoId) < 0) queue.add(item);
+                    }
+                    if (queueIndex + 1 < queue.size()) {
+                        playQueueItem(queueIndex + 1);
+                    } else {
+                        playing = false;
+                        updateMini();
+                        broadcastState();
+                    }
+                });
+            } catch (Exception ignored) {
+                MAIN.post(() -> {
+                    radioLoading = false;
+                    playing = false;
+                    updateMini();
+                    broadcastState();
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private static String readResponse(InputStream inputStream) throws Exception {
+        StringBuilder builder = new StringBuilder();
+        byte[] buffer = new byte[4096];
+        int read;
+        while ((read = inputStream.read(buffer)) != -1) {
+            builder.append(new String(buffer, 0, read, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        return builder.toString();
+    }
+
     private static void broadcastState() {
         if (appContext == null) return;
         Intent intent = new Intent(ACTION_STATE_CHANGED)
@@ -378,11 +478,8 @@ public final class YouTubePlaybackManager {
             MAIN.post(() -> {
                 playing = state == 1 || state == 3;
                 if (state == 0) {
-                    if (queueIndex >= 0 && queueIndex + 1 < queue.size()) {
-                        next();
-                        return;
-                    }
-                    playing = false;
+                    next();
+                    return;
                 }
                 updateMini();
                 broadcastState();
