@@ -84,7 +84,7 @@ public final class YouTubePlayerController {
             }
             Activity activity = activityReference.get();
             if (activity != null) {
-                bind(activity);
+                MAIN.post(() -> bind(activity));
             }
         }
     };
@@ -110,7 +110,7 @@ public final class YouTubePlayerController {
 
             Activity activity = activityReference.get();
             if (activity != null) {
-                bind(activity);
+                MAIN.post(() -> bind(activity));
             }
         }
     };
@@ -187,6 +187,12 @@ public final class YouTubePlayerController {
 
             @Override
             public void onActivityStopped(@NonNull Activity activity) {
+                Activity current = activityReference.get();
+                if (current == activity) {
+                    YouTubePlaybackManager.detachFromHost();
+                    boundPlayerRoot.clear();
+                    boundMiniRoot.clear();
+                }
             }
 
             @Override
@@ -199,6 +205,9 @@ public final class YouTubePlayerController {
             public void onActivityDestroyed(@NonNull Activity activity) {
                 Activity current = activityReference.get();
                 if (current == activity) {
+                    YouTubePlaybackManager.detachFromHost();
+                    boundPlayerRoot.clear();
+                    boundMiniRoot.clear();
                     activityReference.clear();
                 }
             }
@@ -216,6 +225,10 @@ public final class YouTubePlayerController {
 
         View playerVisualContainer = activity.findViewById(R.id.playerVisualContainer);
         if (playerVisualContainer == null) {
+            if (YouTubePlaybackManager.isActive()) {
+                YouTubePlaybackManager.detachFromHost();
+                boundPlayerRoot.clear();
+            }
             return;
         }
 
@@ -398,6 +411,8 @@ public final class YouTubePlayerController {
         }
 
         if (!YouTubePlaybackManager.isActive()) {
+            miniRoot.setVisibility(View.GONE);
+            boundMiniRoot.clear();
             return;
         }
 
@@ -638,9 +653,7 @@ public final class YouTubePlayerController {
         } catch (Exception ignored) {
             return null;
         } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
+            if (connection != null) connection.disconnect();
         }
     }
 
