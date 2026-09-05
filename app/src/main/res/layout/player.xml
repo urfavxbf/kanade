@@ -101,6 +101,50 @@
                         android:contentDescription="Album art" />
                 </androidx.cardview.widget.CardView>
             </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <TextView
+                android:id="@+id/btnYouTubeAudioOnly"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_gravity="top|start"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="16dp"
+                android:minWidth="68dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:gravity="center"
+                android:text="AUDIO"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:elevation="24dp"
+                android:visibility="gone"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="Toggle YouTube audio only" />
+
+            <TextView
+                android:id="@+id/btnYouTubeRadio"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_gravity="top|start"
+                android:layout_marginStart="92dp"
+                android:layout_marginTop="16dp"
+                android:minWidth="56dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:gravity="center"
+                android:text="MIX"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-medium"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:elevation="24dp"
+                android:visibility="gone"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="Toggle YouTube Mix" />
         </FrameLayout>
 
         <LinearLayout
@@ -282,36 +326,6 @@
                     android:tint="#A8ABB9"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Queue" />
-                <TextView
-                    android:id="@+id/btnYouTubeAudioOnly"
-                    android:layout_width="wrap_content"
-                    android:layout_height="36dp"
-                    android:layout_marginStart="4dp"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:gravity="center"
-                    android:text="AUDIO"
-                    android:textColor="#A8ABB9"
-                    android:textSize="11sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:visibility="gone"
-                    android:contentDescription="Toggle YouTube audio only" />
-                <TextView
-                    android:id="@+id/btnYouTubeRadio"
-                    android:layout_width="wrap_content"
-                    android:layout_height="36dp"
-                    android:layout_marginStart="2dp"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:gravity="center"
-                    android:text="MIX"
-                    android:textColor="#A8ABB9"
-                    android:textSize="11sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:visibility="gone"
-                    android:contentDescription="Toggle YouTube Mix" />
             </LinearLayout>
         </androidx.constraintlayout.widget.ConstraintLayout>
     </LinearLayout>
