@@ -44,6 +44,8 @@ public final class YouTubePlaybackManager {
     public static final String EXTRA_PLAYING = "youtube_playing";
     public static final String EXTRA_AUDIO_ONLY = "youtube_audio_only";
     public static final String EXTRA_RADIO = "youtube_radio";
+    public static final String EXTRA_POSITION = "youtube_position";
+    public static final String EXTRA_DURATION = "youtube_duration";
 
     private static final String APP_ORIGIN = "https://com.urfavxbf.kanade";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -57,6 +59,15 @@ public final class YouTubePlaybackManager {
         thread.setDaemon(true);
         return thread;
     });
+    private static final Runnable PROGRESS_POLL = new Runnable() {
+        @Override
+        public void run() {
+            if (player != null && !videoId.isEmpty()) {
+                player.evaluateJavascript("reportProgress();", null);
+                MAIN.postDelayed(this, 500L);
+            }
+        }
+    };
 
     private static Context appContext;
     private static WebView player;
@@ -68,6 +79,8 @@ public final class YouTubePlaybackManager {
     private static boolean audioOnly;
     private static boolean radio;
     private static boolean radioLoading;
+    private static double positionSeconds;
+    private static double durationSeconds;
 
     private static final ArrayList<QueueItem> queue = new ArrayList<>();
     private static int queueIndex = -1;
@@ -90,7 +103,14 @@ public final class YouTubePlaybackManager {
     public static String getTitle() { return title; }
     public static String getChannel() { return channel; }
     public static String getThumbnailUrl() { return thumbnailUrl; }
+    public static double getPositionSeconds() { return positionSeconds; }
+    public static double getDurationSeconds() { return durationSeconds; }
     public static List<QueueItem> getQueue() { return Collections.unmodifiableList(new ArrayList<>(queue)); }
+
+    public static boolean isInMixQueue(String id) {
+        if (TextUtils.isEmpty(id) || !radio) return false;
+        return findQueueIndex(id) >= 0;
+    }
 
     public static void addToQueue(String id, String songTitle, String songChannel, String thumb) {
         if (TextUtils.isEmpty(id) || findQueueIndex(id) >= 0) return;
@@ -149,6 +169,8 @@ public final class YouTubePlaybackManager {
         channel = TextUtils.isEmpty(songChannel) ? "YouTube" : songChannel;
         thumbnailUrl = TextUtils.isEmpty(thumb)
                 ? "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg" : thumb;
+        positionSeconds = 0d;
+        durationSeconds = 0d;
         playing = false;
         audioOnly = compact;
 
@@ -166,6 +188,7 @@ public final class YouTubePlaybackManager {
 
         updateMini();
         loadThumbnailIntoMini(thumbnailUrl);
+        MAIN.removeCallbacks(PROGRESS_POLL);
 
         String escapedId = escapeJs(id);
         String html = "<!doctype html><html><head>"
@@ -178,6 +201,8 @@ public final class YouTubePlaybackManager {
                 + "function onReady(){KanadePlayer.ready();}function onState(e){KanadePlayer.state(e.data);}"
                 + "function onError(e){KanadePlayer.error(e.data);}function onBlocked(){KanadePlayer.blocked();}"
                 + "function playYT(){if(player)player.playVideo();}function pauseYT(){if(player)player.pauseVideo();}"
+                + "function seekYT(seconds){if(player)player.seekTo(seconds,true);}"
+                + "function reportProgress(){if(player)KanadePlayer.progress(player.getCurrentTime()||0,player.getDuration()||0);}"
                 + "</script><script src=\"https://www.youtube.com/iframe_api\"></script></body></html>";
         player.setAlpha(compact ? 0f : 1f);
         player.loadDataWithBaseURL(APP_ORIGIN + "/", html, "text/html", "UTF-8", APP_ORIGIN + "/");
@@ -223,6 +248,14 @@ public final class YouTubePlaybackManager {
         player.evaluateJavascript(playing ? "pauseYT();" : "playYT();", null);
     }
 
+    public static void seekTo(double seconds) {
+        if (player == null || videoId.isEmpty() || Double.isNaN(seconds)) return;
+        double target = Math.max(0d, Math.min(seconds, durationSeconds > 0d ? durationSeconds : seconds));
+        positionSeconds = target;
+        player.evaluateJavascript("seekYT(" + target + ");", null);
+        broadcastState();
+    }
+
     public static void setAudioOnly(boolean enabled) {
         audioOnly = enabled;
         if (player != null) player.setAlpha(enabled ? 0f : 1f);
@@ -237,6 +270,7 @@ public final class YouTubePlaybackManager {
     public static void stop() {
         if (player != null) player.evaluateJavascript("pauseYT();", null);
         playing = false;
+        MAIN.removeCallbacks(PROGRESS_POLL);
         updateMini();
         broadcastState();
     }
@@ -451,7 +485,9 @@ public final class YouTubePlaybackManager {
                 .putExtra(EXTRA_THUMBNAIL, thumbnailUrl)
                 .putExtra(EXTRA_PLAYING, playing)
                 .putExtra(EXTRA_AUDIO_ONLY, audioOnly)
-                .putExtra(EXTRA_RADIO, radio);
+                .putExtra(EXTRA_RADIO, radio)
+                .putExtra(EXTRA_POSITION, positionSeconds)
+                .putExtra(EXTRA_DURATION, durationSeconds);
         appContext.sendBroadcast(intent);
     }
 
@@ -476,6 +512,8 @@ public final class YouTubePlaybackManager {
             MAIN.post(() -> {
                 if (player != null) player.evaluateJavascript("playYT();", null);
                 playing = true;
+                MAIN.removeCallbacks(PROGRESS_POLL);
+                MAIN.post(PROGRESS_POLL);
                 updateMini();
                 broadcastState();
             });
@@ -485,11 +523,26 @@ public final class YouTubePlaybackManager {
         public void state(int state) {
             MAIN.post(() -> {
                 playing = state == 1 || state == 3;
+                if (playing) {
+                    MAIN.removeCallbacks(PROGRESS_POLL);
+                    MAIN.post(PROGRESS_POLL);
+                }
                 if (state == 0) {
+                    MAIN.removeCallbacks(PROGRESS_POLL);
                     next();
                     return;
                 }
+                if (!playing) MAIN.removeCallbacks(PROGRESS_POLL);
                 updateMini();
+                broadcastState();
+            });
+        }
+
+        @JavascriptInterface
+        public void progress(double position, double duration) {
+            MAIN.post(() -> {
+                positionSeconds = Math.max(0d, position);
+                durationSeconds = Math.max(0d, duration);
                 broadcastState();
             });
         }
@@ -498,6 +551,7 @@ public final class YouTubePlaybackManager {
         public void error(int code) {
             MAIN.post(() -> {
                 playing = false;
+                MAIN.removeCallbacks(PROGRESS_POLL);
                 updateMini();
                 broadcastState();
             });
@@ -510,4 +564,4 @@ public final class YouTubePlaybackManager {
             });
         }
     }
-}
+}"}
