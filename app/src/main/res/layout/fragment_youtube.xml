@@ -4,11 +4,11 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:paddingStart="20dp"
-    android:paddingTop="24dp"
-    android:paddingEnd="20dp"
-    android:paddingBottom="24dp"
-    android:background="#0F1015">
+    android:background="#0F1015"
+    android:paddingStart="16dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="12dp">
 
     <TextView
         android:layout_width="wrap_content"
@@ -19,43 +19,72 @@
         android:textStyle="bold" />
 
     <TextView
+        android:id="@+id/youtubeStatusText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="Search for a song and continue playback in YouTube."
+        android:layout_marginTop="4dp"
+        android:text="Search YouTube for a song"
         android:textColor="#A5A7B4"
-        android:textSize="14sp" />
+        android:textSize="13sp" />
 
-    <EditText
-        android:id="@+id/youtubeSearchInput"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="52dp"
-        android:layout_marginTop="24dp"
-        android:background="#1B1D25"
-        android:hint="Song, artist, or YouTube link"
-        android:imeOptions="actionSearch"
-        android:inputType="text"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#777A88"
-        android:textSize="15sp" />
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal">
 
-    <Button
-        android:id="@+id/youtubeSearchButton"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginTop="12dp"
-        android:text="SEARCH &amp; PLAY ON YOUTUBE"
-        android:textAllCaps="false"
-        android:textSize="14sp" />
+        <EditText
+            android:id="@+id/youtubeSearchInput"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#1B1D25"
+            android:hint="Song or artist"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#777A88"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/youtubeSearchButton"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginStart="8dp"
+            android:minWidth="0dp"
+            android:text="Search"
+            android:textAllCaps="false" />
+    </LinearLayout>
 
     <TextView
+        android:id="@+id/youtubePlayerTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:text="Tip: paste a YouTube video link to open that exact song."
-        android:textColor="#777A88"
-        android:textSize="12sp" />
+        android:layout_marginTop="16dp"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:visibility="gone" />
+
+    <WebView
+        android:id="@+id/youtubePlayerWebView"
+        android:layout_width="match_parent"
+        android:layout_height="210dp"
+        android:layout_marginTop="8dp"
+        android:background="#000000"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/youtubeResultsRecycler"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="12dp" />
 
 </LinearLayout>
