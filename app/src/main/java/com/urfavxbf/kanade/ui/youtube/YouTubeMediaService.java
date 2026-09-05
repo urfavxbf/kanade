@@ -22,6 +22,7 @@ import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
@@ -309,8 +310,7 @@ public final class YouTubeMediaService extends Service {
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
             runnable.run();
         } else {
-            android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
-            handler.post(runnable);
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(runnable);
         }
     }
 
