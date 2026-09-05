@@ -17,11 +17,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
-
-import android.support.v4.media.MediaMetadataCompat;
-import android.support.v4.media.session.MediaSessionCompat;
-import android.support.v4.media.session.PlaybackStateCompat;
-
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
@@ -29,13 +24,13 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
+
 import com.urfavxbf.kanade.R;
 
-/**
- * Foreground/media-session host for native YouTube audio playback.
- * The YouTube WebView remains the video UI, while Audio Only uses ExoPlayer
- * with a resolved direct audio stream so playback survives Activity teardown.
- */
+/** Foreground/media-session host for native YouTube audio playback. */
 public final class YouTubeMediaService extends Service {
 
     public static final String ACTION_PLAY = "com.urfavxbf.kanade.YOUTUBE_SERVICE_PLAY";
@@ -52,6 +47,7 @@ public final class YouTubeMediaService extends Service {
     private ExoPlayer nativePlayer;
     private boolean receiverRegistered;
     private boolean resolving;
+    private boolean nativePlaybackRequested;
     private String resolvedVideoId = "";
 
     private final BroadcastReceiver stateReceiver = new BroadcastReceiver() {
@@ -79,6 +75,7 @@ public final class YouTubeMediaService extends Service {
                     && YouTubePlaybackManager.isActive()) {
                 resolvedVideoId = "";
                 resolving = false;
+                nativePlaybackRequested = true;
                 YouTubePlaybackManager.next();
             }
             updateSession();
@@ -129,7 +126,9 @@ public final class YouTubeMediaService extends Service {
             @Override
             public void onPlay() {
                 if (YouTubePlaybackManager.isAudioOnly() && nativePlayer != null) {
+                    nativePlaybackRequested = true;
                     nativePlayer.play();
+                    syncNativePlayback();
                     return;
                 }
                 if (!YouTubePlaybackManager.isPlaying()) {
@@ -140,6 +139,7 @@ public final class YouTubeMediaService extends Service {
             @Override
             public void onPause() {
                 if (YouTubePlaybackManager.isAudioOnly() && nativePlayer != null) {
+                    nativePlaybackRequested = false;
                     nativePlayer.pause();
                     return;
                 }
@@ -169,6 +169,7 @@ public final class YouTubeMediaService extends Service {
 
             @Override
             public void onStop() {
+                nativePlaybackRequested = false;
                 YouTubePlaybackManager.stop();
                 stopNativePlayer();
                 stopForeground(STOP_FOREGROUND_REMOVE);
@@ -194,6 +195,7 @@ public final class YouTubeMediaService extends Service {
         if (intent != null) {
             String action = intent.getAction();
             if (ACTION_STOP.equals(action)) {
+                nativePlaybackRequested = false;
                 YouTubePlaybackManager.stop();
                 stopNativePlayer();
                 stopForeground(STOP_FOREGROUND_REMOVE);
@@ -202,12 +204,14 @@ public final class YouTubeMediaService extends Service {
             }
             if (ACTION_PLAY.equals(action)) {
                 if (YouTubePlaybackManager.isAudioOnly() && nativePlayer != null) {
+                    nativePlaybackRequested = true;
                     nativePlayer.play();
                 } else if (!YouTubePlaybackManager.isPlaying()) {
                     YouTubePlaybackManager.toggle();
                 }
             } else if (ACTION_PAUSE.equals(action)) {
                 if (YouTubePlaybackManager.isAudioOnly() && nativePlayer != null) {
+                    nativePlaybackRequested = false;
                     nativePlayer.pause();
                 } else if (YouTubePlaybackManager.isPlaying()) {
                     YouTubePlaybackManager.toggle();
@@ -228,7 +232,7 @@ public final class YouTubeMediaService extends Service {
         if (nativePlayer != null && nativePlayer.isPlaying()) {
             return;
         }
-        if (YouTubePlaybackManager.isPlaying() && YouTubePlaybackManager.isAudioOnly()) {
+        if (nativePlaybackRequested && YouTubePlaybackManager.isAudioOnly()) {
             return;
         }
         super.onTaskRemoved(rootIntent);
@@ -240,7 +244,7 @@ public final class YouTubeMediaService extends Service {
             try {
                 unregisterReceiver(stateReceiver);
             } catch (IllegalArgumentException ignored) {
-                // Receiver was already unregistered.
+                // Already unregistered.
             }
             receiverRegistered = false;
         }
@@ -269,6 +273,7 @@ public final class YouTubeMediaService extends Service {
         }
 
         if (!YouTubePlaybackManager.isAudioOnly()) {
+            nativePlaybackRequested = false;
             stopNativePlayer();
             return;
         }
@@ -289,7 +294,11 @@ public final class YouTubeMediaService extends Service {
         nativePlayer.pause();
         nativePlayer.clearMediaItems();
 
-        final boolean shouldPlay = YouTubePlaybackManager.isPlaying();
+        final boolean shouldPlay = nativePlaybackRequested || YouTubePlaybackManager.isPlaying();
+        if (shouldPlay) {
+            nativePlaybackRequested = true;
+        }
+
         YouTubeNativeAudioResolver.resolve(this, currentId,
                 new YouTubeNativeAudioResolver.Callback() {
                     @Override
@@ -305,7 +314,8 @@ public final class YouTubeMediaService extends Service {
                             resolvedVideoId = currentId;
                             nativePlayer.setMediaItem(MediaItem.fromUri(url));
                             nativePlayer.prepare();
-                            if (shouldPlay || YouTubePlaybackManager.isPlaying()) {
+                            if (nativePlaybackRequested || shouldPlay) {
+                                nativePlaybackRequested = true;
                                 nativePlayer.play();
                             }
                             updateSession();
@@ -368,16 +378,13 @@ public final class YouTubeMediaService extends Service {
             return;
         }
 
-        long position;
-        long duration;
         boolean nativeMode = YouTubePlaybackManager.isAudioOnly() && nativePlayer != null;
-        if (nativeMode) {
-            position = Math.max(0L, nativePlayer.getCurrentPosition());
-            duration = Math.max(0L, nativePlayer.getDuration());
-        } else {
-            position = Math.max(0L, Math.round(YouTubePlaybackManager.getPositionSeconds() * 1000d));
-            duration = Math.max(0L, Math.round(YouTubePlaybackManager.getDurationSeconds() * 1000d));
-        }
+        long position = nativeMode
+                ? Math.max(0L, nativePlayer.getCurrentPosition())
+                : Math.max(0L, Math.round(YouTubePlaybackManager.getPositionSeconds() * 1000d));
+        long duration = nativeMode
+                ? Math.max(0L, nativePlayer.getDuration())
+                : Math.max(0L, Math.round(YouTubePlaybackManager.getDurationSeconds() * 1000d));
 
         MediaMetadataCompat.Builder metadata = new MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, safeTitle())
