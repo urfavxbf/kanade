@@ -34,9 +34,7 @@ val hasValidSigningProps = keystorePropsFile.exists()
 }
 
 android {
-
     namespace = "com.urfavxbf.kanade"
-
     compileSdk = 36
 
     lint {
@@ -56,7 +54,7 @@ android {
 
     defaultConfig {
         applicationId = "com.urfavxbf.kanade"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -152,6 +150,9 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.navigation:navigation-ui:2.5.3")
     implementation("androidx.media:media:1.7.0")
+    implementation("androidx.media3:media3-exoplayer:1.10.1")
+    implementation("dev.ffmpegkit-maintained:yt-dlp-android:2.0.2")
+    implementation("dev.ffmpegkit-maintained:yt-dlp-android-compat:2.0.2")
     implementation("androidx.collection:collection-ktx:1.4.2") {
         exclude(group = "androidx.collection", module = "collection-ktx")
         exclude(group = "androidx.collection", module = "collection-jvm")
