@@ -43,6 +43,10 @@
             android:name=".MusicPlayerService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <service
+            android:name=".ui.youtube.YouTubeMediaService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <receiver
             android:name=".PlaybackStatsReceiver"
             android:exported="false">
