@@ -248,17 +248,19 @@ public final class YouTubeMediaService extends Service {
                         .setMediaSession(mediaSession == null ? null : mediaSession.getSessionToken())
                         .setShowActionsInCompactView(0, 1, 2))
                 .addAction(new NotificationCompat.Action(
-                        R.drawable.ic_skip_previous,
+                        android.R.drawable.ic_media_previous,
                         "Previous",
                         actionPendingIntent(ACTION_PREVIOUS, 10)))
                 .addAction(new NotificationCompat.Action(
-                        YouTubePlaybackManager.isPlaying() ? R.drawable.ic_pause : R.drawable.ic_play,
+                        YouTubePlaybackManager.isPlaying()
+                                ? android.R.drawable.ic_media_pause
+                                : android.R.drawable.ic_media_play,
                         YouTubePlaybackManager.isPlaying() ? "Pause" : "Play",
                         actionPendingIntent(
                                 YouTubePlaybackManager.isPlaying() ? ACTION_PAUSE : ACTION_PLAY,
                                 11)))
                 .addAction(new NotificationCompat.Action(
-                        R.drawable.ic_skip_next,
+                        android.R.drawable.ic_media_next,
                         "Next",
                         actionPendingIntent(ACTION_NEXT, 12)))
                 .build();
