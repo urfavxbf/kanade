@@ -70,7 +70,7 @@
         android:ellipsize="end"
         android:visibility="gone" />
 
-    <WebView
+    <com.urfavxbf.kanade.ui.youtube.YouTubeWebView
         android:id="@+id/youtubePlayerWebView"
         android:layout_width="match_parent"
         android:layout_height="210dp"
