@@ -14,7 +14,6 @@ import android.os.IBinder;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.app.ContextCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
 
@@ -54,8 +53,13 @@ public final class YouTubeMediaService extends Service {
     };
 
     public static void start(@NonNull Context context) {
-        Intent intent = new Intent(context.getApplicationContext(), YouTubeMediaService.class);
-        ContextCompat.startForegroundService(context.getApplicationContext(), intent);
+        Context appContext = context.getApplicationContext();
+        Intent intent = new Intent(appContext, YouTubeMediaService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            appContext.startForegroundService(intent);
+        } else {
+            appContext.startService(intent);
+        }
     }
 
     public static void stop(@NonNull Context context) {
