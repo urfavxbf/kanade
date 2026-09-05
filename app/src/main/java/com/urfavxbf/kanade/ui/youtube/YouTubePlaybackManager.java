@@ -9,11 +9,13 @@ import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -213,11 +215,30 @@ public final class YouTubePlaybackManager {
         android.view.ViewGroup group = (android.view.ViewGroup) host;
         if (player.getParent() != group) {
             detachFromParent();
-            group.addView(player, new android.view.ViewGroup.LayoutParams(
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER);
+            group.addView(player, 0, params);
+        } else if (group.indexOfChild(player) != 0) {
+            group.removeView(player);
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER);
+            group.addView(player, 0, params);
         }
         player.setAlpha(audioOnly ? 0f : 1f);
+        player.post(() -> resizeVideoPlayer(group));
+    }
+
+    private static void resizeVideoPlayer(android.view.ViewGroup group) {
+        if (player == null || player.getParent() != group || group.getWidth() <= 0 || group.getHeight() <= 0) return;
+        int width = group.getWidth();
+        int height = Math.min(group.getHeight(), Math.round(width * 9f / 16f));
+        if (height <= 0) return;
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height, Gravity.CENTER);
+        player.setLayoutParams(params);
     }
 
     public static void moveToGlobalHost(View host) {
