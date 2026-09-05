@@ -20,6 +20,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
+import androidx.navigation.Navigation;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.urfavxbf.kanade.AlbumColorManager;
@@ -37,8 +38,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Bridges process-scoped YouTube playback into Kanade's existing full player.
- * This class owns no player layout of its own.
+ * Bridges process-scoped YouTube playback into Kanade's existing full player
+ * and global mini-player.
  */
 public final class YouTubePlayerController {
 
@@ -52,6 +53,7 @@ public final class YouTubePlayerController {
 
     private static WeakReference<Activity> activityReference = new WeakReference<>(null);
     private static WeakReference<View> boundPlayerRoot = new WeakReference<>(null);
+    private static WeakReference<View> boundMiniRoot = new WeakReference<>(null);
     private static boolean installed;
     private static boolean receiverRegistered;
     private static boolean localPlaying;
@@ -208,6 +210,8 @@ public final class YouTubePlayerController {
             return;
         }
 
+        bindMiniPlayer(activity);
+
         View playerVisualContainer = activity.findViewById(R.id.playerVisualContainer);
         if (playerVisualContainer == null) {
             return;
@@ -339,6 +343,60 @@ public final class YouTubePlayerController {
         });
     }
 
+    private static void bindMiniPlayer(Activity activity) {
+        View miniRoot = activity.findViewById(R.id.miniPlayerRoot);
+        if (miniRoot == null) {
+            return;
+        }
+
+        if (!YouTubePlaybackManager.isActive()) {
+            return;
+        }
+
+        TextView title = activity.findViewById(R.id.miniTitle);
+        TextView artist = activity.findViewById(R.id.miniArtist);
+        ImageView albumArt = activity.findViewById(R.id.miniAlbumArt);
+        ImageButton previous = activity.findViewById(R.id.miniPrevious);
+        ImageButton playPause = activity.findViewById(R.id.miniPlayPause);
+        ImageButton next = activity.findViewById(R.id.miniNext);
+
+        if (title == null
+                || artist == null
+                || albumArt == null
+                || previous == null
+                || playPause == null
+                || next == null) {
+            return;
+        }
+
+        miniRoot.setVisibility(View.VISIBLE);
+        title.setText(safeText(YouTubePlaybackManager.getTitle(), "YouTube video"));
+        artist.setText(safeText(YouTubePlaybackManager.getChannel(), "YouTube"));
+        updateMiniPlayPause(playPause);
+        loadArtwork(albumArt, YouTubePlaybackManager.getThumbnailUrl());
+
+        View previousRoot = boundMiniRoot.get();
+        if (previousRoot == miniRoot) {
+            return;
+        }
+
+        boundMiniRoot = new WeakReference<>(miniRoot);
+        miniRoot.setOnClickListener(v -> openFullPlayer(activity));
+        previous.setOnClickListener(v -> previousYouTubeItem());
+        playPause.setOnClickListener(v -> YouTubePlaybackManager.toggle());
+        next.setOnClickListener(v -> YouTubePlaybackManager.next());
+    }
+
+    private static void openFullPlayer(Activity activity) {
+        try {
+            View navHost = activity.findViewById(R.id.nav_host_fragment_activity_main);
+            if (navHost != null) {
+                Navigation.findNavController(navHost).navigate(R.id.navigation_player);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     private static void restoreLocalPlayerControls(
             Activity activity,
             ImageButton playPause,
@@ -437,6 +495,15 @@ public final class YouTubePlayerController {
     }
 
     private static void updatePlayPause(ImageButton button) {
+        button.setImageResource(YouTubePlaybackManager.isPlaying()
+                ? R.drawable.ic_pause
+                : R.drawable.ic_play);
+        button.setContentDescription(YouTubePlaybackManager.isPlaying()
+                ? "Pause YouTube playback"
+                : "Play YouTube playback");
+    }
+
+    private static void updateMiniPlayPause(ImageButton button) {
         button.setImageResource(YouTubePlaybackManager.isPlaying()
                 ? R.drawable.ic_pause
                 : R.drawable.ic_play);
