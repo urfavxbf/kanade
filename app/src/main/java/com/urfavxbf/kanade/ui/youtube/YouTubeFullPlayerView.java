@@ -18,6 +18,7 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.activity.ComponentActivity;
@@ -41,10 +42,34 @@ public class YouTubeFullPlayerView extends LinearLayout {
     private final LinearLayout queueContainer;
     private final ImageButton playPause;
     private final ImageButton radioButton;
+    private final SeekBar seekBar;
+    private final TextView elapsed;
+    private final TextView duration;
+    private final LinearLayout equalizer;
+    private final View[] equalizerBars;
     private final ExecutorService imageExecutor;
     private final Handler mainHandler;
     private final android.content.BroadcastReceiver receiver;
     private boolean receiverRegistered;
+    private boolean userSeeking;
+
+    private final Runnable equalizerRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!YouTubePlaybackManager.isPlaying()) {
+                equalizer.setVisibility(INVISIBLE);
+                return;
+            }
+            equalizer.setVisibility(VISIBLE);
+            long tick = System.currentTimeMillis() / 120L;
+            for (int i = 0; i < equalizerBars.length; i++) {
+                double wave = (Math.sin((tick * 0.8d) + i * 1.35d) + 1d) * 0.5d;
+                float scale = 0.35f + (float) wave * 0.65f;
+                equalizerBars[i].setScaleY(scale);
+            }
+            mainHandler.postDelayed(this, 120L);
+        }
+    };
 
     public YouTubeFullPlayerView(Context context) {
         super(context);
@@ -120,10 +145,70 @@ public class YouTubeFullPlayerView extends LinearLayout {
         addView(mode, modeParams);
         mode.setOnClickListener(v -> YouTubePlaybackManager.setAudioOnly(!YouTubePlaybackManager.isAudioOnly()));
 
+        LinearLayout progressTimes = new LinearLayout(context);
+        progressTimes.setGravity(Gravity.CENTER_VERTICAL);
+        progressTimes.setPadding(dp(4), 0, dp(4), 0);
+        LayoutParams progressParams = new LayoutParams(LayoutParams.MATCH_PARENT, dp(42));
+        progressParams.topMargin = dp(6);
+        addView(progressTimes, progressParams);
+
+        elapsed = text("0:00", 12, Color.rgb(145, 147, 164));
+        progressTimes.addView(elapsed, new LayoutParams(dp(38), LayoutParams.WRAP_CONTENT));
+
+        seekBar = new SeekBar(context);
+        seekBar.setMax(1000);
+        seekBar.setProgress(0);
+        progressTimes.addView(seekBar, new LayoutParams(0, dp(42), 1f));
+
+        duration = text("0:00", 12, Color.rgb(145, 147, 164));
+        duration.setGravity(Gravity.END);
+        progressTimes.addView(duration, new LayoutParams(dp(38), LayoutParams.WRAP_CONTENT));
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                if (!fromUser) return;
+                double total = YouTubePlaybackManager.getDurationSeconds();
+                if (total > 0d) elapsed.setText(formatTime(total * progress / 1000d));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar bar) {
+                userSeeking = true;
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar bar) {
+                double total = YouTubePlaybackManager.getDurationSeconds();
+                if (total > 0d) {
+                    YouTubePlaybackManager.seekTo(total * bar.getProgress() / 1000d);
+                }
+                userSeeking = false;
+            }
+        });
+
+        equalizer = new LinearLayout(context);
+        equalizer.setGravity(Gravity.CENTER);
+        equalizer.setOrientation(HORIZONTAL);
+        LayoutParams eqParams = new LayoutParams(LayoutParams.MATCH_PARENT, dp(22));
+        eqParams.topMargin = dp(1);
+        addView(equalizer, eqParams);
+        equalizerBars = new View[5];
+        for (int i = 0; i < equalizerBars.length; i++) {
+            View bar = new View(context);
+            bar.setBackground(pillBackground());
+            LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(dp(4), dp(18));
+            barParams.leftMargin = dp(3);
+            barParams.rightMargin = dp(3);
+            equalizer.addView(bar, barParams);
+            equalizerBars[i] = bar;
+        }
+        equalizer.setVisibility(INVISIBLE);
+
         LinearLayout controls = new LinearLayout(context);
         controls.setGravity(Gravity.CENTER);
         LayoutParams controlsParams = new LayoutParams(LayoutParams.MATCH_PARENT, dp(72));
-        controlsParams.topMargin = dp(5);
+        controlsParams.topMargin = dp(3);
         addView(controls, controlsParams);
 
         ImageButton previous = button(R.drawable.ic_previous, "Previous YouTube item");
@@ -235,7 +320,10 @@ public class YouTubeFullPlayerView extends LinearLayout {
         post(() -> {
             boolean active = YouTubePlaybackManager.isActive();
             setVisibility(active ? VISIBLE : GONE);
-            if (!active) return;
+            if (!active) {
+                mainHandler.removeCallbacks(equalizerRunnable);
+                return;
+            }
 
             title.setText(YouTubePlaybackManager.getTitle());
             channel.setText(YouTubePlaybackManager.getChannel());
@@ -243,10 +331,19 @@ public class YouTubeFullPlayerView extends LinearLayout {
             mode.setText(audio ? "AUDIO ONLY" : "YOUTUBE VIDEO");
             mode.setContentDescription(audio ? "Switch to YouTube video" : "Switch to audio only");
             mode.setOnClickListener(v -> YouTubePlaybackManager.setAudioOnly(!YouTubePlaybackManager.isAudioOnly()));
-            playPause.setImageResource(YouTubePlaybackManager.isPlaying()
-                    ? R.drawable.ic_pause : R.drawable.ic_play);
-            playPause.setContentDescription(YouTubePlaybackManager.isPlaying()
+            boolean isPlaying = YouTubePlaybackManager.isPlaying();
+            playPause.setImageResource(isPlaying ? R.drawable.ic_pause : R.drawable.ic_play);
+            playPause.setContentDescription(isPlaying
                     ? "Pause YouTube playback" : "Play YouTube playback");
+
+            double current = YouTubePlaybackManager.getPositionSeconds();
+            double total = YouTubePlaybackManager.getDurationSeconds();
+            if (!userSeeking) {
+                int progress = total > 0d ? (int) Math.round(Math.min(1d, current / total) * 1000d) : 0;
+                seekBar.setProgress(progress);
+                elapsed.setText(formatTime(current));
+            }
+            duration.setText(formatTime(total));
 
             boolean mix = YouTubePlaybackManager.isRadioEnabled();
             radioButton.setImageResource(R.drawable.ic_shuffle);
@@ -256,9 +353,28 @@ public class YouTubeFullPlayerView extends LinearLayout {
                     ? (YouTubePlaybackManager.isRadioLoading() ? "YouTube Mix • Loading…" : "YouTube Mix • Next up")
                     : "Next up");
 
+            if (isPlaying) {
+                mainHandler.removeCallbacks(equalizerRunnable);
+                mainHandler.post(equalizerRunnable);
+            } else {
+                mainHandler.removeCallbacks(equalizerRunnable);
+                equalizer.setVisibility(INVISIBLE);
+            }
+
             renderQueue();
             loadArtwork(YouTubePlaybackManager.getThumbnailUrl());
         });
+    }
+
+    private String formatTime(double seconds) {
+        if (Double.isNaN(seconds) || seconds < 0d) return "0:00";
+        int totalSeconds = (int) Math.floor(seconds);
+        int minutes = totalSeconds / 60;
+        int remaining = totalSeconds % 60;
+        int hours = minutes / 60;
+        minutes %= 60;
+        if (hours > 0) return String.format(java.util.Locale.US, "%d:%02d:%02d", hours, minutes, remaining);
+        return String.format(java.util.Locale.US, "%d:%02d", minutes, remaining);
     }
 
     private void playPrevious() {
@@ -290,10 +406,12 @@ public class YouTubeFullPlayerView extends LinearLayout {
 
         for (int i = 0; i < items.size(); i++) {
             YouTubePlaybackManager.QueueItem item = items.get(i);
+            boolean currentItem = item.videoId.equals(current);
             LinearLayout row = new LinearLayout(getContext());
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(8), dp(7), dp(8), dp(7));
             row.setBackground(cardBackground());
+            row.setAlpha(currentItem ? 1f : 0.92f);
 
             ImageView thumb = new ImageView(getContext());
             thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -312,24 +430,40 @@ public class YouTubeFullPlayerView extends LinearLayout {
             itemTitle.setEllipsize(TextUtils.TruncateAt.END);
             texts.addView(itemTitle);
 
+            LinearLayout meta = new LinearLayout(getContext());
+            meta.setGravity(Gravity.CENTER_VERTICAL);
             TextView itemChannel = text(item.channel, 11, Color.rgb(145, 147, 164));
             itemChannel.setMaxLines(1);
             itemChannel.setEllipsize(TextUtils.TruncateAt.END);
-            texts.addView(itemChannel);
+            meta.addView(itemChannel, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 
-            TextView index = text(String.valueOf(i + 1), 11, Color.rgb(125, 127, 143));
-            index.setGravity(Gravity.CENTER);
-            row.addView(index, new LayoutParams(dp(24), dp(40)));
+            if (YouTubePlaybackManager.isRadioEnabled()) {
+                TextView mix = text("MIX", 9, Color.rgb(210, 207, 245));
+                mix.setTypeface(null, android.graphics.Typeface.BOLD);
+                mix.setGravity(Gravity.CENTER);
+                mix.setPadding(dp(6), dp(2), dp(6), dp(2));
+                mix.setBackground(pillBackground());
+                meta.addView(mix, new LayoutParams(LayoutParams.WRAP_CONTENT, dp(20)));
+            }
+            texts.addView(meta);
 
-            if (item.videoId.equals(current)) {
+            if (currentItem) {
+                ImageView playingIcon = new ImageView(getContext());
+                playingIcon.setImageResource(R.drawable.ic_queue_playing);
+                playingIcon.setColorFilter(Color.WHITE);
+                playingIcon.setContentDescription("Currently playing");
+                row.addView(playingIcon, new LayoutParams(dp(30), dp(40)));
                 itemTitle.setTypeface(null, android.graphics.Typeface.BOLD);
                 itemTitle.setTextColor(Color.rgb(214, 210, 255));
-                row.setAlpha(1f);
+            } else {
+                TextView index = text(String.valueOf(i + 1), 11, Color.rgb(125, 127, 143));
+                index.setGravity(Gravity.CENTER);
+                row.addView(index, new LayoutParams(dp(24), dp(40)));
             }
 
             final int queueIndex = i;
             row.setOnClickListener(v -> YouTubePlaybackManager.playQueueItem(queueIndex));
-            LayoutParams rowParams = new LayoutParams(LayoutParams.MATCH_PARENT, dp(58));
+            LayoutParams rowParams = new LayoutParams(LayoutParams.MATCH_PARENT, dp(64));
             rowParams.bottomMargin = dp(6);
             queueContainer.addView(row, rowParams);
             loadRowArtwork(thumb, item.thumbnailUrl);
@@ -392,6 +526,7 @@ public class YouTubeFullPlayerView extends LinearLayout {
     @Override
     protected void onDetachedFromWindow() {
         unregisterReceiverIfNeeded();
+        mainHandler.removeCallbacks(equalizerRunnable);
         mainHandler.removeCallbacksAndMessages(null);
         super.onDetachedFromWindow();
     }
