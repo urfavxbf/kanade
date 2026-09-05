@@ -22,8 +22,10 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.urfavxbf.kanade.AlbumColorManager;
 import com.urfavxbf.kanade.MusicPlayerService;
 import com.urfavxbf.kanade.R;
+import com.urfavxbf.kanade.ui.player.QueueBottomSheet;
 
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
@@ -52,6 +54,7 @@ public final class YouTubePlayerController {
     private static WeakReference<View> boundPlayerRoot = new WeakReference<>(null);
     private static boolean installed;
     private static boolean receiverRegistered;
+    private static boolean localPlaying;
 
     private static final Runnable BIND_POLL = new Runnable() {
         @Override
@@ -89,7 +92,7 @@ public final class YouTubePlayerController {
                 return;
             }
 
-            boolean localPlaying = intent.getBooleanExtra(
+            localPlaying = intent.getBooleanExtra(
                     MusicPlayerService.EXTRA_IS_PLAYING,
                     false);
 
@@ -190,10 +193,6 @@ public final class YouTubePlayerController {
                 if (current == activity) {
                     activityReference.clear();
                 }
-                View root = boundPlayerRoot.get();
-                if (root != null && root.getContext() == activity) {
-                    boundPlayerRoot.clear();
-                }
             }
         });
     }
@@ -240,9 +239,9 @@ public final class YouTubePlayerController {
             return;
         }
 
-        boolean youtubeActive = YouTubePlaybackManager.isActive();
-        if (!youtubeActive) {
+        if (!YouTubePlaybackManager.isActive()) {
             restoreLocalPlayerControls(
+                    activity,
                     playPause,
                     previous,
                     next,
@@ -339,6 +338,7 @@ public final class YouTubePlayerController {
     }
 
     private static void restoreLocalPlayerControls(
+            Activity activity,
             ImageButton playPause,
             ImageButton previous,
             ImageButton next,
@@ -357,15 +357,52 @@ public final class YouTubePlayerController {
         audioOnlyButton.setVisibility(View.GONE);
         radioButton.setVisibility(View.GONE);
 
-        playPause.setOnClickListener(v -> sendLocalAction(v, MusicPlayerService.ACTION_PLAY));
+        playPause.setOnClickListener(v -> sendLocalAction(v, localPlaying
+                ? MusicPlayerService.ACTION_PAUSE
+                : MusicPlayerService.ACTION_PLAY));
         previous.setOnClickListener(v -> sendLocalAction(v, MusicPlayerService.ACTION_PREVIOUS));
         next.setOnClickListener(v -> sendLocalAction(v, MusicPlayerService.ACTION_NEXT));
         queueButton.setOnClickListener(v -> {
-            // PlayerFragment owns the local queue sheet; this listener is restored
-            // by recreating the destination view when the local player is opened.
+            try {
+                AlbumColorManager colorManager = AlbumColorManager.getInstance(
+                        activity.getApplicationContext());
+                QueueBottomSheet sheet = new QueueBottomSheet(activity);
+                sheet.show(
+                        colorManager.getCurrentAccentColor(),
+                        colorManager.getCurrentBackgroundColor());
+            } catch (Exception ignored) {
+                new QueueBottomSheet(activity).show(
+                        0xFFC9C4FF,
+                        0xFF10111A);
+            }
         });
 
-        seekBar.setOnSeekBarChangeListener(null);
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar bar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar bar) {
+                if (!localPlaying) {
+                    return;
+                }
+                Intent intent = new Intent(bar.getContext(), MusicPlayerService.class);
+                intent.setAction(MusicPlayerService.ACTION_SEEK);
+                intent.putExtra(
+                        MusicPlayerService.EXTRA_SEEK_POSITION,
+                        bar.getProgress());
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    bar.getContext().startForegroundService(intent);
+                } else {
+                    bar.getContext().startService(intent);
+                }
+            }
+        });
         boundPlayerRoot.clear();
     }
 
