@@ -3,9 +3,7 @@ package com.urfavxbf.kanade.ui.youtube;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-
-import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
+import android.os.Build;
 
 /** Starts the YouTube foreground service when playback becomes active. */
 public final class YouTubeMediaPlaybackReceiver extends BroadcastReceiver {
@@ -21,6 +19,10 @@ public final class YouTubeMediaPlaybackReceiver extends BroadcastReceiver {
         }
         Context applicationContext = context.getApplicationContext();
         Intent serviceIntent = new Intent(applicationContext, YouTubeMediaService.class);
-        ContextCompat.startForegroundService(applicationContext, serviceIntent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            applicationContext.startForegroundService(serviceIntent);
+        } else {
+            applicationContext.startService(serviceIntent);
+        }
     }
 }
