@@ -293,6 +293,24 @@ public final class YouTubePlaybackManager {
 
     public static void toggle() {
         if (player == null || videoId.isEmpty()) return;
+        if (audioOnly) {
+            boolean shouldPlay = !playing;
+            playing = shouldPlay;
+            updateMini();
+            broadcastState();
+            Intent intent = new Intent(appContext, YouTubeMediaService.class)
+                    .setAction(shouldPlay
+                            ? YouTubeMediaService.ACTION_PLAY
+                            : YouTubeMediaService.ACTION_PAUSE);
+            if (appContext != null) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    appContext.startForegroundService(intent);
+                } else {
+                    appContext.startService(intent);
+                }
+            }
+            return;
+        }
         player.evaluateJavascript(playing ? "pauseYT();" : "playYT();", null);
     }
 
@@ -320,9 +338,7 @@ public final class YouTubePlaybackManager {
         playing = false;
         MAIN.removeCallbacks(PROGRESS_POLL);
         View albumCard = fullPlayerAlbumCard.get();
-        if (albumCard != null) {
-            albumCard.setVisibility(View.VISIBLE);
-        }
+        if (albumCard != null) albumCard.setVisibility(View.VISIBLE);
         updateMini();
         broadcastState();
     }
@@ -378,17 +394,12 @@ public final class YouTubePlaybackManager {
             if (root == null) return;
             root.setVisibility(isActive() ? View.VISIBLE : View.GONE);
             if (titleView != null) titleView.setText(title);
-            if (artistView != null) {
-                artistView.setText(audioOnly ? channel + " • Audio only" : channel);
-            }
+            if (artistView != null) artistView.setText(audioOnly ? channel + " • Audio only" : channel);
             if (playPause != null) {
                 playPause.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
-                playPause.setContentDescription(playing
-                        ? "Pause YouTube playback" : "Play YouTube playback");
+                playPause.setContentDescription(playing ? "Pause YouTube playback" : "Play YouTube playback");
             }
-            if (thumb != null && thumbnailUrl.isEmpty()) {
-                thumb.setImageResource(android.R.drawable.ic_menu_gallery);
-            }
+            if (thumb != null && thumbnailUrl.isEmpty()) thumb.setImageResource(android.R.drawable.ic_menu_gallery);
         });
     }
 
@@ -423,21 +434,18 @@ public final class YouTubePlaybackManager {
     }
 
     private static void fetchRadioAndPlay() {
-        if (appContext == null || TextUtils.isEmpty(BuildConfig.YOUTUBE_API_KEY)
-                || TextUtils.isEmpty(videoId)) {
+        if (appContext == null || TextUtils.isEmpty(BuildConfig.YOUTUBE_API_KEY) || TextUtils.isEmpty(videoId)) {
             radioLoading = false;
             playing = false;
             updateMini();
             broadcastState();
             return;
         }
-
         radioLoading = true;
         broadcastState();
         final String seedVideoId = videoId;
         final String seedTitle = title;
         final String seedChannel = channel;
-
         RADIO_EXECUTOR.execute(() -> {
             HttpURLConnection connection = null;
             try {
@@ -450,14 +458,10 @@ public final class YouTubePlaybackManager {
                 connection.setReadTimeout(15000);
                 connection.setRequestMethod("GET");
                 int responseCode = connection.getResponseCode();
-                InputStream stream = responseCode >= 200 && responseCode < 300
-                        ? connection.getInputStream() : connection.getErrorStream();
+                InputStream stream = responseCode >= 200 && responseCode < 300 ? connection.getInputStream() : connection.getErrorStream();
                 if (stream == null) throw new IllegalStateException("No YouTube radio response");
                 String response = readResponse(stream);
-                if (responseCode < 200 || responseCode >= 300) {
-                    throw new IllegalStateException("YouTube radio failed");
-                }
-
+                if (responseCode < 200 || responseCode >= 300) throw new IllegalStateException("YouTube radio failed");
                 JSONArray items = new JSONObject(response).optJSONArray("items");
                 ArrayList<QueueItem> additions = new ArrayList<>();
                 if (items != null) {
@@ -476,42 +480,22 @@ public final class YouTubePlaybackManager {
                             JSONObject high = thumbs.optJSONObject("high");
                             JSONObject medium = thumbs.optJSONObject("medium");
                             if (high != null) thumb = high.optString("url", "").trim();
-                            if (TextUtils.isEmpty(thumb) && medium != null) {
-                                thumb = medium.optString("url", "").trim();
-                            }
+                            if (TextUtils.isEmpty(thumb) && medium != null) thumb = medium.optString("url", "").trim();
                         }
-                        if (!TextUtils.isEmpty(idValue)
-                                && !idValue.equals(seedVideoId)
-                                && findQueueIndex(idValue) < 0) {
+                        if (!TextUtils.isEmpty(idValue) && !idValue.equals(seedVideoId) && findQueueIndex(idValue) < 0) {
                             additions.add(new QueueItem(idValue, itemTitle, itemChannel, thumb));
                         }
                     }
                 }
-
                 MAIN.post(() -> {
                     radioLoading = false;
-                    if (!radio) {
-                        broadcastState();
-                        return;
-                    }
-                    for (QueueItem item : additions) {
-                        if (findQueueIndex(item.videoId) < 0) queue.add(item);
-                    }
-                    if (queueIndex + 1 < queue.size()) {
-                        playQueueItem(queueIndex + 1);
-                    } else {
-                        playing = false;
-                        updateMini();
-                        broadcastState();
-                    }
+                    if (!radio) { broadcastState(); return; }
+                    for (QueueItem item : additions) if (findQueueIndex(item.videoId) < 0) queue.add(item);
+                    if (queueIndex + 1 < queue.size()) playQueueItem(queueIndex + 1);
+                    else { playing = false; updateMini(); broadcastState(); }
                 });
             } catch (Exception ignored) {
-                MAIN.post(() -> {
-                    radioLoading = false;
-                    playing = false;
-                    updateMini();
-                    broadcastState();
-                });
+                MAIN.post(() -> { radioLoading = false; playing = false; updateMini(); broadcastState(); });
             } finally {
                 if (connection != null) connection.disconnect();
             }
@@ -549,13 +533,11 @@ public final class YouTubePlaybackManager {
         public final String title;
         public final String channel;
         public final String thumbnailUrl;
-
         public QueueItem(String videoId, String title, String channel, String thumbnailUrl) {
             this.videoId = videoId;
             this.title = TextUtils.isEmpty(title) ? "YouTube video" : title;
             this.channel = TextUtils.isEmpty(channel) ? "YouTube" : channel;
-            this.thumbnailUrl = TextUtils.isEmpty(thumbnailUrl)
-                    ? "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg" : thumbnailUrl;
+            this.thumbnailUrl = TextUtils.isEmpty(thumbnailUrl) ? "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg" : thumbnailUrl;
         }
     }
 
