@@ -3,7 +3,6 @@ package com.urfavxbf.kanade.ui.youtube;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -14,11 +13,9 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
-import android.webkit.WebView;
-import android.widget.CheckBox;
 import android.widget.EditText;
-import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -46,49 +43,32 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class YouTubeFragment extends Fragment {
+
     private EditText searchInput;
     private RecyclerView resultsRecycler;
-    private WebView playerWebView;
-    private TextView playerTitle;
     private TextView statusText;
-    private CheckBox audioOnlyCheck;
-    private View playerFrame;
-    private View miniPlayer;
-    private ImageView miniThumbnail;
-    private TextView miniTitle;
-    private TextView miniArtist;
-    private ImageButton miniPlayPause;
-    private ImageButton miniExpand;
     private ResultAdapter adapter;
     private ExecutorService searchExecutor;
     private Handler mainHandler;
-    private boolean isYouTubePlaying;
-    private boolean isAudioOnly;
-    private String currentVideoId = "";
 
     @Nullable
     @Override
-    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+    public View onCreateView(
+            @NonNull LayoutInflater inflater,
+            @Nullable ViewGroup container,
             @Nullable Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_youtube, container, false);
     }
 
     @Override
-    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+    public void onViewCreated(
+            @NonNull View view,
+            @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
         searchInput = view.findViewById(R.id.youtubeSearchInput);
         resultsRecycler = view.findViewById(R.id.youtubeResultsRecycler);
-        playerWebView = view.findViewById(R.id.youtubePlayerWebView);
-        playerTitle = view.findViewById(R.id.youtubePlayerTitle);
         statusText = view.findViewById(R.id.youtubeStatusText);
-        audioOnlyCheck = view.findViewById(R.id.youtubeAudioOnlyCheck);
-        playerFrame = view.findViewById(R.id.youtubePlayerFrame);
-        miniPlayer = view.findViewById(R.id.youtubeMiniPlayer);
-        miniThumbnail = view.findViewById(R.id.youtubeMiniThumbnail);
-        miniTitle = view.findViewById(R.id.youtubeMiniTitle);
-        miniArtist = view.findViewById(R.id.youtubeMiniArtist);
-        miniPlayPause = view.findViewById(R.id.youtubeMiniPlayPause);
-        miniExpand = view.findViewById(R.id.youtubeMiniExpand);
 
         mainHandler = new Handler(Looper.getMainLooper());
         searchExecutor = Executors.newSingleThreadExecutor(runnable -> {
@@ -96,53 +76,16 @@ public class YouTubeFragment extends Fragment {
             thread.setDaemon(true);
             return thread;
         });
+
         adapter = new ResultAdapter(this::playVideo, searchExecutor, mainHandler);
         resultsRecycler.setLayoutManager(new LinearLayoutManager(requireContext()));
         resultsRecycler.setAdapter(adapter);
 
-        View globalMiniRoot = requireActivity().findViewById(R.id.bottomPart);
-        View globalMini = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniPlayerRoot);
-        ImageView globalThumb = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniAlbumArt);
-        TextView globalTitle = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniTitle);
-        TextView globalArtist = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniArtist);
-        ImageButton globalPlayPause = globalMiniRoot == null ? null : globalMiniRoot.findViewById(R.id.miniPlayPause);
-        if (globalMini != null && globalThumb != null && globalTitle != null && globalArtist != null
-                && globalPlayPause != null) {
-            YouTubePlaybackManager.setMiniViews(globalMini, globalThumb, globalTitle, globalArtist, globalPlayPause);
-            android.content.Context appContext = requireContext().getApplicationContext();
-            globalPlayPause.setOnClickListener(v -> {
-                if (YouTubePlaybackManager.isActive()) {
-                    YouTubePlaybackManager.toggle();
-                } else {
-                    android.content.Intent intent = new android.content.Intent(appContext,
-                            com.urfavxbf.kanade.MusicPlayerService.class);
-                    intent.setAction(com.urfavxbf.kanade.MusicPlayerService.ACTION_PLAY);
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        androidx.core.content.ContextCompat.startForegroundService(appContext, intent);
-                    } else {
-                        appContext.startService(intent);
-                    }
-                }
-            });
-        }
+        YouTubePlayerController.install(requireActivity());
 
-        audioOnlyCheck.setOnCheckedChangeListener((buttonView, checked) -> {
-            isAudioOnly = checked;
-            YouTubePlaybackManager.setAudioOnly(checked);
-            if (checked) {
-                miniPlayer.setVisibility(View.VISIBLE);
-                statusText.setText("Audio only • YouTube playback");
-            } else {
-                miniPlayer.setVisibility(View.GONE);
-                statusText.setText("YouTube video");
-            }
-        });
+        view.findViewById(R.id.youtubeSearchButton).setOnClickListener(
+                v -> searchOrPlayDirectLink());
 
-        miniPlayPause.setOnClickListener(v -> YouTubePlaybackManager.toggle());
-        miniExpand.setOnClickListener(v -> showVideoPlayer());
-        miniPlayer.setOnClickListener(v -> showVideoPlayer());
-
-        view.findViewById(R.id.youtubeSearchButton).setOnClickListener(v -> searchOrPlayDirectLink());
         searchInput.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 searchOrPlayDirectLink();
@@ -152,10 +95,7 @@ public class YouTubeFragment extends Fragment {
         });
 
         if (YouTubePlaybackManager.isActive()) {
-            playerFrame.setVisibility(View.VISIBLE);
-            YouTubePlaybackManager.attachTo(playerFrame);
-            isAudioOnly = false;
-            miniPlayer.setVisibility(View.GONE);
+            statusText.setText("YouTube playback is active in the player");
         }
     }
 
@@ -165,22 +105,27 @@ public class YouTubeFragment extends Fragment {
             searchInput.setError("Enter a song or artist");
             return;
         }
+
         String videoId = extractVideoId(query);
         if (videoId != null) {
-            playVideo(new YouTubeResult(videoId, "YouTube video", "", ""));
+            playVideo(new YouTubeResult(videoId, "YouTube video", "YouTube", ""));
             return;
         }
+
         searchYouTube(query);
     }
 
     private void searchYouTube(String query) {
         if (TextUtils.isEmpty(BuildConfig.YOUTUBE_API_KEY)) {
-            statusText.setText("YouTube search is not configured. Add YOUTUBE_API_KEY to local.properties.");
+            statusText.setText(
+                    "YouTube search is not configured. Add YOUTUBE_API_KEY to local.properties.");
             Toast.makeText(requireContext(), "YouTube API key is missing", Toast.LENGTH_SHORT).show();
             return;
         }
+
         statusText.setText("Searching YouTube…");
         adapter.setItems(new ArrayList<>());
+
         searchExecutor.execute(() -> {
             ArrayList<YouTubeResult> results = new ArrayList<>();
             HttpURLConnection connection = null;
@@ -189,116 +134,132 @@ public class YouTubeFragment extends Fragment {
                 String endpoint = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video"
                         + "&videoCategoryId=10&videoEmbeddable=true&videoSyndicated=true&maxResults=15&q="
                         + encodedQuery + "&key="
-                        + URLEncoder.encode(BuildConfig.YOUTUBE_API_KEY, StandardCharsets.UTF_8.name());
+                        + URLEncoder.encode(
+                                BuildConfig.YOUTUBE_API_KEY,
+                                StandardCharsets.UTF_8.name());
+
                 connection = (HttpURLConnection) new URL(endpoint).openConnection();
                 connection.setConnectTimeout(10000);
                 connection.setReadTimeout(15000);
                 connection.setRequestMethod("GET");
                 connection.setRequestProperty("Accept", "application/json");
+
                 int responseCode = connection.getResponseCode();
                 InputStream stream = responseCode >= 200 && responseCode < 300
-                        ? connection.getInputStream() : connection.getErrorStream();
-                if (stream == null) throw new IllegalStateException("YouTube returned no response");
+                        ? connection.getInputStream()
+                        : connection.getErrorStream();
+                if (stream == null) {
+                    throw new IllegalStateException("YouTube returned no response");
+                }
+
                 String response = readResponse(stream);
                 if (responseCode < 200 || responseCode >= 300) {
                     JSONObject error = new JSONObject(response).optJSONObject("error");
-                    throw new IllegalStateException(error == null ? "YouTube search failed"
-                            : error.optString("message", "YouTube search failed"));
+                    throw new IllegalStateException(
+                            error == null
+                                    ? "YouTube search failed"
+                                    : error.optString("message", "YouTube search failed"));
                 }
+
                 JSONArray items = new JSONObject(response).optJSONArray("items");
                 if (items != null) {
                     for (int i = 0; i < items.length(); i++) {
                         JSONObject item = items.optJSONObject(i);
-                        if (item == null) continue;
+                        if (item == null) {
+                            continue;
+                        }
+
                         JSONObject id = item.optJSONObject("id");
                         JSONObject snippet = item.optJSONObject("snippet");
-                        if (id == null || snippet == null) continue;
+                        if (id == null || snippet == null) {
+                            continue;
+                        }
+
                         String videoId = id.optString("videoId", "").trim();
                         String title = snippet.optString("title", "").trim();
                         String channel = snippet.optString("channelTitle", "").trim();
-                        String thumbnail = "";
-                        JSONObject thumbnails = snippet.optJSONObject("thumbnails");
-                        if (thumbnails != null) {
-                            JSONObject medium = thumbnails.optJSONObject("medium");
-                            JSONObject high = thumbnails.optJSONObject("high");
-                            JSONObject selected = medium != null ? medium : high;
-                            if (selected != null) thumbnail = selected.optString("url", "").trim();
-                        }
+                        String thumbnail = extractThumbnail(snippet.optJSONObject("thumbnails"));
+
                         if (!videoId.isEmpty() && !title.isEmpty()) {
                             results.add(new YouTubeResult(videoId, title, channel, thumbnail));
                         }
                     }
                 }
+
                 ArrayList<YouTubeResult> finalResults = results;
                 mainHandler.post(() -> {
-                    if (!isAdded() || getView() == null) return;
+                    if (!isAdded() || getView() == null) {
+                        return;
+                    }
                     adapter.setItems(finalResults);
-                    statusText.setText(finalResults.isEmpty() ? "No YouTube music results found."
-                            : finalResults.size() + " results");
+                    statusText.setText(
+                            finalResults.isEmpty()
+                                    ? "No YouTube music results found."
+                                    : finalResults.size() + " results");
                 });
             } catch (Exception e) {
-                String message = TextUtils.isEmpty(e.getMessage()) ? "Unknown YouTube error" : e.getMessage();
+                String message = TextUtils.isEmpty(e.getMessage())
+                        ? "Unknown YouTube error"
+                        : e.getMessage();
                 mainHandler.post(() -> {
-                    if (!isAdded() || getView() == null) return;
+                    if (!isAdded() || getView() == null) {
+                        return;
+                    }
                     statusText.setText("YouTube search failed: " + message);
                 });
             } finally {
-                if (connection != null) connection.disconnect();
+                if (connection != null) {
+                    connection.disconnect();
+                }
             }
         });
     }
 
     private void playVideo(YouTubeResult result) {
-        if (!isAdded() || result == null || result.videoId.isEmpty()) return;
-        currentVideoId = result.videoId;
-        playerTitle.setText(result.title);
-        playerFrame.setVisibility(View.VISIBLE);
-        playerTitle.setVisibility(View.VISIBLE);
-        statusText.setText(result.channel.isEmpty() ? "Opening YouTube player…" : result.channel);
-        isAudioOnly = audioOnlyCheck.isChecked();
-        YouTubePlaybackManager.play(requireContext(), result.videoId, result.title, result.channel,
-                result.thumbnailUrl, isAudioOnly);
-        YouTubePlaybackManager.attachTo(playerFrame);
-        if (isAudioOnly) {
-            miniPlayer.setVisibility(View.VISIBLE);
-            statusText.setText("Audio only • YouTube playback");
-        } else {
-            miniPlayer.setVisibility(View.GONE);
+        if (!isAdded() || result == null || result.videoId.isEmpty()) {
+            return;
         }
-    }
 
-    private void showVideoPlayer() {
-        isAudioOnly = false;
-        audioOnlyCheck.setOnCheckedChangeListener(null);
-        audioOnlyCheck.setChecked(false);
-        audioOnlyCheck.setOnCheckedChangeListener((buttonView, checked) -> {
-            isAudioOnly = checked;
-            YouTubePlaybackManager.setAudioOnly(checked);
-            miniPlayer.setVisibility(checked ? View.VISIBLE : View.GONE);
-        });
-        YouTubePlaybackManager.showVideo();
-        YouTubePlaybackManager.attachTo(playerFrame);
-        playerWebView.setVisibility(View.GONE);
-        miniPlayer.setVisibility(View.GONE);
-        if (!currentVideoId.isEmpty()) statusText.setText("YouTube video");
+        YouTubePlaybackManager.play(
+                requireContext(),
+                result.videoId,
+                result.title,
+                result.channel,
+                result.thumbnailUrl,
+                YouTubePlaybackManager.isAudioOnly());
+
+        statusText.setText("Playing in Kanade's player");
     }
 
     private String extractVideoId(String value) {
         try {
             Uri uri = Uri.parse(value);
             String host = uri.getHost();
-            if (host == null) return null;
+            if (host == null) {
+                return null;
+            }
+
             if (host.equalsIgnoreCase("youtu.be")) {
                 String path = uri.getPath();
                 return validVideoId(path == null ? null : path.replace("/", ""));
             }
-            if (host.equalsIgnoreCase("youtube.com") || host.equalsIgnoreCase("www.youtube.com")
-                    || host.equalsIgnoreCase("m.youtube.com") || host.equalsIgnoreCase("music.youtube.com")) {
+
+            if (host.equalsIgnoreCase("youtube.com")
+                    || host.equalsIgnoreCase("www.youtube.com")
+                    || host.equalsIgnoreCase("m.youtube.com")
+                    || host.equalsIgnoreCase("music.youtube.com")) {
                 String id = uri.getQueryParameter("v");
-                if (id != null) return validVideoId(id);
+                if (id != null) {
+                    return validVideoId(id);
+                }
+
                 String path = uri.getPath();
-                if (path != null && path.startsWith("/shorts/")) return validVideoId(path.substring(8));
-                if (path != null && path.startsWith("/embed/")) return validVideoId(path.substring(7));
+                if (path != null && path.startsWith("/shorts/")) {
+                    return validVideoId(path.substring(8));
+                }
+                if (path != null && path.startsWith("/embed/")) {
+                    return validVideoId(path.substring(7));
+                }
             }
         } catch (Exception ignored) {
             return null;
@@ -307,52 +268,60 @@ public class YouTubeFragment extends Fragment {
     }
 
     private String validVideoId(String value) {
-        if (value == null || value.length() != 11) return null;
+        if (value == null || value.length() != 11) {
+            return null;
+        }
         for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (!(Character.isLetterOrDigit(c) || c == '-' || c == '_')) return null;
+            char character = value.charAt(i);
+            if (!(Character.isLetterOrDigit(character)
+                    || character == '-'
+                    || character == '_')) {
+                return null;
+            }
         }
         return value;
     }
 
+    private String extractThumbnail(JSONObject thumbnails) {
+        if (thumbnails == null) {
+            return "";
+        }
+        JSONObject high = thumbnails.optJSONObject("high");
+        if (high != null) {
+            String url = high.optString("url", "").trim();
+            if (!url.isEmpty()) {
+                return url;
+            }
+        }
+        JSONObject medium = thumbnails.optJSONObject("medium");
+        return medium == null ? "" : medium.optString("url", "").trim();
+    }
+
     private String readResponse(InputStream inputStream) throws Exception {
         StringBuilder builder = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
             String line;
-            while ((line = reader.readLine()) != null) builder.append(line);
+            while ((line = reader.readLine()) != null) {
+                builder.append(line);
+            }
         }
         return builder.toString();
     }
 
     @Override
     public void onDestroyView() {
-        if (playerWebView != null) {
-            View parent = (View) playerWebView.getParent();
-            if (parent instanceof ViewGroup) ((ViewGroup) parent).removeView(playerWebView);
-            playerWebView.setVisibility(View.GONE);
-        }
-        if (YouTubePlaybackManager.isActive()) {
-            View globalHost = requireActivity().findViewById(R.id.youtubeGlobalPlayerHost);
-            YouTubePlaybackManager.moveToGlobalHost(globalHost);
-        }
         if (searchExecutor != null) {
             searchExecutor.shutdownNow();
             searchExecutor = null;
         }
-        if (mainHandler != null) mainHandler.removeCallbacksAndMessages(null);
+        if (mainHandler != null) {
+            mainHandler.removeCallbacksAndMessages(null);
+        }
         adapter = null;
         resultsRecycler = null;
         searchInput = null;
-        playerTitle = null;
         statusText = null;
-        audioOnlyCheck = null;
-        playerFrame = null;
-        miniPlayer = null;
-        miniThumbnail = null;
-        miniTitle = null;
-        miniArtist = null;
-        miniPlayPause = null;
-        miniExpand = null;
         super.onDestroyView();
     }
 
@@ -361,6 +330,7 @@ public class YouTubeFragment extends Fragment {
         final String title;
         final String channel;
         final String thumbnailUrl;
+
         YouTubeResult(String videoId, String title, String channel, String thumbnailUrl) {
             this.videoId = videoId;
             this.title = title;
@@ -369,14 +339,22 @@ public class YouTubeFragment extends Fragment {
         }
     }
 
-    private static final class ResultAdapter extends RecyclerView.Adapter<ResultAdapter.ViewHolder> {
-        interface Listener { void onResult(YouTubeResult result); }
+    private static final class ResultAdapter
+            extends RecyclerView.Adapter<ResultAdapter.ViewHolder> {
+
+        interface Listener {
+            void onResult(YouTubeResult result);
+        }
+
         private final ArrayList<YouTubeResult> items = new ArrayList<>();
         private final Listener listener;
         private final ExecutorService imageExecutor;
         private final Handler mainHandler;
 
-        ResultAdapter(Listener listener, ExecutorService imageExecutor, Handler mainHandler) {
+        ResultAdapter(
+                Listener listener,
+                ExecutorService imageExecutor,
+                Handler mainHandler) {
             this.listener = listener;
             this.imageExecutor = imageExecutor;
             this.mainHandler = mainHandler;
@@ -390,25 +368,33 @@ public class YouTubeFragment extends Fragment {
 
         @NonNull
         @Override
-        public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            LinearLayoutCompat row = new LinearLayoutCompat(parent.getContext());
-            row.setOrientation(LinearLayoutCompat.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
+        public ViewHolder onCreateViewHolder(
+                @NonNull ViewGroup parent,
+                int viewType) {
             int padding = Math.round(10 * parent.getResources().getDisplayMetrics().density);
+
+            LinearLayout row = new LinearLayout(parent.getContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(padding, padding, padding, padding);
 
             ImageView thumbnail = new ImageView(parent.getContext());
             thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            row.addView(thumbnail, new LinearLayoutCompat.LayoutParams(
-                    Math.round(120 * parent.getResources().getDisplayMetrics().density),
-                    Math.round(68 * parent.getResources().getDisplayMetrics().density)));
+            row.addView(
+                    thumbnail,
+                    new LinearLayout.LayoutParams(
+                            Math.round(120 * parent.getResources().getDisplayMetrics().density),
+                            Math.round(68 * parent.getResources().getDisplayMetrics().density)));
 
-            LinearLayoutCompat textContainer = new LinearLayoutCompat(parent.getContext());
-            textContainer.setOrientation(LinearLayoutCompat.VERTICAL);
+            LinearLayout textContainer = new LinearLayout(parent.getContext());
+            textContainer.setOrientation(LinearLayout.VERTICAL);
             textContainer.setGravity(Gravity.CENTER_VERTICAL);
-            LinearLayoutCompat.LayoutParams textParams = new LinearLayoutCompat.LayoutParams(
-                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            textParams.leftMargin = Math.round(12 * parent.getResources().getDisplayMetrics().density);
+            LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f);
+            textParams.leftMargin = Math.round(
+                    12 * parent.getResources().getDisplayMetrics().density);
             row.addView(textContainer, textParams);
 
             TextView title = new TextView(parent.getContext());
@@ -419,100 +405,101 @@ public class YouTubeFragment extends Fragment {
             textContainer.addView(title);
 
             TextView channel = new TextView(parent.getContext());
-            channel.setTextColor(Color.rgb(155, 157, 170));
+            channel.setTextColor(Color.rgb(160, 162, 175));
             channel.setTextSize(12);
             channel.setMaxLines(1);
             channel.setEllipsize(TextUtils.TruncateAt.END);
             textContainer.addView(channel);
 
-            TextView mixBadge = new TextView(parent.getContext());
-            mixBadge.setText("MIX");
-            mixBadge.setTextColor(Color.rgb(214, 210, 255));
-            mixBadge.setTextSize(9);
-            mixBadge.setTypeface(null, android.graphics.Typeface.BOLD);
-            mixBadge.setGravity(Gravity.CENTER);
-            mixBadge.setPadding(Math.round(6 * parent.getResources().getDisplayMetrics().density),
-                    Math.round(2 * parent.getResources().getDisplayMetrics().density),
-                    Math.round(6 * parent.getResources().getDisplayMetrics().density),
-                    Math.round(2 * parent.getResources().getDisplayMetrics().density));
-            mixBadge.setBackground(badgeBackground(parent));
-            mixBadge.setVisibility(View.GONE);
-            textContainer.addView(mixBadge, new LinearLayoutCompat.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    Math.round(20 * parent.getResources().getDisplayMetrics().density)));
+            TextView badge = new TextView(parent.getContext());
+            badge.setTextColor(Color.WHITE);
+            badge.setTextSize(10);
+            badge.setGravity(Gravity.CENTER);
+            badge.setPadding(8, 4, 8, 4);
+            badge.setVisibility(View.GONE);
+            row.addView(badge);
 
-            return new ViewHolder(row, thumbnail, title, channel, mixBadge);
+            return new ViewHolder(row, thumbnail, title, channel, badge);
         }
 
         @Override
-        public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+        public void onBindViewHolder(
+                @NonNull ViewHolder holder,
+                int position) {
             YouTubeResult result = items.get(position);
             holder.title.setText(result.title);
             holder.channel.setText(result.channel);
-            boolean inMix = YouTubePlaybackManager.isInMixQueue(result.videoId);
-            boolean isPlaying = YouTubePlaybackManager.isActive()
-                    && result.videoId.equals(YouTubePlaybackManager.getVideoId());
-            holder.mixBadge.setVisibility(inMix ? View.VISIBLE : View.GONE);
-            holder.mixBadge.setText(isPlaying ? "PLAYING" : "MIX");
-            holder.itemView.setOnClickListener(v -> listener.onResult(result));
-            holder.thumbnail.setTag(result.thumbnailUrl);
             holder.thumbnail.setImageResource(android.R.drawable.ic_menu_gallery);
-            if (result.thumbnailUrl.isEmpty()) return;
-            imageExecutor.execute(() -> {
-                Bitmap bitmap = loadThumbnail(result.thumbnailUrl);
-                if (bitmap == null) return;
-                mainHandler.post(() -> {
-                    Object tag = holder.thumbnail.getTag();
-                    if (result.thumbnailUrl.equals(tag)) holder.thumbnail.setImageBitmap(bitmap);
+
+            boolean inMix = YouTubePlaybackManager.isInMixQueue(result.videoId);
+            boolean playing = YouTubePlaybackManager.isActive()
+                    && result.videoId.equals(YouTubePlaybackManager.getVideoId());
+            holder.badge.setVisibility(inMix || playing ? View.VISIBLE : View.GONE);
+            holder.badge.setText(playing ? "PLAYING" : "MIX");
+
+            if (!TextUtils.isEmpty(result.thumbnailUrl)) {
+                String thumbnailUrl = result.thumbnailUrl;
+                holder.thumbnail.setTag(thumbnailUrl);
+                imageExecutor.execute(() -> {
+                    Bitmap bitmap = downloadBitmap(thumbnailUrl);
+                    if (bitmap == null) {
+                        return;
+                    }
+                    mainHandler.post(() -> {
+                        Object tag = holder.thumbnail.getTag();
+                        if (thumbnailUrl.equals(tag)) {
+                            holder.thumbnail.setImageBitmap(bitmap);
+                        }
+                    });
                 });
-            });
+            }
+
+            holder.itemView.setOnClickListener(v -> listener.onResult(result));
         }
 
-        private GradientDrawable badgeBackground(View parent) {
-            GradientDrawable drawable = new GradientDrawable();
-            drawable.setColor(Color.rgb(35, 36, 49));
-            drawable.setCornerRadius(Math.round(10 * parent.getResources().getDisplayMetrics().density));
-            drawable.setStroke(Math.round(parent.getResources().getDisplayMetrics().density),
-                    Color.rgb(72, 74, 92));
-            return drawable;
+        @Override
+        public int getItemCount() {
+            return items.size();
         }
 
-        private Bitmap loadThumbnail(String url) {
+        private static Bitmap downloadBitmap(String url) {
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(url).openConnection();
                 connection.setConnectTimeout(8000);
                 connection.setReadTimeout(10000);
                 connection.setRequestMethod("GET");
+                connection.setInstanceFollowRedirects(true);
                 try (InputStream inputStream = connection.getInputStream()) {
                     return BitmapFactory.decodeStream(inputStream);
                 }
             } catch (Exception ignored) {
                 return null;
             } finally {
-                if (connection != null) connection.disconnect();
+                if (connection != null) {
+                    connection.disconnect();
+                }
             }
         }
-
-        @Override public int getItemCount() { return items.size(); }
 
         static final class ViewHolder extends RecyclerView.ViewHolder {
             final ImageView thumbnail;
             final TextView title;
             final TextView channel;
-            final TextView mixBadge;
-            ViewHolder(View itemView, ImageView thumbnail, TextView title, TextView channel,
-                    TextView mixBadge) {
+            final TextView badge;
+
+            ViewHolder(
+                    @NonNull View itemView,
+                    ImageView thumbnail,
+                    TextView title,
+                    TextView channel,
+                    TextView badge) {
                 super(itemView);
                 this.thumbnail = thumbnail;
                 this.title = title;
                 this.channel = channel;
-                this.mixBadge = mixBadge;
+                this.badge = badge;
             }
         }
-    }
-
-    private static final class LinearLayoutCompat extends android.widget.LinearLayout {
-        LinearLayoutCompat(android.content.Context context) { super(context); }
     }
 }
