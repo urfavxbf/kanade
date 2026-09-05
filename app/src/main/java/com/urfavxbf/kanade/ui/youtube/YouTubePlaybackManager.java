@@ -192,11 +192,11 @@ public final class YouTubePlaybackManager {
 
         String escapedId = escapeJs(id);
         String html = "<!doctype html><html><head>"
-                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-                + "<style>html,body,#player{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden;}iframe{border:0;width:100%;height:100%;display:block;}</style></head><body>"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no\">"
+                + "<style>html,body,#player{margin:0;padding:0;background:transparent;width:100%;height:100%;overflow:hidden;}iframe{border:0;width:100%;height:100%;display:block;background:transparent;}</style></head><body>"
                 + "<div id=\"player\"></div><script>var player;"
                 + "function onYouTubeIframeAPIReady(){player=new YT.Player('player',{height:'100%',width:'100%',videoId:'" + escapedId + "',"
-                + "playerVars:{playsinline:1,rel:0,controls:1,enablejsapi:1,origin:'https://com.urfavxbf.kanade'},"
+                + "playerVars:{playsinline:1,rel:0,controls:0,enablejsapi:1,modestbranding:1,iv_load_policy:3,origin:'https://com.urfavxbf.kanade'},"
                 + "events:{onReady:onReady,onStateChange:onState,onError:onError,onAutoplayBlocked:onBlocked}});}"
                 + "function onReady(){KanadePlayer.ready();}function onState(e){KanadePlayer.state(e.data);}"
                 + "function onError(e){KanadePlayer.error(e.data);}function onBlocked(){KanadePlayer.blocked();}"
@@ -286,7 +286,8 @@ public final class YouTubePlaybackManager {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
-        player.setBackgroundColor(Color.BLACK);
+        player.setBackgroundColor(Color.TRANSPARENT);
+        player.setOverScrollMode(View.OVER_SCROLL_NEVER);
         player.addJavascriptInterface(new Bridge(), "KanadePlayer");
         player.setWebViewClient(new WebViewClient());
     }
@@ -564,4 +565,4 @@ public final class YouTubePlaybackManager {
             });
         }
     }
-}"}
+}
