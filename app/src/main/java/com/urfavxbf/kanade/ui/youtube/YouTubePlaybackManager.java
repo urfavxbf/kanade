@@ -240,6 +240,11 @@ public final class YouTubePlaybackManager {
         player.post(() -> resizeVideoPlayer(group));
     }
 
+    public static void detachFromHost() {
+        detachFromParent();
+        fullPlayerAlbumCard.clear();
+    }
+
     private static void resizeVideoPlayer(android.view.ViewGroup group) {
         if (player == null || player.getParent() != group || group.getWidth() <= 0 || group.getHeight() <= 0) return;
 
