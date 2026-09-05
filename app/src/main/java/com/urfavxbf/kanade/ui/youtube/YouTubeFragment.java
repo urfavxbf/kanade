@@ -1,9 +1,9 @@
 package com.urfavxbf.kanade.ui.youtube;
 
-import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -396,11 +396,13 @@ public class YouTubeFragment extends Fragment {
             row.setGravity(Gravity.CENTER_VERTICAL);
             int padding = Math.round(10 * parent.getResources().getDisplayMetrics().density);
             row.setPadding(padding, padding, padding, padding);
+
             ImageView thumbnail = new ImageView(parent.getContext());
             thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
             row.addView(thumbnail, new LinearLayoutCompat.LayoutParams(
                     Math.round(120 * parent.getResources().getDisplayMetrics().density),
                     Math.round(68 * parent.getResources().getDisplayMetrics().density)));
+
             LinearLayoutCompat textContainer = new LinearLayoutCompat(parent.getContext());
             textContainer.setOrientation(LinearLayoutCompat.VERTICAL);
             textContainer.setGravity(Gravity.CENTER_VERTICAL);
@@ -408,19 +410,38 @@ public class YouTubeFragment extends Fragment {
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             textParams.leftMargin = Math.round(12 * parent.getResources().getDisplayMetrics().density);
             row.addView(textContainer, textParams);
+
             TextView title = new TextView(parent.getContext());
             title.setTextColor(Color.WHITE);
             title.setTextSize(15);
             title.setMaxLines(2);
             title.setEllipsize(TextUtils.TruncateAt.END);
             textContainer.addView(title);
+
             TextView channel = new TextView(parent.getContext());
             channel.setTextColor(Color.rgb(155, 157, 170));
             channel.setTextSize(12);
             channel.setMaxLines(1);
             channel.setEllipsize(TextUtils.TruncateAt.END);
             textContainer.addView(channel);
-            return new ViewHolder(row, thumbnail, title, channel);
+
+            TextView mixBadge = new TextView(parent.getContext());
+            mixBadge.setText("MIX");
+            mixBadge.setTextColor(Color.rgb(214, 210, 255));
+            mixBadge.setTextSize(9);
+            mixBadge.setTypeface(null, android.graphics.Typeface.BOLD);
+            mixBadge.setGravity(Gravity.CENTER);
+            mixBadge.setPadding(Math.round(6 * parent.getResources().getDisplayMetrics().density),
+                    Math.round(2 * parent.getResources().getDisplayMetrics().density),
+                    Math.round(6 * parent.getResources().getDisplayMetrics().density),
+                    Math.round(2 * parent.getResources().getDisplayMetrics().density));
+            mixBadge.setBackground(badgeBackground(parent));
+            mixBadge.setVisibility(View.GONE);
+            textContainer.addView(mixBadge, new LinearLayoutCompat.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Math.round(20 * parent.getResources().getDisplayMetrics().density)));
+
+            return new ViewHolder(row, thumbnail, title, channel, mixBadge);
         }
 
         @Override
@@ -428,6 +449,11 @@ public class YouTubeFragment extends Fragment {
             YouTubeResult result = items.get(position);
             holder.title.setText(result.title);
             holder.channel.setText(result.channel);
+            boolean inMix = YouTubePlaybackManager.isInMixQueue(result.videoId);
+            boolean isPlaying = YouTubePlaybackManager.isActive()
+                    && result.videoId.equals(YouTubePlaybackManager.getVideoId());
+            holder.mixBadge.setVisibility(inMix ? View.VISIBLE : View.GONE);
+            holder.mixBadge.setText(isPlaying ? "PLAYING" : "MIX");
             holder.itemView.setOnClickListener(v -> listener.onResult(result));
             holder.thumbnail.setTag(result.thumbnailUrl);
             holder.thumbnail.setImageResource(android.R.drawable.ic_menu_gallery);
@@ -440,6 +466,15 @@ public class YouTubeFragment extends Fragment {
                     if (result.thumbnailUrl.equals(tag)) holder.thumbnail.setImageBitmap(bitmap);
                 });
             });
+        }
+
+        private GradientDrawable badgeBackground(View parent) {
+            GradientDrawable drawable = new GradientDrawable();
+            drawable.setColor(Color.rgb(35, 36, 49));
+            drawable.setCornerRadius(Math.round(10 * parent.getResources().getDisplayMetrics().density));
+            drawable.setStroke(Math.round(parent.getResources().getDisplayMetrics().density),
+                    Color.rgb(72, 74, 92));
+            return drawable;
         }
 
         private Bitmap loadThumbnail(String url) {
@@ -465,11 +500,14 @@ public class YouTubeFragment extends Fragment {
             final ImageView thumbnail;
             final TextView title;
             final TextView channel;
-            ViewHolder(View itemView, ImageView thumbnail, TextView title, TextView channel) {
+            final TextView mixBadge;
+            ViewHolder(View itemView, ImageView thumbnail, TextView title, TextView channel,
+                    TextView mixBadge) {
                 super(itemView);
                 this.thumbnail = thumbnail;
                 this.title = title;
                 this.channel = channel;
+                this.mixBadge = mixBadge;
             }
         }
     }
