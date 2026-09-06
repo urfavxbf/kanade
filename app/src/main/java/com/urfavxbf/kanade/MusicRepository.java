@@ -21,6 +21,8 @@ public class MusicRepository {
 
     public MusicRepository(Context context) {
 
+        ArtworkResolver.initialize(context);
+
         musicScanner =
                 new MusicScanner(context);
 
