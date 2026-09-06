@@ -1,5 +1,7 @@
 package com.urfavxbf.kanade.ui.youtube;
 
+import com.urfavxbf.kanade.MusicRepository;
+
 import org.schabi.newpipe.extractor.Image;
 import org.schabi.newpipe.extractor.InfoItem;
 import org.schabi.newpipe.extractor.NewPipe;
@@ -31,6 +33,7 @@ public final class YouTubeClient {
     private static final Map<String, CachedStream> STREAM_CACHE = new HashMap<>();
     private static final Map<String, Long> RESOLUTION_FAILURES = new HashMap<>();
     private static final Map<String, Object> RESOLUTION_LOCKS = new HashMap<>();
+    private static final Map<String, Track> TRACK_METADATA = new HashMap<>();
 
     private YouTubeClient() {
     }
@@ -85,6 +88,7 @@ public final class YouTubeClient {
         synchronized (STREAM_CACHE) {
             cached = STREAM_CACHE.get(id);
             if (cached != null && cached.expiresAtMs > System.currentTimeMillis()) {
+                publishTrackMetadata(id, cached.url);
                 return cached.url;
             }
             STREAM_CACHE.remove(id);
@@ -103,6 +107,7 @@ public final class YouTubeClient {
             synchronized (STREAM_CACHE) {
                 cached = STREAM_CACHE.get(id);
                 if (cached != null && cached.expiresAtMs > System.currentTimeMillis()) {
+                    publishTrackMetadata(id, cached.url);
                     return cached.url;
                 }
             }
@@ -120,6 +125,8 @@ public final class YouTubeClient {
             for (int attempt = 0; attempt < MAX_AUDIO_RESOLUTION_ATTEMPTS; attempt++) {
                 try {
                     StreamInfo info = StreamInfo.getInfo(watchUrl);
+                    publishTrackMetadata(id, info);
+
                     List<AudioStream> streams = info.getAudioStreams();
                     if (streams == null || streams.isEmpty()) {
                         throw new IllegalStateException("YouTube returned no playable audio streams");
@@ -145,6 +152,7 @@ public final class YouTubeClient {
                     synchronized (RESOLUTION_FAILURES) {
                         RESOLUTION_FAILURES.remove(id);
                     }
+                    publishTrackMetadata(id, streamUrl);
                     return streamUrl;
                 } catch (Exception e) {
                     lastError = e;
@@ -187,7 +195,68 @@ public final class YouTubeClient {
             if (thumbnails != null && !thumbnails.isEmpty()) {
                 artwork = safe(thumbnails.get(thumbnails.size() - 1).getUrl());
             }
-            results.add(new Track(extractVideoId(url), title, artist, artwork, url, stream.getDuration()));
+            Track track = new Track(extractVideoId(url), title, artist, artwork, url, stream.getDuration());
+            results.add(track);
+            synchronized (TRACK_METADATA) {
+                TRACK_METADATA.put(track.id, track);
+                while (TRACK_METADATA.size() > 200) {
+                    String firstKey = TRACK_METADATA.keySet().iterator().next();
+                    TRACK_METADATA.remove(firstKey);
+                }
+            }
+        }
+    }
+
+    private static void publishTrackMetadata(String id, String streamUrl) {
+        Track track;
+        synchronized (TRACK_METADATA) {
+            track = TRACK_METADATA.get(id);
+        }
+        if (track == null) {
+            return;
+        }
+        MusicRepository.registerRemoteSong(
+                streamUrl,
+                track.title,
+                track.artist,
+                track.artworkUrl,
+                track.durationSeconds
+        );
+    }
+
+    private static void publishTrackMetadata(String id, StreamInfo info) {
+        if (info == null) {
+            return;
+        }
+
+        Track track;
+        synchronized (TRACK_METADATA) {
+            track = TRACK_METADATA.get(id);
+        }
+
+        if (track != null) {
+            return;
+        }
+
+        String title = safe(info.getName());
+        String artist = safe(info.getUploaderName());
+        String artwork = null;
+        List<Image> thumbnails = info.getThumbnails();
+        if (thumbnails != null && !thumbnails.isEmpty()) {
+            artwork = safe(thumbnails.get(thumbnails.size() - 1).getUrl());
+        }
+
+        track = new Track(
+                id,
+                title,
+                artist,
+                artwork,
+                safe(info.getOriginalUrl()),
+                info.getDuration()
+        );
+
+        synchronized (TRACK_METADATA) {
+            TRACK_METADATA.put(id, track);
         }
     }
 
