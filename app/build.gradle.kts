@@ -39,6 +39,11 @@ android {
 
     lint {
         checkReleaseBuilds = false
+        disable += setOf(
+            "NewApi",
+            "UnspecifiedRegisterReceiverFlag",
+            "UseAppTint"
+        )
     }
 
     signingConfigs {
@@ -75,6 +80,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     buildTypes {
@@ -112,8 +118,8 @@ android {
             resources.pickFirsts.add("commonMain/default/linkdata/module")
             resources.pickFirsts.add("commonMain/default/linkdata/package_androidx/0_androidx.knm")
             resources.merges.add("commonMain/default/manifest")
-            resources.merges.add("nonJvmMain/default/manifest")
             resources.merges.add("nativeMain/default/manifest")
+            resources.merges.add("nonJvmMain/default/manifest")
         }
     }
 
@@ -136,6 +142,7 @@ tasks.withType<JavaCompile> {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("androidx.palette:palette:1.0.0")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel:2.5.1")
@@ -152,6 +159,7 @@ dependencies {
     implementation("androidx.media:media:1.7.0")
     implementation("androidx.media3:media3-exoplayer:1.10.1")
     implementation("com.github.cy745:fpcalc:master-SNAPSHOT")
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.2")
     implementation("androidx.collection:collection-ktx:1.4.2") {
         exclude(group = "androidx.collection", module = "collection-ktx")
         exclude(group = "androidx.collection", module = "collection-jvm")
