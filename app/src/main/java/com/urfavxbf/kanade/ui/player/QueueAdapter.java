@@ -20,6 +20,7 @@ import com.urfavxbf.kanade.AlbumArtManager;
 import com.urfavxbf.kanade.ArtworkResolver;
 import com.urfavxbf.kanade.AudioFile;
 import com.urfavxbf.kanade.MusicPlayerService;
+import com.urfavxbf.kanade.MusicRepository;
 import com.urfavxbf.kanade.R;
 
 import java.util.ArrayList;
@@ -122,11 +123,17 @@ public class QueueAdapter extends RecyclerView.Adapter<QueueAdapter.QueueViewHol
     public void onBindViewHolder(@NonNull QueueViewHolder holder, int position) {
         AudioFile song = songs.get(position);
         if (song == null) return;
+
         String uri = song.getUri();
         holder.itemView.setTag(uri);
         holder.albumArt.setTag(uri);
-        holder.title.setText(safeValue(song.getTitle(), "Unknown song"));
-        holder.artist.setText(safeValue(song.getArtist(), "Unknown artist"));
+
+        AudioFile metadataSong = MusicRepository.findSongByUri(uri);
+        AudioFile artworkSong = metadataSong != null ? metadataSong : song;
+
+        holder.title.setText(safeValue(artworkSong.getTitle(), safeValue(song.getTitle(), "Unknown song")));
+        holder.artist.setText(safeValue(artworkSong.getArtist(), safeValue(song.getArtist(), "Unknown artist")));
+
         boolean current = position == currentIndex;
         holder.currentIndicator.setVisibility(current ? View.VISIBLE : View.INVISIBLE);
         holder.currentIndicator.setColorFilter(current ? accentColor : Color.TRANSPARENT);
@@ -142,7 +149,7 @@ public class QueueAdapter extends RecyclerView.Adapter<QueueAdapter.QueueViewHol
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN && listener != null) listener.onDragStarted(holder);
             return true;
         });
-        loadArtwork(song, holder.albumArt);
+        loadArtwork(artworkSong, holder.albumArt);
     }
 
     private void loadArtwork(AudioFile song, ImageView imageView) {
