@@ -7,45 +7,21 @@ plugins {
 
 val keystorePropsFile = rootProject.file("release.properties")
 val keystoreProps = Properties()
-
-if (keystorePropsFile.exists()) {
-    FileInputStream(keystorePropsFile).use {
-        keystoreProps.load(it)
-    }
-}
+if (keystorePropsFile.exists()) FileInputStream(keystorePropsFile).use { keystoreProps.load(it) }
 
 val localPropertiesFile = rootProject.file("local.properties")
 val localProperties = Properties()
+if (localPropertiesFile.exists()) FileInputStream(localPropertiesFile).use { localProperties.load(it) }
 
-if (localPropertiesFile.exists()) {
-    FileInputStream(localPropertiesFile).use {
-        localProperties.load(it)
-    }
-}
-
-val hasValidSigningProps = keystorePropsFile.exists()
-        && listOf(
-    "storeFile",
-    "storePassword",
-    "keyAlias",
-    "keyPassword"
-).all { key ->
-    keystoreProps[key] != null
-}
+val hasValidSigningProps = keystorePropsFile.exists() && listOf("storeFile", "storePassword", "keyAlias", "keyPassword").all { key -> keystoreProps[key] != null }
 
 android {
     namespace = "com.urfavxbf.kanade"
     compileSdk = 36
-
     lint {
         checkReleaseBuilds = false
-        disable += setOf(
-            "NewApi",
-            "UnspecifiedRegisterReceiverFlag",
-            "UseAppTint"
-        )
+        disable += setOf("NewApi", "UnspecifiedRegisterReceiverFlag", "UseAppTint")
     }
-
     signingConfigs {
         if (hasValidSigningProps) {
             create("release") {
@@ -56,55 +32,29 @@ android {
             }
         }
     }
-
     defaultConfig {
         applicationId = "com.urfavxbf.kanade"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-
-        buildConfigField(
-            "String",
-            "AUDIUS_API_KEY",
-            "\"${localProperties.getProperty("AUDIUS_API_KEY", "")
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")}\""
-        )
-
-        vectorDrawables {
-            useSupportLibrary = true
-        }
+        buildConfigField("String", "AUDIUS_API_KEY", "\"${localProperties.getProperty("AUDIUS_API_KEY", "").replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        vectorDrawables { useSupportLibrary = true }
     }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = true
     }
-
     buildTypes {
         release {
-            if (hasValidSigningProps) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            if (hasValidSigningProps) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
-
-    buildFeatures {
-        viewBinding = true
-        buildConfig = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.10"
-    }
-
+    buildFeatures { viewBinding = true; buildConfig = true }
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.10" }
     packaging {
         resources {
             resources.excludes.add("/META-INF/{AL2.0,LGPL2.1}")
@@ -122,7 +72,6 @@ android {
             resources.merges.add("nonJvmMain/default/manifest")
         }
     }
-
     configurations.all {
         resolutionStrategy {
             force("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
@@ -137,9 +86,7 @@ android {
     }
 }
 
-tasks.withType<JavaCompile> {
-    options.compilerArgs.add("-Xlint:deprecation")
-}
+tasks.withType<JavaCompile> { options.compilerArgs.add("-Xlint:deprecation") }
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
@@ -159,7 +106,7 @@ dependencies {
     implementation("androidx.media:media:1.7.0")
     implementation("androidx.media3:media3-exoplayer:1.10.1")
     implementation("com.github.cy745:fpcalc:master-SNAPSHOT")
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.2")
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.3")
     implementation("androidx.collection:collection-ktx:1.4.2") {
         exclude(group = "androidx.collection", module = "collection-ktx")
         exclude(group = "androidx.collection", module = "collection-jvm")
