@@ -24,29 +24,41 @@ public final class ArtworkResolver {
 
     public static void resolve(Context context, AudioFile song, Callback callback) {
         if (context == null || song == null || callback == null) return;
+
         Context appContext = context.getApplicationContext();
         EXECUTOR.execute(() -> {
             Bitmap bitmap = null;
-            String artUri = song.getAlbumArtUri();
-            if (artUri != null && !artUri.trim().isEmpty()) {
-                bitmap = loadRemoteOrUri(appContext, artUri);
-            }
+
+            // Local embedded artwork is authoritative for local files.
+            bitmap = loadEmbeddedArtwork(appContext, song.getUri());
+
+            // Provider artwork: YouTube thumbnail / Audius artwork.
             if (bitmap == null) {
-                bitmap = loadEmbeddedArtwork(appContext, song.getUri());
+                String artUri = song.getAlbumArtUri();
+                if (artUri != null && !artUri.trim().isEmpty()) {
+                    bitmap = loadRemoteOrUri(appContext, artUri);
+                }
             }
+
+            // Legacy/local artwork path fallback.
+            if (bitmap == null) {
+                bitmap = loadRemoteOrUri(appContext, song.getPath());
+            }
+
             if (bitmap != null) {
                 Bitmap result = bitmap;
-                android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
-                handler.post(() -> callback.onArtworkResolved(result));
+                new android.os.Handler(android.os.Looper.getMainLooper())
+                        .post(() -> callback.onArtworkResolved(result));
             }
         });
     }
 
     private static Bitmap loadEmbeddedArtwork(Context context, String uri) {
         if (uri == null || uri.trim().isEmpty()) return null;
+        if (uri.startsWith("http://") || uri.startsWith("https://")) return null;
+
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         try {
-            if (uri.startsWith("http://") || uri.startsWith("https://")) return null;
             retriever.setDataSource(context, Uri.parse(uri));
             byte[] data = retriever.getEmbeddedPicture();
             return decode(data);
@@ -65,14 +77,27 @@ public final class ArtworkResolver {
                 connection.setConnectTimeout(10000);
                 connection.setReadTimeout(10000);
                 connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("User-Agent", "Kanade Music Player/1.0");
                 connection.connect();
-                try (InputStream input = connection.getInputStream()) {
-                    return BitmapFactory.decodeStream(input);
+                try {
+                    if (connection.getResponseCode() < 200 || connection.getResponseCode() >= 300) {
+                        return null;
+                    }
+                    try (InputStream input = connection.getInputStream()) {
+                        return BitmapFactory.decodeStream(input);
+                    }
                 } finally {
                     connection.disconnect();
                 }
             }
-            return BitmapFactory.decodeFile(Uri.parse(value).getPath());
+
+            if (value.startsWith("content://") || value.startsWith("file://")) {
+                try (InputStream input = context.getContentResolver().openInputStream(Uri.parse(value))) {
+                    return input == null ? null : BitmapFactory.decodeStream(input);
+                }
+            }
+
+            return BitmapFactory.decodeFile(value);
         } catch (Exception ignored) {
             return null;
         }
