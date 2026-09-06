@@ -13,15 +13,11 @@ import androidx.appcompat.widget.AppCompatImageButton;
 import androidx.core.content.ContextCompat;
 
 import com.urfavxbf.kanade.AlbumColorManager;
-import com.urfavxbf.kanade.ui.youtube.YouTubePlaybackManager;
-import com.urfavxbf.kanade.ui.youtube.YouTubeQueueDialog;
 
 /**
  * Queue action button.
  *
- * Local playback continues to use the existing QueueBottomSheet. When the
- * process-scoped YouTube player is active, this button routes to the dedicated
- * YouTube queue UI instead of the local music queue.
+ * The global player queue continues to use the existing queue implementation.
  */
 public class PlayerQueueButton extends AppCompatImageButton {
 
@@ -61,11 +57,6 @@ public class PlayerQueueButton extends AppCompatImageButton {
     public void setOnClickListener(OnClickListener listener) {
         delegatedClickListener = listener;
         super.setOnClickListener(v -> {
-            if (YouTubePlaybackManager.isActive()) {
-                new YouTubeQueueDialog(getContext()).show();
-                return;
-            }
-
             if (delegatedClickListener != null) {
                 delegatedClickListener.onClick(v);
             }

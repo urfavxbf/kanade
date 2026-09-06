@@ -43,17 +43,6 @@
             android:name=".MusicPlayerService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
-        <service
-            android:name=".ui.youtube.YouTubeMediaService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
-        <receiver
-            android:name=".ui.youtube.YouTubeMediaPlaybackReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.urfavxbf.kanade.YOUTUBE_STATE_CHANGED" />
-            </intent-filter>
-        </receiver>
         <receiver
             android:name=".PlaybackStatsReceiver"
             android:exported="false">

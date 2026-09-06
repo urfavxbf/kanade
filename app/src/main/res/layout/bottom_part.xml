@@ -8,9 +8,6 @@
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
-    <!-- ================================================= -->
-    <!-- GLOBAL MINI PLAYER -->
-    <!-- ================================================= -->
     <androidx.cardview.widget.CardView
         android:id="@+id/miniPlayerRoot"
         android:layout_width="match_parent"
@@ -98,11 +95,7 @@
                 android:contentDescription="Next" />
 
         </LinearLayout>
-
     </androidx.cardview.widget.CardView>
-    <!-- ================================================= -->
-    <!-- GLOBAL BOTTOM NAVBAR -->
-    <!-- ================================================= -->
 
     <androidx.cardview.widget.CardView
         android:id="@+id/kanadeNavCard"
@@ -118,8 +111,6 @@
             android:paddingStart="8dp"
             android:paddingEnd="8dp">
 
-            <!-- SONGS -->
-
             <LinearLayout
                 android:id="@+id/navSongs"
                 android:layout_width="0dp"
@@ -130,7 +121,6 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:background="?attr/selectableItemBackgroundBorderless">
-
                 <ImageView
                     android:id="@+id/navSongsIcon"
                     android:layout_width="26dp"
@@ -138,7 +128,6 @@
                     android:src="@drawable/ic_tracks_blank"
                     android:scaleType="centerInside"
                     android:contentDescription="Songs" />
-
                 <TextView
                     android:id="@+id/navSongsText"
                     android:layout_width="wrap_content"
@@ -148,11 +137,7 @@
                     android:textSize="12sp"
                     android:textColor="#FFFFFF"
                     android:visibility="gone" />
-
             </LinearLayout>
-
-
-            <!-- ARTISTS -->
 
             <LinearLayout
                 android:id="@+id/navArtist"
@@ -164,7 +149,6 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:background="?attr/selectableItemBackgroundBorderless">
-
                 <ImageView
                     android:id="@+id/navArtistIcon"
                     android:layout_width="26dp"
@@ -172,7 +156,6 @@
                     android:src="@drawable/ic_artist_blank"
                     android:scaleType="centerInside"
                     android:contentDescription="Artists" />
-
                 <TextView
                     android:id="@+id/navArtistText"
                     android:layout_width="wrap_content"
@@ -182,11 +165,7 @@
                     android:textSize="12sp"
                     android:textColor="#FFFFFF"
                     android:visibility="gone" />
-
             </LinearLayout>
-
-
-            <!-- HOME -->
 
             <LinearLayout
                 android:id="@+id/navDashboard"
@@ -198,7 +177,6 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:background="?attr/selectableItemBackgroundBorderless">
-
                 <ImageView
                     android:id="@+id/navDashboardIcon"
                     android:layout_width="26dp"
@@ -206,7 +184,6 @@
                     android:src="@drawable/house_blank"
                     android:scaleType="centerInside"
                     android:contentDescription="Dashboard" />
-
                 <TextView
                     android:id="@+id/navDashboardText"
                     android:layout_width="wrap_content"
@@ -216,11 +193,7 @@
                     android:textSize="12sp"
                     android:textColor="#FFFFFF"
                     android:visibility="gone" />
-
             </LinearLayout>
-
-
-            <!-- PLAYLIST -->
 
             <LinearLayout
                 android:id="@+id/navPlaylist"
@@ -232,7 +205,6 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:background="?attr/selectableItemBackgroundBorderless">
-
                 <ImageView
                     android:id="@+id/navPlaylistIcon"
                     android:layout_width="26dp"
@@ -240,7 +212,6 @@
                     android:src="@drawable/list_music_blank"
                     android:scaleType="centerInside"
                     android:contentDescription="Playlists" />
-
                 <TextView
                     android:id="@+id/navPlaylistText"
                     android:layout_width="wrap_content"
@@ -250,11 +221,7 @@
                     android:textSize="12sp"
                     android:textColor="#FFFFFF"
                     android:visibility="gone" />
-
             </LinearLayout>
-
-
-            <!-- YOUTUBE -->
 
             <LinearLayout
                 android:id="@+id/navYouTube"
@@ -266,29 +233,24 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:background="?attr/selectableItemBackgroundBorderless">
-
                 <ImageView
                     android:id="@+id/navYouTubeIcon"
                     android:layout_width="26dp"
                     android:layout_height="26dp"
-                    android:src="@drawable/ic_youtube"
+                    android:src="@drawable/ic_tracks_blank"
                     android:scaleType="centerInside"
-                    android:contentDescription="YouTube" />
-
+                    android:contentDescription="Audius" />
                 <TextView
                     android:id="@+id/navYouTubeText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="YouTube"
+                    android:text="Audius"
                     android:textSize="12sp"
                     android:textColor="#FFFFFF"
                     android:visibility="gone" />
-
             </LinearLayout>
 
         </LinearLayout>
-
     </androidx.cardview.widget.CardView>
-
 </LinearLayout>
