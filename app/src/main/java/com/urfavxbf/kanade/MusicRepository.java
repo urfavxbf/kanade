@@ -3,13 +3,18 @@ package com.urfavxbf.kanade;
 import android.content.Context;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 
 public class MusicRepository {
 
     private static final Object cacheLock = new Object();
 
     private static volatile ArrayList<AudioFile> cachedSongs;
+
+    private static final Object remoteSongsLock = new Object();
+    private static final LinkedHashMap<String, AudioFile> remoteSongs = new LinkedHashMap<>();
 
     private final MusicScanner musicScanner;
     private final MetadataOverrideManager metadataOverrideManager;
@@ -21,6 +26,51 @@ public class MusicRepository {
 
         metadataOverrideManager =
                 new MetadataOverrideManager(context);
+    }
+
+    public static void registerRemoteSong(
+            String uri,
+            String title,
+            String artist,
+            String artworkUri,
+            long duration) {
+
+        if (uri == null || uri.trim().isEmpty()) {
+            return;
+        }
+
+        AudioFile song = new AudioFile(
+                Long.MIN_VALUE + Math.abs((long) uri.hashCode()),
+                title,
+                artist,
+                title,
+                uri,
+                artworkUri,
+                duration,
+                System.currentTimeMillis()
+        );
+
+        song.setAlbumArtUri(artworkUri);
+
+        synchronized (remoteSongsLock) {
+            remoteSongs.put(uri, song);
+
+            while (remoteSongs.size() > 100) {
+                String firstKey = remoteSongs.keySet().iterator().next();
+                remoteSongs.remove(firstKey);
+            }
+        }
+    }
+
+    public static void removeRemoteSong(String uri) {
+
+        if (uri == null || uri.trim().isEmpty()) {
+            return;
+        }
+
+        synchronized (remoteSongsLock) {
+            remoteSongs.remove(uri);
+        }
     }
 
     public ArrayList<AudioFile> getAllSongs() {
@@ -49,7 +99,17 @@ public class MusicRepository {
             }
         }
 
-        return copySongs(songs);
+        ArrayList<AudioFile> result = copySongs(songs);
+
+        synchronized (remoteSongsLock) {
+            for (AudioFile remoteSong : remoteSongs.values()) {
+                if (remoteSong != null) {
+                    result.add(copySong(remoteSong));
+                }
+            }
+        }
+
+        return result;
     }
 
     public ArrayList<AudioFile> searchSongs(
