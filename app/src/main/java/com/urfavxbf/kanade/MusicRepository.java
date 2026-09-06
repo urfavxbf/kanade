@@ -75,6 +75,33 @@ public class MusicRepository {
         }
     }
 
+    public static AudioFile findSongByUri(String uri) {
+
+        if (uri == null || uri.trim().isEmpty()) {
+            return null;
+        }
+
+        synchronized (remoteSongsLock) {
+            AudioFile remoteSong = remoteSongs.get(uri);
+            if (remoteSong != null) {
+                return copySongStatic(remoteSong);
+            }
+        }
+
+        ArrayList<AudioFile> songs = cachedSongs;
+        if (songs == null) {
+            return null;
+        }
+
+        for (AudioFile song : songs) {
+            if (song != null && uri.equals(song.getUri())) {
+                return copySongStatic(song);
+            }
+        }
+
+        return null;
+    }
+
     public ArrayList<AudioFile> getAllSongs() {
 
         ArrayList<AudioFile> songs = cachedSongs;
@@ -236,6 +263,10 @@ public class MusicRepository {
     }
 
     private AudioFile copySong(AudioFile song) {
+        return copySongStatic(song);
+    }
+
+    private static AudioFile copySongStatic(AudioFile song) {
 
         AudioFile copy = new AudioFile(
                 song.getId(),
