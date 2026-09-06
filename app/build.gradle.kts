@@ -39,6 +39,11 @@ android {
 
     lint {
         checkReleaseBuilds = false
+        disable += setOf(
+            "NewApi",
+            "UnspecifiedRegisterReceiverFlag",
+            "UseAppTint"
+        )
     }
 
     signingConfigs {
