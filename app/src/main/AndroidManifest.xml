@@ -42,7 +42,6 @@
         <service
             android:name=".MusicPlayerService"
             android:exported="false"
-            android:process=":playback"
             android:foregroundServiceType="mediaPlayback" />
         <receiver
             android:name=".PlaybackStatsReceiver"
