@@ -10,7 +10,6 @@ import org.schabi.newpipe.extractor.stream.StreamInfo;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -66,18 +65,10 @@ public final class YouTubeClient {
                 artwork = safe(thumbnails.get(thumbnails.size() - 1).getUrl());
             }
 
-            results.add(new Track(
-                    extractVideoId(url),
-                    title,
-                    artist,
-                    artwork,
-                    url,
-                    stream.getDuration()
-            ));
+            results.add(new Track(extractVideoId(url), title, artist, artwork, url, stream.getDuration()));
         }
 
-        results.sort(Comparator.comparingInt(track -> relevance(normalizedQuery, track))
-                .reversed());
+        results.sort(Comparator.comparingInt(track -> relevance(normalizedQuery, track)).reversed());
 
         if (results.size() > MAX_RESULTS) {
             return new ArrayList<>(results.subList(0, MAX_RESULTS));
@@ -101,10 +92,7 @@ public final class YouTubeClient {
             STREAM_CACHE.remove(id);
         }
 
-        String watchUrl = id.startsWith("http")
-                ? id
-                : "https://www.youtube.com/watch?v=" + id;
-
+        String watchUrl = id.startsWith("http") ? id : "https://www.youtube.com/watch?v=" + id;
         StreamInfo info = StreamInfo.getInfo(watchUrl);
         List<AudioStream> streams = info.getAudioStreams();
         if (streams == null || streams.isEmpty()) {
@@ -154,7 +142,6 @@ public final class YouTubeClient {
                 candidates.add(stream);
             }
         }
-
         if (candidates.isEmpty()) {
             throw new IllegalStateException("No usable YouTube audio stream found");
         }
@@ -164,8 +151,7 @@ public final class YouTubeClient {
             int bitrateB = b.getAverageBitrate();
             return Integer.compare(
                     bitrateB == AudioStream.UNKNOWN_BITRATE ? -1 : bitrateB,
-                    bitrateA == AudioStream.UNKNOWN_BITRATE ? -1 : bitrateA
-            );
+                    bitrateA == AudioStream.UNKNOWN_BITRATE ? -1 : bitrateA);
         });
         return candidates.get(0);
     }
@@ -174,19 +160,16 @@ public final class YouTubeClient {
         String title = normalize(track.title);
         String artist = normalize(track.artist);
         int score = 0;
-
         if (title.equals(query)) score += 1000;
         if (title.startsWith(query)) score += 700;
         if (title.contains(query)) score += 450;
         if (artist.equals(query)) score += 500;
         if (artist.contains(query)) score += 250;
 
-        String[] words = query.split(" ");
-        for (String word : words) {
+        for (String word : query.split(" ")) {
             if (!word.isEmpty() && title.contains(word)) score += 50;
             if (!word.isEmpty() && artist.contains(word)) score += 30;
         }
-
         return score;
     }
 
@@ -212,30 +195,21 @@ public final class YouTubeClient {
             return end >= 0 ? url.substring(start, end) : url.substring(start);
         }
         int slash = url.lastIndexOf('/');
-        return slash >= 0 && slash + 1 < url.length()
-                ? url.substring(slash + 1)
-                : url;
+        return slash >= 0 && slash + 1 < url.length() ? url.substring(slash + 1) : url;
     }
 
     private static void ensureInitialized() {
-        if (initialized) {
-            return;
-        }
+        if (initialized) return;
         synchronized (INIT_LOCK) {
-            if (initialized) {
-                return;
-            }
+            if (initialized) return;
             NewPipe.init(new YouTubeDownloader());
             initialized = true;
         }
     }
 
     private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value
-                .toLowerCase(Locale.ROOT)
+        if (value == null) return "";
+        return value.toLowerCase(Locale.ROOT)
                 .replaceAll("[^\\p{L}\\p{N}]+", " ")
                 .trim()
                 .replaceAll("\\s+", " ");
@@ -253,13 +227,7 @@ public final class YouTubeClient {
         public final String url;
         public final long durationSeconds;
 
-        public Track(
-                String id,
-                String title,
-                String artist,
-                String artworkUrl,
-                String url,
-                long durationSeconds) {
+        public Track(String id, String title, String artist, String artworkUrl, String url, long durationSeconds) {
             this.id = safe(id);
             this.title = safe(title);
             this.artist = safe(artist);
