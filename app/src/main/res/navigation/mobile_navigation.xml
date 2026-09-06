@@ -33,8 +33,8 @@
 
     <fragment
         android:id="@+id/navigation_youtube"
-        android:name="com.urfavxbf.kanade.ui.audius.AudiusFragment"
-        android:label="Audius"
+        android:name="com.urfavxbf.kanade.ui.youtube.YouTubeFragment"
+        android:label="YouTube"
         tools:layout="@layout/fragment_audius" />
 
     <fragment
