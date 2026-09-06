@@ -1,17 +1,17 @@
 # Kanade Music Player
 
-> A modern Android music player focused on local music, clean playback, metadata tools, and a dynamic player experience.
+> A modern Android music player focused on local music, clean playback, metadata tools, online Audius discovery, and a dynamic player experience.
 
-**Kanade** is a Java-based Android music player built around the user's local music library. It scans audio stored on the device, provides queue-based playback, favorites and playlists, album/artist browsing, metadata identification and editing, album-art caching, and a full-screen player experience.
+**Kanade** is a Java-based Android music player built around the user's local music library. It scans audio stored on the device, provides queue-based playback, favorites and playlists, album/artist browsing, metadata identification and editing, album-art caching, Audius music discovery, and a full-screen player experience.
 
 <p align="center">
-  <strong>Local Music • Playback • Metadata • Album Art • Playlists</strong>
+  <strong>Local Music • Audius • Playback • Metadata • Album Art • Playlists</strong>
 </p>
 
 ## Features
 
 - 🎵 **Local music library** — Scans audio files available through Android's MediaStore.
-- 🔎 **Music discovery** — Browse songs, artists, albums/dashboard content, and playlists.
+- 🔎 **Music discovery** — Browse songs, artists, albums/dashboard content, playlists, and Audius search results.
 - ▶️ **Playback** — Play, pause, previous, next, queue management, shuffle, repeat, and playback state handling.
 - 🎚️ **Foreground playback service** — Music playback is handled by `MusicPlayerService` with Android foreground-service support for media playback.
 - 🎛️ **Full Player** — Dedicated Now Playing screen with animated transition from the mini player.
@@ -23,12 +23,12 @@
 - ✏️ **Metadata editing** — Edit track metadata through the app while keeping local override data separate from the original audio file.
 - 🔍 **Music identification** — Supports fingerprint-based identification using Chromaprint/AcoustID and metadata lookup through MusicBrainz.
 - 🧹 **Metadata normalization** — Normalizes metadata and ranks identification candidates using available track information.
+- 🎧 **Audius discovery** — Searches the Audius catalog and resolves streamable tracks for playback through the existing Kanade player.
 - 🛠️ **Crash/debug screen** — Captures uncaught application errors and presents debugging information through `DebugActivity`.
-- ▶️ **YouTube section** — A YouTube navigation destination is present; the current implementation is a placeholder and is not yet a complete YouTube client.
 
 ## Architecture
 
-Kanade uses a single main activity with Navigation Component destinations for the major sections of the application. Playback is separated into a controller and foreground service, while library and metadata functionality are handled by focused managers and clients.
+Kanade uses a single main activity with Navigation Component destinations for the major sections of the application. Playback is separated into a controller and foreground service, while library, metadata, and Audius functionality are handled by focused managers and clients.
 
 ```text
 app/src/main/java/com/urfavxbf/kanade/
@@ -64,7 +64,7 @@ app/src/main/java/com/urfavxbf/kanade/
     ├── dashboard/
     ├── playlist/
     ├── player/
-    ├── youtube/
+    ├── audius/
     └── notifications/
 ```
 
@@ -76,18 +76,28 @@ The main navigation currently contains:
 - **Artists** — artist browsing
 - **Dashboard** — library/dashboard content
 - **Playlists** — playlist browsing and management
-- **YouTube** — currently a placeholder destination
+- **Audius** — Audius music search and playback
 - **Now Playing** — full player
 
 The global bottom navigation is controlled by `MainActivity`, while each section is implemented as a Fragment destination.
 
 ## Playback
 
-Playback is built around Android media APIs rather than an external streaming platform.
+Playback is built around Android media APIs and the Audius streaming API for online discovery.
 
 `MusicPlayerController` provides the application-facing playback controls, while `MusicPlayerService` owns the long-running media playback and foreground-service behavior.
 
+Audius search is handled by `AudiusClient`. A selected Audius track is resolved through the Audius stream endpoint and then passed to the existing Kanade playback service, keeping background playback and the existing mini/full-player flow in one playback path.
+
 The application also supports a mini-player/full-player flow. Opening the full player uses an animated transition from the mini player, and the global bottom navigation is hidden while the Now Playing destination is active.
+
+## Audius
+
+Kanade uses the Audius REST API for online music discovery. The client searches tracks, reads track metadata and artwork, and resolves a playable stream URL for selected tracks.
+
+The Audius API provides a free plan with 10 requests/second and 500,000 requests/month. An Audius API key can be configured locally as `AUDIUS_API_KEY`; read-only API access can also work without credentials for endpoints that do not require a key.
+
+The API key is a client-side credential according to Audius' developer documentation. Bearer tokens are not used by Kanade and must not be embedded in the Android application.
 
 ## Music Identification & Metadata
 
@@ -113,7 +123,7 @@ The artwork flow is designed around these sources:
 
 1. Cached artwork stored by Kanade
 2. Embedded artwork from the local audio file
-3. Artwork obtained during metadata identification
+3. Artwork obtained during metadata identification or Audius discovery
 4. Placeholder artwork when no artwork is available
 
 Downloaded artwork is stored inside the application's files area. `AlbumArtManager` validates downloaded image data, limits download size, caches it using a SHA-256-derived key, and can clear cached artwork without modifying the original music file.
@@ -142,11 +152,9 @@ Basic local music playback does not require a cloud music account.
 
 Kanade is designed primarily around local music ownership, but it is **not completely offline**.
 
-Local library scanning, local playback, favorites, playlists, and locally stored metadata overrides are designed to work with data on the device. Network access is used for features that explicitly require online services, including music identification and related metadata/artwork retrieval.
+Local library scanning, local playback, favorites, playlists, and locally stored metadata overrides are designed to work with data on the device. Network access is used for features that explicitly require online services, including Audius discovery, music identification, and related metadata/artwork retrieval.
 
 The project does not use Firebase, does not require a user account for local playback, and does not include an advertising SDK in the application architecture.
-
-> **Important:** The presence of the YouTube destination does not currently mean that Kanade provides full YouTube streaming functionality. The current YouTube screen is a placeholder.
 
 ## Tech Stack
 
@@ -159,10 +167,11 @@ The project does not use Firebase, does not require a user account for local pla
 - **Build system:** Gradle + Android Gradle Plugin
 - **Compile SDK:** 36
 - **Target SDK:** 36
-- **Minimum SDK:** 23
+- **Minimum SDK:** 24
 - **Java compatibility:** Java 17
 - **Playback:** Android media APIs / foreground media service
 - **Local data:** SharedPreferences and application-local files where applicable
+- **Online music:** Audius
 - **Music metadata:** MusicBrainz
 - **Music identification:** AcoustID + Chromaprint
 - **Album artwork:** Embedded media artwork + local cache
@@ -181,18 +190,27 @@ Kanade/
 └── README.md
 ```
 
-The current application module uses Android Gradle Plugin `8.11.0`, compile/target SDK 36, minimum SDK 23, Java 17 compatibility, and Android View Binding.
+The current application module uses Android Gradle Plugin `8.11.0`, compile/target SDK 36, minimum SDK 24, Java 17 compatibility, and Android View Binding.
 
 A release signing configuration can be supplied through `release.properties`. If valid signing properties are present, the release build is configured to use them and enables R8/minification.
 
+For Audius API access, create a local `local.properties` file and add:
+
+```text
+AUDIUS_API_KEY=your_audius_api_key
+```
+
+Do not commit `local.properties` or any API credentials to the repository.
+
 ## Dependencies
 
-The application currently uses AndroidX, Material Components, Navigation, lifecycle/support libraries, and the Chromaprint `fpcalc` dependency.
+The application currently uses AndroidX, Material Components, Navigation, lifecycle/support libraries, Media3 ExoPlayer, and the Chromaprint `fpcalc` dependency.
 
 Notable dependencies include:
 
 - AndroidX AppCompat
 - AndroidX Media
+- AndroidX Media3 ExoPlayer
 - AndroidX Navigation
 - AndroidX ConstraintLayout
 - AndroidX Lifecycle
@@ -206,15 +224,16 @@ Notable dependencies include:
 
 Kanade is an **active work in progress**.
 
-The current codebase has moved beyond the original simple local-player structure and now includes navigation-based screens, a dedicated full player, dynamic album colors, album-art caching, metadata editing, fingerprint-based identification, AcoustID/MusicBrainz integration, and debugging helpers.
+The current codebase includes navigation-based screens, a dedicated full player, dynamic album colors, album-art caching, metadata editing, fingerprint-based identification, AcoustID/MusicBrainz integration, Audius discovery, and debugging helpers.
 
-Some areas are still incomplete, most notably the YouTube destination and parts of the broader UI/feature set.
+The online music path has been migrated from the previous YouTube implementation to Audius.
 
 ## Roadmap
 
 Planned improvements include:
 
-- [ ] Complete the YouTube experience
+- [ ] Improve Audius metadata integration with the existing player metadata model
+- [ ] Add Audius queue support with persistent online-track metadata
 - [ ] Improve metadata matching accuracy
 - [ ] Improve AcoustID/Chromaprint identification reliability
 - [ ] Improve album-art matching and caching
@@ -223,7 +242,7 @@ Planned improvements include:
 - [ ] Continue refining the full-player UI and transitions
 - [ ] Improve playback customization
 - [ ] Optimize scanning and identification for large music libraries
-- [ ] Expand automated testing around metadata and identification components
+- [ ] Expand automated testing around metadata, identification, and online playback components
 
 ## Contributing
 
@@ -235,13 +254,13 @@ When reporting a bug, include:
 2. Device/emulator information when relevant
 3. Steps to reproduce the problem
 4. Relevant logcat output or the information shown by `DebugActivity`
-5. Whether the problem affects local playback, metadata identification, artwork, navigation, or another subsystem
+5. Whether the problem affects local playback, Audius playback, metadata identification, artwork, navigation, or another subsystem
 
 For pull requests, keep changes focused and explain the behavior being changed.
 
 ## Disclaimer
 
-Kanade is an open-source/personal Android music player project. External metadata, artwork, AcoustID, MusicBrainz, and other third-party services are subject to their respective terms, availability, and policies.
+Kanade is an open-source/personal Android music player project. External metadata, artwork, Audius, AcoustID, MusicBrainz, and other third-party services are subject to their respective terms, availability, and policies.
 
 Kanade does not provide ownership or licensing rights to music or metadata obtained from external sources.
 
@@ -252,5 +271,5 @@ License information will be added as the project is finalized.
 ---
 
 <p align="center">
-  Made for people who want a capable player for their own music library.
+  Made for people who want a capable player for their own music library and open online music discovery.
 </p>
