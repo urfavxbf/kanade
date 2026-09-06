@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.urfavxbf.kanade.AlbumArtManager;
+import com.urfavxbf.kanade.ArtworkResolver;
 import com.urfavxbf.kanade.AudioFile;
 import com.urfavxbf.kanade.MusicPlayerService;
 import com.urfavxbf.kanade.R;
@@ -148,6 +149,14 @@ public class QueueAdapter extends RecyclerView.Adapter<QueueAdapter.QueueViewHol
         imageView.setImageResource(R.drawable.album_art);
         final String uriString = song.getUri();
         if (uriString == null || uriString.trim().isEmpty()) return;
+
+        ArtworkResolver.resolve(context, song, bitmap -> {
+            Object tag = imageView.getTag();
+            if (uriString.equals(tag) && bitmap != null && !bitmap.isRecycled()) {
+                imageView.setImageBitmap(bitmap);
+            }
+        });
+
         artworkExecutor.execute(() -> {
             Bitmap bitmap = null;
             try { bitmap = albumArtManager.loadCachedBitmap(song); } catch (Exception ignored) { }
