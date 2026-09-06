@@ -68,7 +68,7 @@ public final class YouTubeClient {
             results.add(new Track(extractVideoId(url), title, artist, artwork, url, stream.getDuration()));
         }
 
-        results.sort(Comparator.comparingInt(track -> relevance(normalizedQuery, track)).reversed());
+        results.sort(Comparator.comparingInt((Track track) -> relevance(normalizedQuery, track)).reversed());
 
         if (results.size() > MAX_RESULTS) {
             return new ArrayList<>(results.subList(0, MAX_RESULTS));
