@@ -24,7 +24,6 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.urfavxbf.kanade.AudioFile;
 import com.urfavxbf.kanade.MusicPlayerController;
 import com.urfavxbf.kanade.MusicRepository;
 import com.urfavxbf.kanade.PlaybackStatsManager;
@@ -36,6 +35,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -107,7 +107,7 @@ public class YouTubeFragment extends Fragment {
                     adapter.setItems(results);
                     playAllButton.setVisibility(results.isEmpty() ? View.GONE : View.VISIBLE);
                     statusText.setText(results.isEmpty() ? "No matching YouTube tracks found."
-                            : results.size() + " matching results");
+                            : results.size() + " matching YouTube results");
                 });
             } catch (Exception e) {
                 String message = e.getMessage() == null || e.getMessage().trim().isEmpty()
@@ -124,28 +124,48 @@ public class YouTubeFragment extends Fragment {
     private void loadDefaultTracks() {
         if (searchInput == null || executor == null) return;
         final int generation = searchGeneration.incrementAndGet();
-        statusText.setText("Loading your music…");
+        statusText.setText("Loading YouTube recommendations…");
         playAllButton.setVisibility(View.GONE);
         adapter.setItems(new ArrayList<>());
         executor.execute(() -> {
             ArrayList<YouTubeClient.Track> results = new ArrayList<>();
             Set<String> seen = new HashSet<>();
             try {
-                MusicRepository repository = new MusicRepository(requireContext().getApplicationContext());
-                ArrayList<AudioFile> songs = repository.getAllSongs();
-                PlaybackStatsManager stats = new PlaybackStatsManager(requireContext().getApplicationContext());
-                PlaylistManager playlists = new PlaylistManager(requireContext().getApplicationContext());
+                android.content.Context context = requireContext().getApplicationContext();
+                PlaybackStatsManager stats = new PlaybackStatsManager(context);
+                PlaylistManager playlists = new PlaylistManager(context);
+                ArrayList<String> seedQueries = new ArrayList<>();
 
-                ArrayList<PlaybackStatsManager.SongStat> mostPlayed = stats.getMostPlayed(20);
-                for (PlaybackStatsManager.SongStat stat : mostPlayed) {
-                    addLocalTrack(repository, songs, stat.uri, results, seen);
+                for (PlaybackStatsManager.SongStat stat : stats.getMostPlayed(8)) {
+                    String query = buildQuery(stat.title, stat.artist);
+                    if (!query.isEmpty() && !seedQueries.contains(query)) seedQueries.add(query);
                 }
 
-                if (results.size() < 20) {
-                    for (String uri : playlists.getPlaylistSongs(PlaylistManager.FAVORITES_PLAYLIST)) {
-                        addLocalTrack(repository, songs, uri, results, seen);
-                        if (results.size() >= 20) break;
+                for (String uri : playlists.getPlaylistSongs(PlaylistManager.FAVORITES_PLAYLIST)) {
+                    PlaybackStatsManager.SongStat stat = stats.getSongStat(uri);
+                    if (stat != null) {
+                        String query = buildQuery(stat.title, stat.artist);
+                        if (!query.isEmpty() && !seedQueries.contains(query)) seedQueries.add(query);
                     }
+                    if (seedQueries.size() >= 12) break;
+                }
+
+                if (seedQueries.isEmpty()) {
+                    seedQueries.add("popular music");
+                    seedQueries.add("top songs 2026");
+                }
+
+                for (String query : seedQueries) {
+                    try {
+                        ArrayList<YouTubeClient.Track> found = YouTubeClient.searchTracks(query);
+                        for (YouTubeClient.Track track : found) {
+                            if (track == null || track.id.isEmpty() || !seen.add(track.id)) continue;
+                            results.add(track);
+                            if (results.size() >= 40) break;
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    if (results.size() >= 40) break;
                 }
             } catch (Exception ignored) {
             }
@@ -155,85 +175,101 @@ public class YouTubeFragment extends Fragment {
                 adapter.setItems(results);
                 playAllButton.setVisibility(results.isEmpty() ? View.GONE : View.VISIBLE);
                 statusText.setText(results.isEmpty()
-                        ? "No listening history yet. Search for music above."
-                        : "Most played and liked songs");
+                        ? "No YouTube recommendations available. Search for music above."
+                        : "Most played / liked — YouTube recommendations");
             });
         });
     }
 
-    private void addLocalTrack(MusicRepository repository, ArrayList<AudioFile> songs, String uri,
-                               ArrayList<YouTubeClient.Track> results, Set<String> seen) {
-        if (uri == null || uri.trim().isEmpty() || !seen.add(uri)) return;
-        AudioFile song = null;
-        if (songs != null) {
-            for (AudioFile candidate : songs) {
-                if (candidate != null && uri.equals(candidate.getUri())) {
-                    song = candidate;
-                    break;
-                }
-            }
-        }
-        if (song == null) song = repository.findSongByUri(uri);
-        if (song == null) return;
-        results.add(new YouTubeClient.Track(
-                uri,
-                safe(song.getTitle(), "Unknown song"),
-                safe(song.getArtist(), "Unknown artist"),
-                safe(song.getAlbumArtUri(), ""),
-                uri,
-                Math.max(0L, song.getDuration() / 1000L)
-        ));
+    private String buildQuery(String title, String artist) {
+        String cleanTitle = safe(title, "");
+        String cleanArtist = safe(artist, "");
+        if (cleanTitle.isEmpty()) return cleanArtist;
+        if (cleanArtist.isEmpty()) return cleanTitle;
+        return cleanTitle + " " + cleanArtist;
     }
 
     private void playAll() {
         if (adapter == null || executor == null || adapter.items.isEmpty()) return;
         ArrayList<YouTubeClient.Track> tracks = adapter.getItemsCopy();
-        statusText.setText("Preparing playlist…");
+        final int generation = searchGeneration.get();
+        statusText.setText("Starting playlist…");
         playAllButton.setEnabled(false);
         executor.execute(() -> {
             try {
-                ArrayList<AudioFile> songs = new ArrayList<>();
+                YouTubeClient.Track first = null;
+                String firstStreamUrl = "";
                 for (YouTubeClient.Track track : tracks) {
-                    if (track == null || track.url.isEmpty()) continue;
-                    String playableUrl = isYouTubeWatchUrl(track.url)
-                            ? YouTubeClient.resolveStreamUrl(track.id)
-                            : track.url;
-                    songs.add(new AudioFile(
-                            Long.MIN_VALUE + Math.abs((long) playableUrl.hashCode()),
-                            track.title,
-                            track.artist,
-                            track.title,
-                            playableUrl,
-                            track.artworkUrl,
-                            track.durationSeconds * 1000L,
-                            System.currentTimeMillis()
-                    ));
-                    if (isYouTubeWatchUrl(track.url)) {
+                    if (track == null || track.id.isEmpty()) continue;
+                    try {
+                        String streamUrl = YouTubeClient.resolveStreamUrl(track.id);
+                        if (!streamUrl.isEmpty()) {
+                            first = track;
+                            firstStreamUrl = streamUrl;
+                            break;
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                if (first == null || firstStreamUrl.isEmpty()) {
+                    mainHandler.post(() -> {
+                        if (!isCurrentSearch(generation)) return;
+                        playAllButton.setEnabled(true);
+                        statusText.setText("Play all failed: no playable YouTube songs");
+                    });
+                    return;
+                }
+
+                MusicRepository.registerRemoteSong(
+                        firstStreamUrl,
+                        first.title,
+                        first.artist,
+                        first.artworkUrl,
+                        first.durationSeconds
+                );
+
+                final String playableFirstUrl = firstStreamUrl;
+                mainHandler.post(() -> {
+                    if (!isCurrentSearch(generation)) return;
+                    new MusicPlayerController(requireContext()).play(playableFirstUrl);
+                    statusText.setText("Playing YouTube playlist…");
+                });
+
+                int queued = 0;
+                Set<String> queuedIds = new HashSet<>();
+                queuedIds.add(first.id);
+                MusicPlayerController controller = new MusicPlayerController(requireContext());
+                for (YouTubeClient.Track track : tracks) {
+                    if (track == null || track.id.isEmpty() || queuedIds.contains(track.id)) continue;
+                    try {
+                        String streamUrl = YouTubeClient.resolveStreamUrl(track.id);
+                        if (streamUrl.isEmpty()) continue;
                         MusicRepository.registerRemoteSong(
-                                playableUrl,
+                                streamUrl,
                                 track.title,
                                 track.artist,
                                 track.artworkUrl,
                                 track.durationSeconds
                         );
+                        controller.addToQueue(streamUrl);
+                        queuedIds.add(track.id);
+                        queued++;
+                    } catch (Exception ignored) {
                     }
                 }
+
+                final int queuedCount = queued;
                 mainHandler.post(() -> {
-                    if (!isAdded() || getView() == null) return;
-                    if (songs.isEmpty()) {
-                        statusText.setText("No playable songs");
-                        playAllButton.setEnabled(true);
-                        return;
-                    }
-                    new MusicPlayerController(requireContext()).playQueue(songs, 0);
-                    statusText.setText("Playing all " + songs.size() + " songs");
+                    if (!isCurrentSearch(generation)) return;
                     playAllButton.setEnabled(true);
+                    statusText.setText("Playing YouTube playlist • " + (queuedCount + 1) + " songs");
                 });
             } catch (Exception e) {
                 String message = e.getMessage() == null || e.getMessage().trim().isEmpty()
-                        ? "Unable to prepare playlist" : e.getMessage();
+                        ? "Unable to prepare YouTube playlist" : e.getMessage();
                 mainHandler.post(() -> {
-                    if (!isAdded() || getView() == null) return;
+                    if (!isCurrentSearch(generation)) return;
                     playAllButton.setEnabled(true);
                     statusText.setText("Play all failed: " + message);
                 });
@@ -241,18 +277,12 @@ public class YouTubeFragment extends Fragment {
         });
     }
 
-    private boolean isYouTubeWatchUrl(String url) {
-        return url != null && (url.contains("youtube.com/watch") || url.contains("youtu.be/"));
-    }
-
     private void playTrack(YouTubeClient.Track track) {
         if (!isAdded() || track == null || track.id.isEmpty() || executor == null) return;
         statusText.setText("Loading " + track.title + "…");
         executor.execute(() -> {
             try {
-                String streamUrl = isYouTubeWatchUrl(track.url)
-                        ? YouTubeClient.resolveStreamUrl(track.id)
-                        : track.url;
+                String streamUrl = YouTubeClient.resolveStreamUrl(track.id);
                 mainHandler.post(() -> {
                     if (!isAdded() || getView() == null) return;
                     new MusicPlayerController(requireContext()).play(streamUrl);
@@ -275,7 +305,7 @@ public class YouTubeFragment extends Fragment {
     }
 
     private String safe(String value, String fallback) {
-        return value == null || value.trim().isEmpty() ? fallback : value;
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
     }
 
     @Override
