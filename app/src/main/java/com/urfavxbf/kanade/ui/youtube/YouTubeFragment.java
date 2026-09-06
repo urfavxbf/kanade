@@ -1,5 +1,6 @@
 package com.urfavxbf.kanade.ui.youtube;
 
+import android.app.AlertDialog;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -7,6 +8,7 @@ import android.text.TextUtils;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,6 +16,8 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -54,6 +58,10 @@ public class YouTubeFragment extends Fragment {
     private ExecutorService executor;
     private Handler mainHandler;
     private AtomicInteger searchGeneration;
+    private AlertDialog loadingDialog;
+    private ProgressBar loadingProgress;
+    private TextView loadingMessage;
+    private boolean loadingOperation;
 
     @Nullable
     @Override
@@ -71,6 +79,7 @@ public class YouTubeFragment extends Fragment {
         playAllButton = view.findViewById(R.id.audiusPlayAllButton);
         mainHandler = new Handler(Looper.getMainLooper());
         searchGeneration = new AtomicInteger();
+        loadingOperation = false;
         executor = Executors.newFixedThreadPool(3, runnable -> {
             Thread thread = new Thread(runnable, "Kanade-YouTube");
             thread.setDaemon(true);
@@ -92,23 +101,30 @@ public class YouTubeFragment extends Fragment {
     }
 
     private void search() {
-        if (searchInput == null || executor == null) return;
+        if (searchInput == null || executor == null || loadingOperation) return;
         String query = searchInput.getText().toString().trim();
         if (query.isEmpty()) {
             loadDefaultTracks();
             return;
         }
         final int generation = searchGeneration.incrementAndGet();
+        loadingOperation = true;
+        showLoadingDialog("Searching YouTube", "Connecting to YouTube…", false, 0);
         statusText.setText("Searching YouTube…");
         playAllButton.setVisibility(View.GONE);
+        playAllButton.setEnabled(false);
         adapter.setItems(new ArrayList<>());
         executor.execute(() -> {
             try {
+                updateLoadingMessage("Searching for \"" + query + "\"…");
                 ArrayList<YouTubeClient.Track> results = YouTubeClient.searchTracks(query);
                 mainHandler.post(() -> {
                     if (!isCurrentSearch(generation)) return;
+                    hideLoadingDialog();
+                    loadingOperation = false;
                     adapter.setItems(results);
                     playAllButton.setVisibility(results.isEmpty() ? View.GONE : View.VISIBLE);
+                    playAllButton.setEnabled(!results.isEmpty());
                     statusText.setText(results.isEmpty() ? "No matching YouTube tracks found."
                             : results.size() + " matching YouTube results");
                 });
@@ -117,7 +133,10 @@ public class YouTubeFragment extends Fragment {
                         ? "Unknown YouTube error" : e.getMessage();
                 mainHandler.post(() -> {
                     if (!isCurrentSearch(generation)) return;
+                    hideLoadingDialog();
+                    loadingOperation = false;
                     playAllButton.setVisibility(View.GONE);
+                    playAllButton.setEnabled(false);
                     statusText.setText("YouTube search failed: " + message);
                 });
             }
@@ -125,16 +144,18 @@ public class YouTubeFragment extends Fragment {
     }
 
     private void loadDefaultTracks() {
-        if (searchInput == null || executor == null) return;
+        if (searchInput == null || executor == null || loadingOperation) return;
         final int generation = searchGeneration.incrementAndGet();
         ArrayList<YouTubeClient.Track> cached = loadDefaultCache();
         if (!cached.isEmpty()) {
             adapter.setItems(cached);
             playAllButton.setVisibility(View.VISIBLE);
+            playAllButton.setEnabled(true);
             statusText.setText("YouTube music recommendations");
         } else {
             statusText.setText("Loading YouTube music…");
             playAllButton.setVisibility(View.GONE);
+            playAllButton.setEnabled(false);
             adapter.setItems(new ArrayList<>());
         }
 
@@ -168,10 +189,12 @@ public class YouTubeFragment extends Fragment {
                 if (!results.isEmpty()) {
                     adapter.setItems(results);
                     playAllButton.setVisibility(View.VISIBLE);
+                    playAllButton.setEnabled(true);
                     statusText.setText("YouTube music recommendations");
                 } else if (cached.isEmpty()) {
                     adapter.setItems(results);
                     playAllButton.setVisibility(View.GONE);
+                    playAllButton.setEnabled(false);
                     statusText.setText("No YouTube recommendations available. Search for music above.");
                 }
             });
@@ -240,21 +263,33 @@ public class YouTubeFragment extends Fragment {
     }
 
     private void playAll() {
-        if (adapter == null || executor == null || adapter.items.isEmpty()) return;
+        if (adapter == null || executor == null || adapter.items.isEmpty() || loadingOperation) return;
         ArrayList<YouTubeClient.Track> tracks = adapter.getItemsCopy();
         final int generation = searchGeneration.get();
-        statusText.setText("Preparing YouTube playlist…");
+        loadingOperation = true;
         playAllButton.setEnabled(false);
+        showLoadingDialog("Preparing playlist", "Starting YouTube playlist…", true, tracks.size());
+        statusText.setText("Preparing YouTube playlist…");
         executor.execute(() -> {
             try {
                 ArrayList<String> playableUris = new ArrayList<>();
                 Set<String> queuedIds = new HashSet<>();
+                int total = tracks.size();
+                int processed = 0;
 
                 for (YouTubeClient.Track track : tracks) {
-                    if (track == null || track.id.isEmpty() || queuedIds.contains(track.id)) continue;
+                    if (track == null || track.id.isEmpty() || queuedIds.contains(track.id)) {
+                        processed++;
+                        continue;
+                    }
                     try {
+                        updateLoadingProgress(processed, total,
+                                "Resolving song " + (processed + 1) + " of " + total + "…");
                         String streamUrl = YouTubeClient.resolveStreamUrl(track.id);
-                        if (streamUrl.isEmpty()) continue;
+                        if (streamUrl.isEmpty()) {
+                            processed++;
+                            continue;
+                        }
                         MusicRepository.registerRemoteSong(
                                 streamUrl,
                                 track.title,
@@ -266,27 +301,39 @@ public class YouTubeFragment extends Fragment {
                         queuedIds.add(track.id);
                     } catch (Exception ignored) {
                     }
+                    processed++;
+                    updateLoadingProgress(processed, total,
+                            "Prepared " + processed + " of " + total + " songs");
                 }
 
                 if (playableUris.isEmpty()) {
                     mainHandler.post(() -> {
                         if (!isCurrentSearch(generation)) return;
+                        hideLoadingDialog();
+                        loadingOperation = false;
                         playAllButton.setEnabled(true);
                         statusText.setText("Play all failed: no playable YouTube songs");
                     });
                     return;
                 }
 
+                mainHandler.post(() -> updateLoadingMessage(
+                        "Building queue with " + playableUris.size() + " playable songs…"));
                 MusicPlayerController controller = new MusicPlayerController(requireContext());
                 controller.clearQueue();
-                for (String uri : playableUris) {
-                    controller.addToQueue(uri);
+                for (int i = 0; i < playableUris.size(); i++) {
+                    controller.addToQueue(playableUris.get(i));
+                    final int queueProgress = i + 1;
+                    updateLoadingProgress(queueProgress, playableUris.size(),
+                            "Adding song " + queueProgress + " of " + playableUris.size() + " to queue…");
                 }
                 controller.playQueueItem(0);
 
                 final int count = playableUris.size();
                 mainHandler.post(() -> {
                     if (!isCurrentSearch(generation)) return;
+                    hideLoadingDialog();
+                    loadingOperation = false;
                     playAllButton.setEnabled(true);
                     statusText.setText("Playing YouTube playlist • " + count + " songs");
                 });
@@ -295,6 +342,8 @@ public class YouTubeFragment extends Fragment {
                         ? "Unable to prepare YouTube playlist" : e.getMessage();
                 mainHandler.post(() -> {
                     if (!isCurrentSearch(generation)) return;
+                    hideLoadingDialog();
+                    loadingOperation = false;
                     playAllButton.setEnabled(true);
                     statusText.setText("Play all failed: " + message);
                 });
@@ -303,13 +352,18 @@ public class YouTubeFragment extends Fragment {
     }
 
     private void playTrack(YouTubeClient.Track track) {
-        if (!isAdded() || track == null || track.id.isEmpty() || executor == null) return;
+        if (!isAdded() || track == null || track.id.isEmpty() || executor == null || loadingOperation) return;
+        loadingOperation = true;
+        showLoadingDialog("Loading song", "Resolving YouTube stream…", false, 0);
         statusText.setText("Loading " + track.title + "…");
         executor.execute(() -> {
             try {
+                updateLoadingMessage("Resolving audio stream for \"" + track.title + "\"…");
                 String streamUrl = YouTubeClient.resolveStreamUrl(track.id);
                 mainHandler.post(() -> {
                     if (!isAdded() || getView() == null) return;
+                    hideLoadingDialog();
+                    loadingOperation = false;
                     new MusicPlayerController(requireContext()).play(streamUrl);
                     statusText.setText("Playing in Kanade's player");
                 });
@@ -318,9 +372,79 @@ public class YouTubeFragment extends Fragment {
                         ? "Unable to resolve YouTube stream" : e.getMessage();
                 mainHandler.post(() -> {
                     if (!isAdded() || getView() == null) return;
+                    hideLoadingDialog();
+                    loadingOperation = false;
                     statusText.setText("Playback failed: " + message);
                 });
             }
+        });
+    }
+
+    private void showLoadingDialog(String title, String message, boolean determinate, int max) {
+        if (!isAdded() || getActivity() == null) return;
+        mainHandler.post(() -> {
+            if (!isAdded() || getActivity() == null) return;
+            if (loadingDialog == null) {
+                LinearLayout layout = new LinearLayout(requireContext());
+                layout.setOrientation(LinearLayout.VERTICAL);
+                layout.setPadding(48, 12, 48, 8);
+
+                loadingMessage = new TextView(requireContext());
+                loadingMessage.setTextSize(14);
+                loadingMessage.setGravity(Gravity.START);
+                layout.addView(loadingMessage, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                loadingProgress = new ProgressBar(requireContext(), null,
+                        android.R.attr.progressBarStyleHorizontal);
+                LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                progressParams.topMargin = 18;
+                layout.addView(loadingProgress, progressParams);
+
+                loadingDialog = new AlertDialog.Builder(requireContext())
+                        .setTitle(title)
+                        .setView(layout)
+                        .setCancelable(false)
+                        .create();
+            } else {
+                loadingDialog.setTitle(title);
+            }
+
+            loadingMessage.setText(message);
+            loadingProgress.setIndeterminate(!determinate);
+            if (determinate) {
+                loadingProgress.setMax(Math.max(1, max));
+                loadingProgress.setProgress(0);
+            }
+            if (!loadingDialog.isShowing()) loadingDialog.show();
+        });
+    }
+
+    private void updateLoadingMessage(String message) {
+        if (mainHandler == null) return;
+        mainHandler.post(() -> {
+            if (loadingDialog != null && loadingDialog.isShowing() && loadingMessage != null) {
+                loadingMessage.setText(message);
+            }
+        });
+    }
+
+    private void updateLoadingProgress(int progress, int max, String message) {
+        if (mainHandler == null) return;
+        mainHandler.post(() -> {
+            if (loadingDialog == null || !loadingDialog.isShowing() || loadingProgress == null) return;
+            loadingProgress.setIndeterminate(false);
+            loadingProgress.setMax(Math.max(1, max));
+            loadingProgress.setProgress(Math.min(Math.max(0, progress), Math.max(1, max)));
+            if (loadingMessage != null) loadingMessage.setText(message);
+        });
+    }
+
+    private void hideLoadingDialog() {
+        if (mainHandler == null) return;
+        mainHandler.post(() -> {
+            if (loadingDialog != null && loadingDialog.isShowing()) loadingDialog.dismiss();
         });
     }
 
@@ -332,6 +456,11 @@ public class YouTubeFragment extends Fragment {
     @Override
     public void onDestroyView() {
         if (searchGeneration != null) searchGeneration.incrementAndGet();
+        loadingOperation = false;
+        if (loadingDialog != null && loadingDialog.isShowing()) loadingDialog.dismiss();
+        loadingDialog = null;
+        loadingProgress = null;
+        loadingMessage = null;
         if (executor != null) {
             executor.shutdownNow();
             executor = null;
