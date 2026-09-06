@@ -113,6 +113,7 @@ android {
             resources.pickFirsts.add("commonMain/default/linkdata/module")
             resources.pickFirsts.add("commonMain/default/linkdata/package_androidx/0_androidx.knm")
             resources.merges.add("commonMain/default/manifest")
+            resources.merges.add("nativeMain/default/manifest")
             resources.merges.add("nonJvmMain/default/manifest")
         }
     }
