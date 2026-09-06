@@ -98,7 +98,7 @@
             android:layout_height="72dp"
             android:padding="18dp"
             android:src="@drawable/ic_playlist"
-            android:tint="#C9C4FF"
+            app:tint="#C9C4FF"
             android:background="@drawable/rounded_album_art"
             android:contentDescription="Playlist" />
 
