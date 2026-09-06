@@ -1,13 +1,12 @@
 package com.urfavxbf.kanade.ui.youtube;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Color;
+import android.text.TextUtils;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.TextUtils;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,7 +14,6 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -28,6 +26,9 @@ import com.urfavxbf.kanade.MusicPlayerController;
 import com.urfavxbf.kanade.MusicRepository;
 import com.urfavxbf.kanade.R;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -39,6 +40,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class YouTubeFragment extends Fragment {
+
+    private static final String DEFAULT_CACHE_PREFS = "youtube_default_cache";
+    private static final String DEFAULT_CACHE_KEY = "tracks";
+    private static final String DEFAULT_CACHE_TIME_KEY = "cached_at";
+    private static final long DEFAULT_CACHE_TTL = 6L * 60L * 60L * 1000L;
 
     private EditText searchInput;
     private RecyclerView resultsRecycler;
@@ -121,9 +127,17 @@ public class YouTubeFragment extends Fragment {
     private void loadDefaultTracks() {
         if (searchInput == null || executor == null) return;
         final int generation = searchGeneration.incrementAndGet();
-        statusText.setText("Loading YouTube music…");
-        playAllButton.setVisibility(View.GONE);
-        adapter.setItems(new ArrayList<>());
+        ArrayList<YouTubeClient.Track> cached = loadDefaultCache();
+        if (!cached.isEmpty()) {
+            adapter.setItems(cached);
+            playAllButton.setVisibility(View.VISIBLE);
+            statusText.setText("YouTube music recommendations");
+        } else {
+            statusText.setText("Loading YouTube music…");
+            playAllButton.setVisibility(View.GONE);
+            adapter.setItems(new ArrayList<>());
+        }
+
         executor.execute(() -> {
             ArrayList<YouTubeClient.Track> results = new ArrayList<>();
             Set<String> seen = new HashSet<>();
@@ -147,15 +161,82 @@ public class YouTubeFragment extends Fragment {
                 if (results.size() >= 40) break;
             }
 
+            if (!results.isEmpty()) saveDefaultCache(results);
+
             mainHandler.post(() -> {
                 if (!isCurrentSearch(generation)) return;
-                adapter.setItems(results);
-                playAllButton.setVisibility(results.isEmpty() ? View.GONE : View.VISIBLE);
-                statusText.setText(results.isEmpty()
-                        ? "No YouTube recommendations available. Search for music above."
-                        : "YouTube music recommendations");
+                if (!results.isEmpty()) {
+                    adapter.setItems(results);
+                    playAllButton.setVisibility(View.VISIBLE);
+                    statusText.setText("YouTube music recommendations");
+                } else if (cached.isEmpty()) {
+                    adapter.setItems(results);
+                    playAllButton.setVisibility(View.GONE);
+                    statusText.setText("No YouTube recommendations available. Search for music above.");
+                }
             });
         });
+    }
+
+    private ArrayList<YouTubeClient.Track> loadDefaultCache() {
+        ArrayList<YouTubeClient.Track> tracks = new ArrayList<>();
+        if (!isAdded()) return tracks;
+        try {
+            Context context = requireContext().getApplicationContext();
+            android.content.SharedPreferences preferences = context.getSharedPreferences(
+                    DEFAULT_CACHE_PREFS, Context.MODE_PRIVATE);
+            String json = preferences.getString(DEFAULT_CACHE_KEY, "");
+            long cachedAt = preferences.getLong(DEFAULT_CACHE_TIME_KEY, 0L);
+            if (json.isEmpty() || cachedAt <= 0L || System.currentTimeMillis() - cachedAt > DEFAULT_CACHE_TTL) {
+                return tracks;
+            }
+
+            JSONArray array = new JSONArray(json);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject object = array.optJSONObject(i);
+                if (object == null) continue;
+                String id = object.optString("id", "");
+                if (id.isEmpty()) continue;
+                tracks.add(new YouTubeClient.Track(
+                        id,
+                        object.optString("title", "Unknown title"),
+                        object.optString("artist", "Unknown artist"),
+                        object.optString("artworkUrl", ""),
+                        object.optString("url", ""),
+                        object.optInt("durationSeconds", 0)
+                ));
+            }
+        } catch (Exception ignored) {
+            tracks.clear();
+        }
+        return tracks;
+    }
+
+    private void saveDefaultCache(ArrayList<YouTubeClient.Track> tracks) {
+        if (!isAdded() || tracks == null || tracks.isEmpty()) return;
+        try {
+            JSONArray array = new JSONArray();
+            int count = Math.min(40, tracks.size());
+            for (int i = 0; i < count; i++) {
+                YouTubeClient.Track track = tracks.get(i);
+                if (track == null || track.id.isEmpty()) continue;
+                JSONObject object = new JSONObject();
+                object.put("id", track.id);
+                object.put("title", track.title);
+                object.put("artist", track.artist);
+                object.put("artworkUrl", track.artworkUrl);
+                object.put("url", track.url);
+                object.put("durationSeconds", track.durationSeconds);
+                array.put(object);
+            }
+            requireContext().getApplicationContext()
+                    .getSharedPreferences(DEFAULT_CACHE_PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(DEFAULT_CACHE_KEY, array.toString())
+                    .putLong(DEFAULT_CACHE_TIME_KEY, System.currentTimeMillis())
+                    .apply();
+        } catch (Exception ignored) {
+        }
     }
 
     private void playAll() {
@@ -290,52 +371,30 @@ public class YouTubeFragment extends Fragment {
         @NonNull
         @Override
         public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            int padding = Math.round(10 * parent.getResources().getDisplayMetrics().density);
-            float density = parent.getResources().getDisplayMetrics().density;
-            LinearLayout row = new LinearLayout(parent.getContext());
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(padding, padding, padding, padding);
-            ImageView artwork = new ImageView(parent.getContext());
-            artwork.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            row.addView(artwork, new LinearLayout.LayoutParams(Math.round(64 * density), Math.round(64 * density)));
-            LinearLayout textContainer = new LinearLayout(parent.getContext());
-            textContainer.setOrientation(LinearLayout.VERTICAL);
-            textContainer.setGravity(Gravity.CENTER_VERTICAL);
-            LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            textParams.leftMargin = Math.round(12 * density);
-            row.addView(textContainer, textParams);
-            TextView title = new TextView(parent.getContext());
-            title.setTextColor(Color.WHITE);
-            title.setTextSize(15);
-            title.setMaxLines(2);
-            title.setEllipsize(TextUtils.TruncateAt.END);
-            textContainer.addView(title);
-            TextView artist = new TextView(parent.getContext());
-            artist.setTextColor(Color.rgb(160, 162, 175));
-            artist.setTextSize(12);
-            artist.setMaxLines(1);
-            artist.setEllipsize(TextUtils.TruncateAt.END);
-            textContainer.addView(artist);
-            return new ViewHolder(row, artwork, title, artist);
+            View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_audio, parent, false);
+            return new ViewHolder(view);
         }
 
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
             YouTubeClient.Track track = items.get(position);
-            holder.title.setText(track.title);
-            holder.artist.setText(track.artist);
-            holder.artwork.setImageResource(android.R.drawable.ic_menu_gallery);
-            holder.artwork.setTag(null);
+            holder.title.setText(TextUtils.isEmpty(track.title) ? "Unknown title" : track.title);
+            holder.artist.setText(TextUtils.isEmpty(track.artist) ? "Unknown artist" : track.artist);
+            holder.album.setText("YouTube");
+            holder.favorite.setVisibility(View.GONE);
+            holder.more.setVisibility(View.GONE);
+            holder.albumArt.setImageResource(android.R.drawable.ic_media_play);
+            holder.albumArt.setTag(null);
+
             if (!TextUtils.isEmpty(track.artworkUrl)) {
                 String artworkUrl = track.artworkUrl;
-                holder.artwork.setTag(artworkUrl);
+                holder.albumArt.setTag(artworkUrl);
                 imageExecutor.execute(() -> {
                     Bitmap bitmap = downloadBitmap(artworkUrl);
                     if (bitmap == null) return;
                     mainHandler.post(() -> {
-                        Object tag = holder.artwork.getTag();
-                        if (artworkUrl.equals(tag)) holder.artwork.setImageBitmap(bitmap);
+                        Object tag = holder.albumArt.getTag();
+                        if (artworkUrl.equals(tag)) holder.albumArt.setImageBitmap(bitmap);
                     });
                 });
             }
@@ -363,14 +422,21 @@ public class YouTubeFragment extends Fragment {
         }
 
         static final class ViewHolder extends RecyclerView.ViewHolder {
-            final ImageView artwork;
+            final ImageView albumArt;
+            final ImageView more;
+            final android.widget.ImageButton favorite;
             final TextView title;
             final TextView artist;
-            ViewHolder(@NonNull View itemView, ImageView artwork, TextView title, TextView artist) {
+            final TextView album;
+
+            ViewHolder(@NonNull View itemView) {
                 super(itemView);
-                this.artwork = artwork;
-                this.title = title;
-                this.artist = artist;
+                albumArt = itemView.findViewById(R.id.imgAlbumArt);
+                title = itemView.findViewById(R.id.txtTitle);
+                artist = itemView.findViewById(R.id.txtArtist);
+                album = itemView.findViewById(R.id.txtAlbum);
+                more = itemView.findViewById(R.id.btnMore);
+                favorite = itemView.findViewById(R.id.btnFave);
             }
         }
     }
