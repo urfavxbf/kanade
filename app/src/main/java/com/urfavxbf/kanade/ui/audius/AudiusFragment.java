@@ -32,6 +32,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class AudiusFragment extends Fragment {
 
@@ -41,6 +42,7 @@ public class AudiusFragment extends Fragment {
     private ResultAdapter adapter;
     private ExecutorService executor;
     private Handler mainHandler;
+    private AtomicInteger searchGeneration;
 
     @Nullable
     @Override
@@ -62,6 +64,7 @@ public class AudiusFragment extends Fragment {
         statusText = view.findViewById(R.id.audiusStatusText);
 
         mainHandler = new Handler(Looper.getMainLooper());
+        searchGeneration = new AtomicInteger();
         executor = Executors.newFixedThreadPool(3, runnable -> {
             Thread thread = new Thread(runnable, "Kanade-Audius");
             thread.setDaemon(true);
@@ -85,12 +88,17 @@ public class AudiusFragment extends Fragment {
     }
 
     private void search() {
+        if (searchInput == null || executor == null) {
+            return;
+        }
+
         String query = searchInput.getText().toString().trim();
         if (query.isEmpty()) {
             searchInput.setError("Enter a song or artist");
             return;
         }
 
+        final int generation = searchGeneration.incrementAndGet();
         statusText.setText("Searching Audius…");
         adapter.setItems(new ArrayList<>());
 
@@ -98,20 +106,20 @@ public class AudiusFragment extends Fragment {
             try {
                 ArrayList<AudiusClient.Track> results = AudiusClient.searchTracks(query);
                 mainHandler.post(() -> {
-                    if (!isAdded() || getView() == null) {
+                    if (!isCurrentSearch(generation)) {
                         return;
                     }
                     adapter.setItems(results);
                     statusText.setText(results.isEmpty()
-                            ? "No Audius results found."
-                            : results.size() + " results");
+                            ? "No matching Audius tracks found."
+                            : results.size() + " matching results");
                 });
             } catch (Exception e) {
                 String message = e.getMessage() == null || e.getMessage().trim().isEmpty()
                         ? "Unknown Audius error"
                         : e.getMessage();
                 mainHandler.post(() -> {
-                    if (!isAdded() || getView() == null) {
+                    if (!isCurrentSearch(generation)) {
                         return;
                     }
                     statusText.setText("Audius search failed: " + message);
@@ -120,8 +128,15 @@ public class AudiusFragment extends Fragment {
         });
     }
 
+    private boolean isCurrentSearch(int generation) {
+        return isAdded()
+                && getView() != null
+                && searchGeneration != null
+                && searchGeneration.get() == generation;
+    }
+
     private void playTrack(AudiusClient.Track track) {
-        if (!isAdded() || track == null || track.id.isEmpty()) {
+        if (!isAdded() || track == null || track.id.isEmpty() || executor == null) {
             return;
         }
 
@@ -131,7 +146,7 @@ public class AudiusFragment extends Fragment {
             try {
                 String streamUrl = AudiusClient.resolveStreamUrl(track.id);
                 mainHandler.post(() -> {
-                    if (!isAdded()) {
+                    if (!isAdded() || getView() == null) {
                         return;
                     }
                     new MusicPlayerController(requireContext()).play(streamUrl);
@@ -153,6 +168,9 @@ public class AudiusFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        if (searchGeneration != null) {
+            searchGeneration.incrementAndGet();
+        }
         if (executor != null) {
             executor.shutdownNow();
             executor = null;
@@ -246,6 +264,7 @@ public class AudiusFragment extends Fragment {
             holder.title.setText(track.title);
             holder.artist.setText(track.artist);
             holder.artwork.setImageResource(android.R.drawable.ic_menu_gallery);
+            holder.artwork.setTag(null);
 
             if (!TextUtils.isEmpty(track.artworkUrl)) {
                 String artworkUrl = track.artworkUrl;
