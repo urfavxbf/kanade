@@ -61,8 +61,8 @@ android {
 
         buildConfigField(
             "String",
-            "YOUTUBE_API_KEY",
-            "\"${localProperties.getProperty("YOUTUBE_API_KEY", "")
+            "AUDIUS_API_KEY",
+            "\"${localProperties.getProperty("AUDIUS_API_KEY", "")
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")}\""
         )
@@ -151,11 +151,9 @@ dependencies {
     implementation("androidx.navigation:navigation-ui:2.5.3")
     implementation("androidx.media:media:1.7.0")
     implementation("androidx.media3:media3-exoplayer:1.10.1")
-    implementation("dev.ffmpegkit-maintained:yt-dlp-android:2.0.2")
-    implementation("dev.ffmpegkit-maintained:yt-dlp-android-compat:2.0.2")
+    implementation("com.github.cy745:fpcalc:master-SNAPSHOT")
     implementation("androidx.collection:collection-ktx:1.4.2") {
         exclude(group = "androidx.collection", module = "collection-ktx")
         exclude(group = "androidx.collection", module = "collection-jvm")
     }
-    implementation("com.github.cy745:fpcalc:master-SNAPSHOT")
 }
