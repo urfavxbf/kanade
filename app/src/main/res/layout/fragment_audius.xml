@@ -44,14 +44,30 @@
 
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/audiusStatusText"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="Search YouTube music"
-        android:textColor="#A0A0A0"
-        android:textSize="13sp" />
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/audiusStatusText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Most played"
+            android:textColor="#A0A0A0"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/audiusPlayAllButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Play all"
+            android:visibility="gone" />
+
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/audiusResultsRecycler"
