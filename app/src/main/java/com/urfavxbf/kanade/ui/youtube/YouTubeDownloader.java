@@ -18,10 +18,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 final class YouTubeDownloader extends Downloader {
-
-    private static final String USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 "
-                    + "Chrome/140.0 Mobile Safari/537.36";
+    private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36";
 
     @Override
     public Response execute(Request request) throws IOException, ReCaptchaException {
@@ -34,21 +31,15 @@ final class YouTubeDownloader extends Downloader {
             connection.setRequestMethod(request.httpMethod());
             connection.setRequestProperty("User-Agent", USER_AGENT);
             connection.setRequestProperty("Accept-Encoding", "identity");
-
             Map<String, List<String>> headers = request.headers();
             if (headers != null) {
                 for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
-                    if (entry.getKey() == null || entry.getValue() == null) {
-                        continue;
-                    }
+                    if (entry.getKey() == null || entry.getValue() == null) continue;
                     for (String value : entry.getValue()) {
-                        if (value != null) {
-                            connection.addRequestProperty(entry.getKey(), value);
-                        }
+                        if (value != null) connection.addRequestProperty(entry.getKey(), value);
                     }
                 }
             }
-
             byte[] data = request.dataToSend();
             if (data != null && data.length > 0) {
                 connection.setDoOutput(true);
@@ -57,55 +48,31 @@ final class YouTubeDownloader extends Downloader {
                     output.write(data);
                 }
             }
-
             int responseCode = connection.getResponseCode();
             String responseMessage = connection.getResponseMessage();
-            InputStream input = responseCode >= 400
-                    ? connection.getErrorStream()
-                    : connection.getInputStream();
+            InputStream input = responseCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
             String body = input == null ? "" : readBody(input);
-
-            return new Response(
-                    responseCode,
-                    responseMessage,
-                    normalizeHeaders(connection.getHeaderFields()),
-                    body,
-                    connection.getURL().toString()
-            );
+            return new Response(responseCode, responseMessage, normalizeHeaders(connection.getHeaderFields()), body, connection.getURL().toString());
         } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
+            if (connection != null) connection.disconnect();
         }
     }
 
     private static String readBody(InputStream input) throws IOException {
-        try (InputStream stream = input;
-             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+        try (InputStream stream = input; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
             int count;
-            while ((count = stream.read(buffer)) != -1) {
-                output.write(buffer, 0, count);
-            }
+            while ((count = stream.read(buffer)) != -1) output.write(buffer, 0, count);
             return output.toString("UTF-8");
         }
     }
 
-    private static Map<String, List<String>> normalizeHeaders(
-            Map<String, List<String>> source) {
-        if (source == null || source.isEmpty()) {
-            return Collections.emptyMap();
-        }
-
+    private static Map<String, List<String>> normalizeHeaders(Map<String, List<String>> source) {
+        if (source == null || source.isEmpty()) return Collections.emptyMap();
         Map<String, List<String>> result = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (Map.Entry<String, List<String>> entry : source.entrySet()) {
-            if (entry.getKey() == null) {
-                continue;
-            }
-            List<String> values = entry.getValue() == null
-                    ? Collections.emptyList()
-                    : new ArrayList<>(entry.getValue());
-            result.put(entry.getKey(), values);
+            if (entry.getKey() == null) continue;
+            result.put(entry.getKey(), entry.getValue() == null ? Collections.emptyList() : new ArrayList<>(entry.getValue()));
         }
         return result;
     }
