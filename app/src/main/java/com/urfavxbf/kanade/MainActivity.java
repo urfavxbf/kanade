@@ -1180,13 +1180,8 @@ public class MainActivity extends AppCompatActivity {
 
         try {
 
-            if (Build.VERSION.SDK_INT
-                    >= Build.VERSION_CODES.O) {
-
-                ContextCompat.startForegroundService(
-                        MainActivity.this,
-                        intent
-                );
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && shouldStartForeground(intent)) {
+                ContextCompat.startForegroundService(MainActivity.this, intent);
 
             } else {
 
@@ -1210,6 +1205,16 @@ public class MainActivity extends AppCompatActivity {
      * PLAYER RECEIVER SETUP
      * ---------------------------------------------------------
      */
+
+    private boolean shouldStartForeground(Intent intent) {
+        if (intent == null) return false;
+        String action = intent.getAction();
+        return MusicPlayerService.ACTION_PLAY.equals(action)
+                || MusicPlayerService.ACTION_NEXT.equals(action)
+                || MusicPlayerService.ACTION_PREVIOUS.equals(action)
+                || MusicPlayerService.ACTION_SET_QUEUE_AND_PLAY.equals(action)
+                || MusicPlayerService.ACTION_PLAY_QUEUE_ITEM.equals(action);
+    }
 
     private void setupPlayerReceiver() {
 

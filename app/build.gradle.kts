@@ -105,6 +105,7 @@ dependencies {
     implementation("androidx.navigation:navigation-ui:2.5.3")
     implementation("androidx.media:media:1.7.0")
     implementation("androidx.media3:media3-exoplayer:1.10.1")
+    implementation("androidx.media3:media3-session:1.10.1")
     implementation("com.github.cy745:fpcalc:master-SNAPSHOT")
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.3")
     implementation("androidx.collection:collection-ktx:1.4.2") {
