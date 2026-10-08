@@ -452,8 +452,8 @@ public class MusicPlayerService extends MediaSessionService {
         player.clearMediaItems();
 
         queue.clear();
-        if (current != null && current.getMediaId() != null) {
-            AudioFile song = findSongByUri(current.getMediaId());
+        if (current != null && current.mediaId != null) {
+            AudioFile song = findSongByUri(current.mediaId);
             if (song != null) queue.add(song);
         }
 
@@ -552,7 +552,7 @@ public class MusicPlayerService extends MediaSessionService {
         if (index >= 0 && index < queue.size()) {
             currentIndex = index;
             AudioFile song = queue.get(index);
-            currentUri = song == null ? player.getCurrentMediaItem().getMediaId() : song.getUri();
+            currentUri = song == null ? player.getCurrentMediaItem().mediaId : song.getUri();
         }
     }
 
