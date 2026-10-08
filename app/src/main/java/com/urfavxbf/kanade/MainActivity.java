@@ -1206,6 +1206,16 @@ public class MainActivity extends AppCompatActivity {
      * ---------------------------------------------------------
      */
 
+    private boolean shouldStartForeground(Intent intent) {
+        if (intent == null) return false;
+        String action = intent.getAction();
+        return MusicPlayerService.ACTION_PLAY.equals(action)
+                || MusicPlayerService.ACTION_NEXT.equals(action)
+                || MusicPlayerService.ACTION_PREVIOUS.equals(action)
+                || MusicPlayerService.ACTION_SET_QUEUE_AND_PLAY.equals(action)
+                || MusicPlayerService.ACTION_PLAY_QUEUE_ITEM.equals(action);
+    }
+
     private void setupPlayerReceiver() {
 
         if (playerReceiver != null) {
