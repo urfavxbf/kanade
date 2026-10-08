@@ -1,5 +1,6 @@
 package com.urfavxbf.kanade;
 
+import android.app.PendingIntent;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
@@ -21,7 +22,11 @@ import androidx.media3.session.MediaSessionService;
 import android.media.audiofx.Visualizer;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Random;
+
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 
 public class MusicPlayerService extends MediaSessionService {
 
@@ -152,7 +157,63 @@ public class MusicPlayerService extends MediaSessionService {
             }
         });
 
-        mediaSession = new MediaSession.Builder(this, player).build();
+        Intent sessionIntent = new Intent(this, PlayerActivity.class);
+        PendingIntent sessionActivity = PendingIntent.getActivity(
+                this,
+                0,
+                sessionIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        mediaSession = new MediaSession.Builder(this, player)
+                .setId("kanade-playback")
+                .setSessionActivity(sessionActivity)
+                .setPeriodicPositionUpdateEnabled(true)
+                .setCallback(new MediaSession.Callback() {
+                    @Override
+                    public ListenableFuture<MediaSession.MediaItemsWithStartPosition> onPlaybackResumption(
+                            MediaSession session,
+                            MediaSession.ControllerInfo controller,
+                            boolean isForPlayback) {
+
+                        if (queue.isEmpty()) loadQueue();
+
+                        ArrayList<MediaItem> items = new ArrayList<>();
+                        for (AudioFile song : queue) {
+                            MediaItem item = toMediaItem(song);
+                            if (item != null) items.add(item);
+                        }
+
+                        if (items.isEmpty()) {
+                            return Futures.immediateFuture(
+                                    new MediaSession.MediaItemsWithStartPosition(
+                                            Collections.emptyList(),
+                                            androidx.media3.common.C.INDEX_UNSET,
+                                            androidx.media3.common.C.TIME_UNSET
+                                    )
+                            );
+                        }
+
+                        int startIndex = currentIndex >= 0 && currentIndex < items.size()
+                                ? currentIndex : 0;
+                        long startPosition = player == null
+                                ? 0L
+                                : Math.max(0L, player.getCurrentPosition());
+
+                        if (!isForPlayback) {
+                            startIndex = Math.max(0, Math.min(startIndex, items.size() - 1));
+                        }
+
+                        return Futures.immediateFuture(
+                                new MediaSession.MediaItemsWithStartPosition(
+                                        items,
+                                        startIndex,
+                                        startPosition
+                                )
+                        );
+                    }
+                })
+                .build();
     }
 
     @Override public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
