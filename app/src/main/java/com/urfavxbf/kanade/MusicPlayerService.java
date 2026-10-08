@@ -88,16 +88,6 @@ public class MusicPlayerService extends MediaSessionService {
     private long lastBeatTime;
     private static final long MIN_BEAT_INTERVAL_MS = 115L;
 
-    private final Runnable positionTicker = new Runnable() {
-        @Override public void run() {
-            if (player == null || !player.isPlaying()) return;
-            sendPlaybackState(true);
-            player.getApplicationLooper().getQueue();
-            android.os.Handler handler = new android.os.Handler(player.getApplicationLooper());
-            handler.postDelayed(this, 500L);
-        }
-    };
-
     @Override public void onCreate() {
         super.onCreate();
 
@@ -456,8 +446,9 @@ public class MusicPlayerService extends MediaSessionService {
             return;
         }
 
-        int keepIndex = Math.max(0, Math.min(currentIndex, player.getMediaItemCount() - 1));
+        boolean wasPlaying = player.isPlaying();
         MediaItem current = player.getCurrentMediaItem();
+        long position = Math.max(0L, player.getCurrentPosition());
         player.clearMediaItems();
 
         queue.clear();
@@ -471,7 +462,8 @@ public class MusicPlayerService extends MediaSessionService {
             currentUri = queue.get(0).getUri();
             player.setMediaItem(current);
             player.prepare();
-            if (player.isPlaying()) player.play();
+            player.seekTo(position);
+            if (wasPlaying) player.play();
         } else {
             currentIndex = -1;
             currentUri = null;
