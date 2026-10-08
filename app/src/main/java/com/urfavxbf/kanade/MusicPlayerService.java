@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.annotation.Nullable;
 import androidx.media3.common.AudioAttributes;
@@ -78,6 +80,19 @@ public class MusicPlayerService extends MediaSessionService {
     private final Random random = new Random();
     private final ArrayList<Integer> shuffleHistory = new ArrayList<>();
 
+    private final Handler positionHandler = new Handler(Looper.getMainLooper());
+    private boolean positionUpdatesRunning;
+    private final Runnable positionUpdateRunnable = new Runnable() {
+        @Override public void run() {
+            if (!positionUpdatesRunning || player == null || !player.isPlaying()) {
+                positionUpdatesRunning = false;
+                return;
+            }
+            sendPlaybackState(true);
+            positionHandler.postDelayed(this, 500L);
+        }
+    };
+
     private Visualizer audioVisualizer;
     private int audioVisualizerSampleRate = 44100;
     private volatile boolean audioAnalysisRunning;
@@ -105,9 +120,11 @@ public class MusicPlayerService extends MediaSessionService {
             @Override public void onIsPlayingChanged(boolean isPlaying) {
                 if (isPlaying) {
                     startAudioAnalysis();
+                    startPositionUpdates();
                     sendPlaybackState(true);
                 } else {
                     stopAudioAnalysis();
+                    stopPositionUpdates();
                     sendPlaybackState(false);
                 }
             }
@@ -386,6 +403,17 @@ public class MusicPlayerService extends MediaSessionService {
         return Math.max(0, currentIndex);
     }
 
+    private void startPositionUpdates() {
+        positionHandler.removeCallbacks(positionUpdateRunnable);
+        positionUpdatesRunning = true;
+        positionHandler.post(positionUpdateRunnable);
+    }
+
+    private void stopPositionUpdates() {
+        positionUpdatesRunning = false;
+        positionHandler.removeCallbacks(positionUpdateRunnable);
+    }
+
     private void addToQueue(String uri) {
         if (uri == null || uri.trim().isEmpty() || findSongIndex(uri) >= 0) return;
 
@@ -521,17 +549,35 @@ public class MusicPlayerService extends MediaSessionService {
     }
 
     private AudioFile findSongByUri(String uri) {
-        if (uri == null) return null;
+        if (uri == null || uri.trim().isEmpty()) return null;
 
         for (AudioFile song : queue) {
             if (song != null && uri.equals(song.getUri())) return song;
         }
+
+        AudioFile remoteSong = MusicRepository.findSongByUri(uri);
+        if (remoteSong != null) return remoteSong;
 
         try {
             for (AudioFile song : new MusicRepository(getApplicationContext()).getAllSongs()) {
                 if (song != null && uri.equals(song.getUri())) return song;
             }
         } catch (Exception ignored) {}
+
+        // Online playback must not depend on the repository lookup succeeding.
+        // Media3 can play any valid HTTP(S) URI directly.
+        if (uri.startsWith("http://") || uri.startsWith("https://")) {
+            return new AudioFile(
+                    Long.MIN_VALUE + Math.abs((long) uri.hashCode()),
+                    "Online track",
+                    "Online",
+                    "Online",
+                    uri,
+                    null,
+                    0L,
+                    System.currentTimeMillis()
+            );
+        }
 
         return null;
     }
@@ -791,6 +837,7 @@ public class MusicPlayerService extends MediaSessionService {
     }
 
     @Override public void onDestroy() {
+        stopPositionUpdates();
         stopAudioAnalysis();
 
         if (mediaSession != null) {
