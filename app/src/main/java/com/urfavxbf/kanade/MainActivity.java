@@ -1180,13 +1180,8 @@ public class MainActivity extends AppCompatActivity {
 
         try {
 
-            if (Build.VERSION.SDK_INT
-                    >= Build.VERSION_CODES.O) {
-
-                ContextCompat.startForegroundService(
-                        MainActivity.this,
-                        intent
-                );
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && shouldStartForeground(intent)) {
+                ContextCompat.startForegroundService(MainActivity.this, intent);
 
             } else {
 
