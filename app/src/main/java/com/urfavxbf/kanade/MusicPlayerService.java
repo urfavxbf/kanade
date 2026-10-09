@@ -31,6 +31,7 @@ import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Random;
 
@@ -256,6 +257,10 @@ public class MusicPlayerService extends Service {
     }
 
     private void playSong(String uri) {
+        playSong(uri, false);
+    }
+
+    private void playSong(String uri, boolean useLocalFilePath) {
         if (uri == null || uri.trim().isEmpty()) return;
         if (!requestAudioFocus()) {
             Log.w(TAG, "Audio focus request denied; playback was not started");
@@ -280,15 +285,34 @@ public class MusicPlayerService extends Service {
             player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
             player.setOnCompletionListener(mp -> postPlayback(this::handleCompletion));
             player.setOnErrorListener((mp, what, extra) -> {
-                Log.e(TAG, "MediaPlayer error: what=" + what + ", extra=" + extra);
-                postPlayback(() -> handlePlayerError(requestedUri));
+                Log.e(TAG, "MediaPlayer error: what=" + what + ", extra=" + extra
+                        + ", source=" + (useLocalFilePath ? "file-path" : "content-uri"));
+                postPlayback(() -> {
+                    if (!useLocalFilePath && hasLocalMediaFile(requestedUri)
+                            && mediaPlayer == mp && requestedUri.equals(currentUri)) {
+                        Log.w(TAG, "Retrying local media using its filesystem path");
+                        playSong(requestedUri, true);
+                    } else {
+                        handlePlayerError(requestedUri);
+                    }
+                });
                 return true;
             });
             player.setOnPreparedListener(mp -> postPlayback(() -> {
                 if (mediaPlayer != mp || !requestedUri.equals(currentUri)) { try { mp.release(); } catch (Exception ignored) {} return; }
                 try { startPlaybackPrepared(mp); } catch (Exception e) { handlePlayerError(requestedUri); }
             }));
-            player.setDataSource(this, Uri.parse(uri));
+            if (useLocalFilePath) {
+                AudioFile localSong = findSongByUri(uri);
+                if (localSong == null || localSong.getPath() == null
+                        || localSong.getPath().trim().isEmpty()
+                        || !new File(localSong.getPath()).isFile()) {
+                    throw new java.io.IOException("Local media file path is unavailable");
+                }
+                player.setDataSource(localSong.getPath());
+            } else {
+                player.setDataSource(this, Uri.parse(uri));
+            }
             startPlaybackForeground();
             sendPlaybackState(false);
             player.prepareAsync();
@@ -296,8 +320,23 @@ public class MusicPlayerService extends Service {
             Log.e(TAG, "Failed to initialize playback: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
             try { player.release(); } catch (Exception ignored) {}
             if (mediaPlayer == player) mediaPlayer = null;
-            handlePlayerError(requestedUri);
+            if (!useLocalFilePath && hasLocalMediaFile(requestedUri)
+                    && requestedUri.equals(currentUri)) {
+                Log.w(TAG, "Content URI setup failed; retrying local media using its filesystem path");
+                playSong(requestedUri, true);
+            } else {
+                handlePlayerError(requestedUri);
+            }
         }
+    }
+
+    private boolean hasLocalMediaFile(String uri) {
+        if (uri == null || !uri.startsWith("content://media/")) return false;
+        AudioFile song = findSongByUri(uri);
+        if (song == null || song.getPath() == null || song.getPath().trim().isEmpty()) {
+            return false;
+        }
+        return new File(song.getPath()).isFile();
     }
 
     private void startPlaybackPrepared(MediaPlayer player) {
