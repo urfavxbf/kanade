@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioAttributes;
@@ -148,9 +149,20 @@ public class MusicPlayerService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) return START_NOT_STICKY;
         final String action = intent.getAction();
+        if (startsPlayback(action)) {
+            startPlaybackForeground();
+        }
         final Intent copy = new Intent(intent);
         postPlayback(() -> handleCommand(action, copy));
         return START_NOT_STICKY;
+    }
+
+    private boolean startsPlayback(String action) {
+        return ACTION_PLAY.equals(action)
+                || ACTION_NEXT.equals(action)
+                || ACTION_PREVIOUS.equals(action)
+                || ACTION_PLAY_QUEUE_ITEM.equals(action)
+                || ACTION_SET_QUEUE_AND_PLAY.equals(action);
     }
 
     private void postPlayback(Runnable runnable) {
@@ -338,7 +350,18 @@ public class MusicPlayerService extends Service {
     private int safePosition() { try { return mediaPlayer == null ? 0 : mediaPlayer.getCurrentPosition(); } catch (Exception e) { return 0; } }
     private int safeDuration() { try { return mediaPlayer == null ? 0 : mediaPlayer.getDuration(); } catch (Exception e) { return 0; } }
 
-    private void startPlaybackForeground() { try { createNotificationChannel(); startForeground(NOTIFICATION_ID, buildNotification()); } catch (Exception ignored) {} }
+    private void startPlaybackForeground() {
+        createNotificationChannel();
+        Notification notification = buildNotification();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+        } else {
+            startForeground(NOTIFICATION_ID, notification);
+        }
+    }
     private Notification buildNotification() { String title = "Kanade"; String artist = "Music"; if (currentIndex >= 0 && currentIndex < queue.size()) { AudioFile song = queue.get(currentIndex); if (song != null) { title = safeText(song.getTitle(), title); artist = safeText(song.getArtist(), artist); } } Intent openIntent = getPackageManager().getLaunchIntentForPackage(getPackageName()); PendingIntent contentIntent = openIntent == null ? null : PendingIntent.getActivity(this, 0, openIntent, Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0); Intent playIntent = new Intent(this, MusicPlayerService.class).setAction(ACTION_PLAY); PendingIntent playPending = PendingIntent.getService(this, 1, playIntent, Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0); Intent pauseIntent = new Intent(this, MusicPlayerService.class).setAction(ACTION_PAUSE); PendingIntent pausePending = PendingIntent.getService(this, 2, pauseIntent, Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0); Intent nextIntent = new Intent(this, MusicPlayerService.class).setAction(ACTION_NEXT); PendingIntent nextPending = PendingIntent.getService(this, 3, nextIntent, Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0); return new NotificationCompat.Builder(this, CHANNEL_ID).setSmallIcon(android.R.drawable.ic_media_play).setContentTitle(title).setContentText(artist).setContentIntent(contentIntent).setOngoing(isPlayerPlaying()).setOnlyAlertOnce(true).setStyle(new MediaStyle().setMediaSession(mediaSession == null ? null : mediaSession.getSessionToken()).setShowActionsInCompactView(0, 1, 2)).addAction(new NotificationCompat.Action(android.R.drawable.ic_media_previous, "Previous", PendingIntent.getService(this, 4, new Intent(this, MusicPlayerService.class).setAction(ACTION_PREVIOUS), Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0))).addAction(new NotificationCompat.Action(isPlayerPlaying() ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play, isPlayerPlaying() ? "Pause" : "Play", isPlayerPlaying() ? pausePending : playPending)).addAction(new NotificationCompat.Action(android.R.drawable.ic_media_next, "Next", nextPending)).build(); }
     private void createNotificationChannel() { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Kanade Music Playback", NotificationManager.IMPORTANCE_LOW); channel.setDescription("Kanade background music playback"); NotificationManager manager = getSystemService(NotificationManager.class); if (manager != null) manager.createNotificationChannel(channel); } }
     private String safeText(String value, String fallback) { return value == null || value.trim().isEmpty() ? fallback : value; }
