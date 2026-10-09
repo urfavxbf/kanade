@@ -316,7 +316,7 @@ public class MusicPlayerService extends Service {
     private void stopPlayback() { stopPositionUpdates(); releasePlayer(); currentUri = null; currentIndex = -1; abandonAudioFocus(); updateMediaSessionState(false); sendPlaybackState(false); sendQueueChanged(); stopForeground(STOP_FOREGROUND_REMOVE); }
     private boolean isPlayerPlaying() { try { return mediaPlayer != null && mediaPlayer.isPlaying(); } catch (Exception e) { return false; } }
 
-    private void releasePlayer() { stopPositionUpdates(); releaseAudioVisualizer(); if (mediaPlayer != null) { try { mediaPlayer.reset(); } catch (Exception ignored) {} try { mediaPlayer.release(); } catch (Exception ignored) {} mediaPlayer = null; } }
+    private void releasePlayer() { stopPositionUpdates(); releaseAudioVisualizer(); if (mediaPlayer != null) { try { mediaPlayer.reset(); } catch (Exception ignored) {} try { mediaPlayer.release(); } catch (Exception ignored) {} mediaPlayer = null; } wasDuckedForAudioFocus = false; }
 
     private void playNext() {
         loadQueueIfNeeded();
