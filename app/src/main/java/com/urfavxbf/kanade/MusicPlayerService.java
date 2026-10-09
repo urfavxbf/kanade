@@ -153,7 +153,12 @@ public class MusicPlayerService extends Service {
             startPlaybackForeground();
         }
         final Intent copy = new Intent(intent);
-        postPlayback(() -> handleCommand(action, copy));
+        postPlayback(() -> {
+            handleCommand(action, copy);
+            if (startsPlayback(action) && mediaPlayer == null) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+            }
+        });
         return START_NOT_STICKY;
     }
 
@@ -264,7 +269,10 @@ public class MusicPlayerService extends Service {
         if (uri != null && uri.equals(currentUri)) {
             stopPositionUpdates();
             releasePlayer();
+            abandonAudioFocus();
+            updateMediaSessionState(false);
             sendPlaybackState(false);
+            stopForeground(STOP_FOREGROUND_REMOVE);
         }
     }
 
