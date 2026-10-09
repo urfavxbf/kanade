@@ -97,6 +97,7 @@ public class MusicPlayerService extends Service {
     private int repeatMode = REPEAT_OFF;
     private final Random random = new Random();
     private final ArrayList<Integer> shuffleHistory = new ArrayList<>();
+    private final ArrayList<String> failedTrackUris = new ArrayList<>();
     private Visualizer audioVisualizer;
     private int audioVisualizerSampleRate = 44100;
     private volatile boolean audioAnalysisRunning;
@@ -240,6 +241,7 @@ public class MusicPlayerService extends Service {
 
         queue.clear();
         queue.addAll(newQueue);
+        failedTrackUris.clear();
         currentIndex = selectedIndex;
         shuffleHistory.clear();
 
@@ -291,28 +293,64 @@ public class MusicPlayerService extends Service {
     private void startPlaybackPrepared(MediaPlayer player) {
         if (player != mediaPlayer) return;
         player.start();
+        failedTrackUris.clear();
         startAudioAnalysis();
         startPositionUpdates();
         updateMediaSessionState(true);
         updateMediaMetadata();
         sendPlaybackState(true);
+        updatePlaybackNotification();
         sendQueueChanged();
     }
 
     private void handlePlayerError(String uri) {
-        if (uri != null && uri.equals(currentUri)) {
-            stopPositionUpdates();
-            releasePlayer();
-            abandonAudioFocus();
-            updateMediaSessionState(false);
-            sendPlaybackState(false);
-            stopForeground(STOP_FOREGROUND_REMOVE);
+        if (uri == null || !uri.equals(currentUri)) return;
+        if (!failedTrackUris.contains(uri)) failedTrackUris.add(uri);
+        stopPositionUpdates();
+        releasePlayer();
+        restoreAudioFocusVolume();
+        updateMediaSessionState(false);
+        sendPlaybackState(false);
+
+        int startIndex = currentIndex;
+        for (int offset = 1; offset <= queue.size(); offset++) {
+            int candidateIndex = startIndex + offset;
+            if (candidateIndex >= queue.size()) {
+                if (repeatMode == REPEAT_ALL) candidateIndex %= queue.size();
+                else break;
+            }
+            if (candidateIndex < 0 || candidateIndex >= queue.size()) continue;
+            AudioFile candidate = queue.get(candidateIndex);
+            if (candidate == null || candidate.getUri() == null || failedTrackUris.contains(candidate.getUri())) continue;
+            currentIndex = candidateIndex;
+            playSong(candidate.getUri());
+            return;
         }
+        finishPlaybackAtQueueEnd();
+    }
+
+    private void finishPlaybackAtQueueEnd() {
+        stopPositionUpdates();
+        releasePlayer();
+        currentUri = null;
+        currentIndex = -1;
+        wasPlayingBeforeFocusLoss = false;
+        restoreAudioFocusVolume();
+        abandonAudioFocus();
+        updateMediaSessionState(false);
+        sendPlaybackState(false);
+        sendQueueChanged();
+        stopForeground(STOP_FOREGROUND_REMOVE);
+    }
+
+    private void updatePlaybackNotification() {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null && currentUri != null) manager.notify(NOTIFICATION_ID, buildNotification());
     }
 
     private void togglePlayPause() { if (mediaPlayer == null) return; if (isPlayerPlaying()) pauseSong(); else resumeCurrent(); }
-    private void resumeCurrent() { if (mediaPlayer == null) return; try { if (!mediaPlayer.isPlaying()) { mediaPlayer.start(); startAudioAnalysis(); startPositionUpdates(); updateMediaSessionState(true); sendPlaybackState(true); } } catch (Exception ignored) {} }
-    private void pauseSong() { if (mediaPlayer == null) return; try { if (mediaPlayer.isPlaying()) mediaPlayer.pause(); stopPositionUpdates(); updateMediaSessionState(false); sendPlaybackState(false); } catch (Exception ignored) {} }
+    private void resumeCurrent() { if (mediaPlayer == null) return; try { if (!mediaPlayer.isPlaying()) { mediaPlayer.start(); startAudioAnalysis(); startPositionUpdates(); updateMediaSessionState(true); sendPlaybackState(true); updatePlaybackNotification(); } } catch (Exception ignored) {} }
+    private void pauseSong() { if (mediaPlayer == null) return; try { if (mediaPlayer.isPlaying()) mediaPlayer.pause(); stopPositionUpdates(); updateMediaSessionState(false); sendPlaybackState(false); updatePlaybackNotification(); } catch (Exception ignored) {} }
     private void stopPlayback() { stopPositionUpdates(); releasePlayer(); currentUri = null; currentIndex = -1; abandonAudioFocus(); updateMediaSessionState(false); sendPlaybackState(false); sendQueueChanged(); stopForeground(STOP_FOREGROUND_REMOVE); }
     private boolean isPlayerPlaying() { try { return mediaPlayer != null && mediaPlayer.isPlaying(); } catch (Exception e) { return false; } }
 
@@ -328,7 +366,7 @@ public class MusicPlayerService extends Service {
             next = currentIndex + 1;
             if (next >= queue.size()) {
                 if (repeatMode == REPEAT_ALL) next = 0;
-                else { currentIndex = queue.size() - 1; pauseSong(); return; }
+                else { finishPlaybackAtQueueEnd(); return; }
             }
         }
         currentIndex = next;
@@ -358,7 +396,7 @@ public class MusicPlayerService extends Service {
 
     private void addToQueue(String uri) { if (uri == null || uri.trim().isEmpty()) return; AudioFile song = findSongByUri(uri); if (song == null || findSongIndex(uri) >= 0) return; queue.add(song); if (currentIndex < 0) currentIndex = 0; sendQueueChanged(); }
     private void removeFromQueue(int index) { if (index < 0 || index >= queue.size()) return; boolean current = index == currentIndex; queue.remove(index); if (queue.isEmpty()) { stopPlayback(); return; } if (index < currentIndex) { currentIndex--; sendQueueChanged(); return; } if (!current) { sendQueueChanged(); return; } currentIndex = Math.min(index, queue.size() - 1); AudioFile song = queue.get(currentIndex); if (song != null && song.getUri() != null) playSong(song.getUri()); sendQueueChanged(); }
-    private void clearQueue() { queue.clear(); shuffleHistory.clear(); currentIndex = -1; sendQueueChanged(); }
+    private void clearQueue() { queue.clear(); shuffleHistory.clear(); failedTrackUris.clear(); currentIndex = -1; sendQueueChanged(); }
     private void playQueueItem(int index) { if (index < 0 || index >= queue.size()) return; AudioFile song = queue.get(index); if (song == null || song.getUri() == null) return; shuffleHistory.clear(); currentIndex = index; playSong(song.getUri()); }
     private void setQueueOrder(ArrayList<String> orderedUris, int requestedCurrentIndex) { if (orderedUris == null || orderedUris.isEmpty()) return; ArrayList<AudioFile> reordered = new ArrayList<>(); for (String uri : orderedUris) { AudioFile song = findSongByUri(uri); if (song != null) reordered.add(song); } if (reordered.isEmpty()) return; String playingUri = currentUri; queue.clear(); queue.addAll(reordered); currentIndex = -1; if (playingUri != null) currentIndex = findSongIndex(playingUri); if (currentIndex < 0 && requestedCurrentIndex >= 0 && requestedCurrentIndex < queue.size()) currentIndex = requestedCurrentIndex; sendQueueChanged(); }
     private void sendQueueChanged() { Intent intent = new Intent(ACTION_QUEUE_CHANGED).setPackage(getPackageName()); ArrayList<String> uris = new ArrayList<>(), titles = new ArrayList<>(), artists = new ArrayList<>(), albums = new ArrayList<>(); for (AudioFile song : queue) { uris.add(song == null || song.getUri() == null ? "" : song.getUri()); titles.add(song == null ? "Unknown title" : safeText(song.getTitle(), "Unknown title")); artists.add(song == null ? "Unknown artist" : safeText(song.getArtist(), "Unknown artist")); albums.add(song == null ? "Unknown album" : safeText(song.getAlbum(), "Unknown album")); } intent.putStringArrayListExtra(EXTRA_QUEUE_URIS, uris); intent.putStringArrayListExtra(EXTRA_QUEUE_TITLES, titles); intent.putStringArrayListExtra(EXTRA_QUEUE_ARTISTS, artists); intent.putStringArrayListExtra(EXTRA_QUEUE_ALBUMS, albums); intent.putExtra(EXTRA_QUEUE_SIZE, queue.size()); intent.putExtra(EXTRA_QUEUE_INDEX, currentIndex); sendBroadcast(intent); }
