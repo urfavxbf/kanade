@@ -315,9 +315,7 @@ public class MusicPlayerService extends Service {
         int startIndex = currentIndex;
         for (int offset = 1; offset <= queue.size(); offset++) {
             int candidateIndex = startIndex + offset;
-            if (shuffleEnabled && queue.size() > 1) {
-                candidateIndex = getRandomShuffleIndex();
-            } else if (candidateIndex >= queue.size()) {
+            if (candidateIndex >= queue.size()) {
                 if (repeatMode == REPEAT_ALL) candidateIndex %= queue.size();
                 else break;
             }
