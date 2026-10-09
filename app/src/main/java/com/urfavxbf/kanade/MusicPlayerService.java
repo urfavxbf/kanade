@@ -221,7 +221,8 @@ public class MusicPlayerService extends Service {
                 nearestFollowingIndex = newQueue.size();
             }
 
-            if (requestedUri != null && requestedUri.equals(song.getUri())) {
+            if (i == requestedIndex && requestedUri != null
+                    && requestedUri.equals(song.getUri())) {
                 selectedIndex = newQueue.size();
             }
 
