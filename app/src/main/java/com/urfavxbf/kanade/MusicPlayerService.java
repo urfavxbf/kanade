@@ -200,18 +200,51 @@ public class MusicPlayerService extends Service {
 
     private void setQueueAndPlay(ArrayList<String> uris, int index) {
         if (uris == null || uris.isEmpty()) return;
+
+        int requestedIndex = Math.max(0, Math.min(index, uris.size() - 1));
+        String requestedUri = uris.get(requestedIndex);
         ArrayList<AudioFile> newQueue = new ArrayList<>();
-        for (String uri : uris) {
+        int selectedIndex = -1;
+        int nearestFollowingIndex = -1;
+        int nearestPreviousIndex = -1;
+
+        for (int i = 0; i < uris.size(); i++) {
+            String uri = uris.get(i);
+            if (uri == null || uri.trim().isEmpty()) continue;
+
             AudioFile song = findSongByUri(uri);
-            if (song != null) newQueue.add(song);
+            if (song == null) continue;
+
+            if (i < requestedIndex) {
+                nearestPreviousIndex = newQueue.size();
+            } else if (nearestFollowingIndex < 0) {
+                nearestFollowingIndex = newQueue.size();
+            }
+
+            if (i == requestedIndex && requestedUri != null
+                    && requestedUri.equals(song.getUri())) {
+                selectedIndex = newQueue.size();
+            }
+
+            newQueue.add(song);
         }
+
         if (newQueue.isEmpty()) return;
+
+        if (selectedIndex < 0) {
+            selectedIndex = nearestFollowingIndex >= 0
+                    ? nearestFollowingIndex
+                    : nearestPreviousIndex >= 0 ? nearestPreviousIndex : 0;
+        }
+
         queue.clear();
         queue.addAll(newQueue);
-        currentIndex = Math.max(0, Math.min(index, queue.size() - 1));
+        currentIndex = selectedIndex;
         shuffleHistory.clear();
+
         AudioFile song = queue.get(currentIndex);
         if (song == null || song.getUri() == null) return;
+
         currentUri = song.getUri();
         sendQueueChanged();
         playSong(currentUri);
