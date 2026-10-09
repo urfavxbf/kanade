@@ -20,6 +20,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
+import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -80,6 +81,7 @@ public class MusicPlayerService extends Service {
     public static final String EXTRA_BEAT_INTENSITY = "com.urfavxbf.kanade.EXTRA_BEAT_INTENSITY";
     public static final String EXTRA_SAMPLE_RATE = "com.urfavxbf.kanade.EXTRA_SAMPLE_RATE";
 
+    private static final String TAG = "KanadePlayback";
     private static final String CHANNEL_ID = "kanade_music_playback";
     private static final int NOTIFICATION_ID = 1001;
 
@@ -255,7 +257,10 @@ public class MusicPlayerService extends Service {
 
     private void playSong(String uri) {
         if (uri == null || uri.trim().isEmpty()) return;
-        if (!requestAudioFocus()) return;
+        if (!requestAudioFocus()) {
+            Log.w(TAG, "Audio focus request denied; playback was not started");
+            return;
+        }
         wasPlayingBeforeFocusLoss = false;
         if (queue.isEmpty()) loadQueue();
         int foundIndex = findSongIndex(uri);
@@ -274,7 +279,11 @@ public class MusicPlayerService extends Service {
         try {
             player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
             player.setOnCompletionListener(mp -> postPlayback(this::handleCompletion));
-            player.setOnErrorListener((mp, what, extra) -> { postPlayback(() -> handlePlayerError(requestedUri)); return true; });
+            player.setOnErrorListener((mp, what, extra) -> {
+                Log.e(TAG, "MediaPlayer error: what=" + what + ", extra=" + extra);
+                postPlayback(() -> handlePlayerError(requestedUri));
+                return true;
+            });
             player.setOnPreparedListener(mp -> postPlayback(() -> {
                 if (mediaPlayer != mp || !requestedUri.equals(currentUri)) { try { mp.release(); } catch (Exception ignored) {} return; }
                 try { startPlaybackPrepared(mp); } catch (Exception e) { handlePlayerError(requestedUri); }
@@ -284,6 +293,7 @@ public class MusicPlayerService extends Service {
             sendPlaybackState(false);
             player.prepareAsync();
         } catch (Exception e) {
+            Log.e(TAG, "Failed to initialize playback: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
             try { player.release(); } catch (Exception ignored) {}
             if (mediaPlayer == player) mediaPlayer = null;
             handlePlayerError(requestedUri);
@@ -305,6 +315,7 @@ public class MusicPlayerService extends Service {
 
     private void handlePlayerError(String uri) {
         if (uri == null || !uri.equals(currentUri)) return;
+        Log.e(TAG, "Playback failed at queue index " + currentIndex + "; queue size=" + queue.size() + "; checking next track");
         if (!failedTrackUris.contains(uri)) failedTrackUris.add(uri);
         stopPositionUpdates();
         releasePlayer();
@@ -323,6 +334,7 @@ public class MusicPlayerService extends Service {
             AudioFile candidate = queue.get(candidateIndex);
             if (candidate == null || candidate.getUri() == null || failedTrackUris.contains(candidate.getUri())) continue;
             currentIndex = candidateIndex;
+            Log.w(TAG, "Trying recovery candidate at queue index " + candidateIndex);
             playSong(candidate.getUri());
             return;
         }
