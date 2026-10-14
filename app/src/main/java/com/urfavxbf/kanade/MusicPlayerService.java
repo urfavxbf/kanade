@@ -321,7 +321,9 @@ public class MusicPlayerService extends Service {
         return candidates.get(random.nextInt(candidates.size()));
     }
     private int getPreviousShuffleIndex() { while (!shuffleHistory.isEmpty()) { int value = shuffleHistory.remove(shuffleHistory.size() - 1); if (value >= 0 && value < queue.size() && value != currentIndex) return value; } return Math.max(0, currentIndex); }
-    private void sendShuffleState() { Intent intent = new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName()); intent.putExtra(EXTRA_SHUFFLE_STATE, shuffleEnabled); intent.putExtra(EXTRA_REPEAT_STATE, repeatMode); sendBroadcast(intent); }
+    private void sendShuffleState() {
+        sendPlaybackState(isPlayerPlaying());
+    }
     private void setRepeatMode(int mode) { repeatMode = Math.max(REPEAT_OFF, Math.min(REPEAT_ONE, mode)); sendShuffleState(); }
     private void toggleRepeatMode() { repeatMode = repeatMode == REPEAT_OFF ? REPEAT_ALL : repeatMode == REPEAT_ALL ? REPEAT_ONE : REPEAT_OFF; sendShuffleState(); }
 
@@ -385,6 +387,8 @@ public class MusicPlayerService extends Service {
         intent.putExtra(EXTRA_POSITION, position);
         intent.putExtra(EXTRA_DURATION, duration);
         intent.putExtra(EXTRA_QUEUE_INDEX, currentIndex);
+        intent.putExtra(EXTRA_SHUFFLE_STATE, shuffleEnabled);
+        intent.putExtra(EXTRA_REPEAT_STATE, repeatMode);
         int audioSessionId = -1;
         try {
             if (mediaPlayer != null) audioSessionId = mediaPlayer.getAudioSessionId();
