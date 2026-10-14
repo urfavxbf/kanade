@@ -39,6 +39,7 @@ public class MainActivity extends AppCompatActivity {
     private ActivityMainBinding binding;
 
     private static final int READ_MEDIA_AUDIO_REQUEST = 100;
+    private static final int POST_NOTIFICATIONS_REQUEST = 101;
 
     private MusicRepository musicRepository;
 
@@ -2163,6 +2164,7 @@ public class MainActivity extends AppCompatActivity {
             } else {
 
                 scanMusic();
+                requestNotificationPermissionIfNeeded();
             }
 
         } else {
@@ -2185,7 +2187,20 @@ public class MainActivity extends AppCompatActivity {
             } else {
 
                 scanMusic();
+                requestNotificationPermissionIfNeeded();
             }
+        }
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && ContextCompat.checkSelfPermission(
+                        this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    POST_NOTIFICATIONS_REQUEST);
         }
     }
 
@@ -2247,6 +2262,11 @@ public class MainActivity extends AppCompatActivity {
                 grantResults
         );
 
+        if (requestCode == POST_NOTIFICATIONS_REQUEST) {
+            // Notifications are optional; playback remains available if denied.
+            return;
+        }
+
         if (requestCode
                 == READ_MEDIA_AUDIO_REQUEST) {
 
@@ -2256,6 +2276,7 @@ public class MainActivity extends AppCompatActivity {
 
                 scanMusic();
             }
+            requestNotificationPermissionIfNeeded();
         }
     }
 
