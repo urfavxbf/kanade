@@ -303,7 +303,8 @@ public class MusicPlayerService extends Service {
     private void handleCompletion() { if (repeatMode == REPEAT_ONE && currentUri != null) playSong(currentUri); else playNext(); }
     private void setShuffle(boolean enabled) { shuffleEnabled = enabled; shuffleHistory.clear(); sendShuffleState(); sendQueueChanged(); }
     private int getRandomShuffleIndex() {
-        if (queue.size() <= 1) return -1;
+        if (queue.size() == 1) return repeatMode == REPEAT_ALL ? 0 : -1;
+        if (queue.isEmpty()) return -1;
         ArrayList<Integer> candidates = new ArrayList<>();
         for (int i = 0; i < queue.size(); i++) {
             if (i != currentIndex && !shuffleHistory.contains(i)) candidates.add(i);
@@ -335,6 +336,7 @@ public class MusicPlayerService extends Service {
                     break;
                 }
             }
+            if (currentlyPlaying == null) currentlyPlaying = findSongByUri(uriToKeep);
         }
         queue.clear();
         shuffleHistory.clear();
