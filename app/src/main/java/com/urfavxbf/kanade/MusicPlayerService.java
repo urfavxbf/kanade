@@ -42,6 +42,7 @@ public class MusicPlayerService extends Service {
     public static final String ACTION_STATE_CHANGED = "com.urfavxbf.kanade.ACTION_STATE_CHANGED";
     public static final String EXTRA_IS_PLAYING = "com.urfavxbf.kanade.EXTRA_IS_PLAYING";
     public static final String EXTRA_CURRENT_URI = "com.urfavxbf.kanade.EXTRA_CURRENT_URI";
+    public static final String EXTRA_AUDIO_SESSION_ID = "com.urfavxbf.kanade.EXTRA_AUDIO_SESSION_ID";
     public static final String ACTION_SEEK = "com.urfavxbf.kanade.ACTION_SEEK";
     public static final String EXTRA_SEEK_POSITION = "com.urfavxbf.kanade.EXTRA_SEEK_POSITION";
     public static final String EXTRA_DURATION = "com.urfavxbf.kanade.EXTRA_DURATION";
@@ -377,7 +378,21 @@ public class MusicPlayerService extends Service {
     private void releaseAudioVisualizer() { audioAnalysisRunning = false; if (audioVisualizer != null) { try { audioVisualizer.setEnabled(false); } catch (Exception ignored) {} try { audioVisualizer.release(); } catch (Exception ignored) {} audioVisualizer = null; } }
 
     private void sendPlaybackState(boolean playing) { sendPlaybackState(playing, mediaPlayer == null ? 0 : safePosition(), mediaPlayer == null ? 0 : safeDuration()); }
-    private void sendPlaybackState(boolean playing, int position, int duration) { Intent intent = new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName()); intent.putExtra(EXTRA_IS_PLAYING, playing); intent.putExtra(EXTRA_CURRENT_URI, currentUri); intent.putExtra(EXTRA_POSITION, position); intent.putExtra(EXTRA_DURATION, duration); intent.putExtra(EXTRA_QUEUE_INDEX, currentIndex); sendBroadcast(intent); }
+    private void sendPlaybackState(boolean playing, int position, int duration) {
+        Intent intent = new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName());
+        intent.putExtra(EXTRA_IS_PLAYING, playing);
+        intent.putExtra(EXTRA_CURRENT_URI, currentUri);
+        intent.putExtra(EXTRA_POSITION, position);
+        intent.putExtra(EXTRA_DURATION, duration);
+        intent.putExtra(EXTRA_QUEUE_INDEX, currentIndex);
+        int audioSessionId = -1;
+        try {
+            if (mediaPlayer != null) audioSessionId = mediaPlayer.getAudioSessionId();
+        } catch (Exception ignored) {
+        }
+        intent.putExtra(EXTRA_AUDIO_SESSION_ID, audioSessionId);
+        sendBroadcast(intent);
+    }
     private int safePosition() { try { return mediaPlayer == null ? 0 : mediaPlayer.getCurrentPosition(); } catch (Exception e) { return 0; } }
     private int safeDuration() { try { return mediaPlayer == null ? 0 : mediaPlayer.getDuration(); } catch (Exception e) { return 0; } }
 
