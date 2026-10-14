@@ -277,7 +277,7 @@ public class MusicPlayerService extends Service {
                 return;
             }
         } else {
-            if (currentIndex < 0) currentIndex = currentUri == null ? 0 : Math.max(0, findSongIndex(currentUri));
+            if (currentIndex < 0) currentIndex = currentUri == null ? -1 : findSongIndex(currentUri);
             next = currentIndex + 1;
             if (next >= queue.size()) {
                 if (repeatMode == REPEAT_ALL) next = 0;
