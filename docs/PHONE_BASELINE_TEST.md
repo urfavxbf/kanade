@@ -17,13 +17,13 @@ Use this checklist with the debug APK produced by the `SMusic upstream baseline`
 ## Playback
 - [x] Local music playback starts (user-confirmed on phone). Pause/resume, seek and skip still need explicit checks.
 - [ ] Next/previous work with multiple tracks.
-- [ ] Queue, shuffle and repeat behave correctly.
-- [ ] Leave the app / lock the screen; playback continues as expected.
-- [ ] Notification and lock-screen controls reflect the current track and operate.
+- [x] Queue, shuffle and repeat behave correctly (user-confirmed).
+- [x] Leave the app / lock the screen; playback continues as expected (user-confirmed).
+- [x] Notification and lock-screen controls reflect the current track and operate (user-confirmed).
 - [ ] Disconnect/reconnect headphones or Bluetooth if available.
 
 ## Online and extras
-- [ ] Search YouTube Music and play a result (network required; unofficial service may be unavailable).
+- [x] Search YouTube Music and play a result (user-confirmed; unofficial service may change).
 - [ ] Open lyrics for a supported track.
 - [ ] Test download/offline playback if available.
 - [ ] Open equalizer/audio effects if supported by the device.
