@@ -10,6 +10,9 @@ import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.devxrohan.smusic.models.LocalSong
+import com.urfavxbf.kanade.AudioFile
+import com.urfavxbf.kanade.MetadataNormalizer
+import com.urfavxbf.kanade.MetadataOverrideManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +25,8 @@ import javax.inject.Inject
 class LocalSongsViewModel @Inject constructor(
     application: Application
 ) : AndroidViewModel(application) {
+
+    private val metadataOverrides = MetadataOverrideManager(application)
 
     private val _songs = MutableStateFlow<List<LocalSong>>(emptyList())
     val songs: StateFlow<List<LocalSong>> = _songs.asStateFlow()
@@ -98,16 +103,35 @@ class LocalSongsViewModel @Inject constructor(
                             Uri.parse("content://media/external/audio/albumart"), albumId
                         )
 
+                        val rawTitle = cursor.getString(titleCol) ?: "Unknown Title"
+                        val rawArtist = cursor.getString(artistCol) ?: "Unknown Artist"
+                        val rawAlbum = cursor.getString(albumCol) ?: "Unknown Album"
+                        val duration = cursor.getLong(durationCol)
+                        val dateAdded = cursor.getLong(dateCol)
+
+                        // Adapt Kanade's saved overrides to SMusic's local-library model.
+                        val legacySong = AudioFile(
+                            id,
+                            rawTitle,
+                            rawArtist,
+                            rawAlbum,
+                            contentUri.toString(),
+                            null,
+                            duration,
+                            dateAdded
+                        )
+                        metadataOverrides.apply(legacySong)
+
                         songList += LocalSong(
                             id = id,
-                            title = cursor.getString(titleCol) ?: "Unknown Title",
-                            artist = cursor.getString(artistCol) ?: "Unknown Artist",
-                            album = cursor.getString(albumCol) ?: "Unknown Album",
-                            duration = cursor.getLong(durationCol),
+                            title = MetadataNormalizer.normalizeTitle(legacySong.title, null),
+                            artist = MetadataNormalizer.normalizeArtist(legacySong.artist, null),
+                            album = MetadataNormalizer.normalizeAlbum(legacySong.album),
+                            duration = duration,
                             uri = contentUri,
                             albumArtUri = albumArtUri,
                             size = cursor.getLong(sizeCol),
-                            dateAdded = cursor.getLong(dateCol),
+                            dateAdded = dateAdded,
                         )
                     }
                 }
