@@ -268,8 +268,14 @@ public class MusicPlayerService extends Service {
         loadQueueIfNeeded();
         if (queue.isEmpty()) return;
         int next;
-        if (shuffleEnabled) next = getRandomShuffleIndex();
-        else {
+        if (shuffleEnabled) {
+            next = getRandomShuffleIndex();
+            if (next < 0) {
+                currentIndex = Math.max(0, Math.min(currentIndex, queue.size() - 1));
+                pauseSong();
+                return;
+            }
+        } else {
             if (currentIndex < 0) currentIndex = currentUri == null ? 0 : Math.max(0, findSongIndex(currentUri));
             next = currentIndex + 1;
             if (next >= queue.size()) {
@@ -296,7 +302,22 @@ public class MusicPlayerService extends Service {
 
     private void handleCompletion() { if (repeatMode == REPEAT_ONE && currentUri != null) playSong(currentUri); else playNext(); }
     private void setShuffle(boolean enabled) { shuffleEnabled = enabled; shuffleHistory.clear(); sendShuffleState(); sendQueueChanged(); }
-    private int getRandomShuffleIndex() { if (queue.size() <= 1) return 0; ArrayList<Integer> candidates = new ArrayList<>(); for (int i = 0; i < queue.size(); i++) if (i != currentIndex && !shuffleHistory.contains(i)) candidates.add(i); if (candidates.isEmpty()) for (int i = 0; i < queue.size(); i++) if (i != currentIndex) candidates.add(i); if (candidates.isEmpty()) return currentIndex; if (currentIndex >= 0 && !shuffleHistory.contains(currentIndex)) shuffleHistory.add(currentIndex); return candidates.get(random.nextInt(candidates.size())); }
+    private int getRandomShuffleIndex() {
+        if (queue.size() <= 1) return -1;
+        ArrayList<Integer> candidates = new ArrayList<>();
+        for (int i = 0; i < queue.size(); i++) {
+            if (i != currentIndex && !shuffleHistory.contains(i)) candidates.add(i);
+        }
+        if (candidates.isEmpty() && repeatMode == REPEAT_ALL) {
+            shuffleHistory.clear();
+            for (int i = 0; i < queue.size(); i++) {
+                if (i != currentIndex) candidates.add(i);
+            }
+        }
+        if (candidates.isEmpty()) return -1;
+        if (currentIndex >= 0 && !shuffleHistory.contains(currentIndex)) shuffleHistory.add(currentIndex);
+        return candidates.get(random.nextInt(candidates.size()));
+    }
     private int getPreviousShuffleIndex() { while (!shuffleHistory.isEmpty()) { int value = shuffleHistory.remove(shuffleHistory.size() - 1); if (value >= 0 && value < queue.size() && value != currentIndex) return value; } return Math.max(0, currentIndex); }
     private void sendShuffleState() { Intent intent = new Intent(ACTION_STATE_CHANGED).setPackage(getPackageName()); intent.putExtra(EXTRA_SHUFFLE_STATE, shuffleEnabled); intent.putExtra(EXTRA_REPEAT_STATE, repeatMode); sendBroadcast(intent); }
     private void setRepeatMode(int mode) { repeatMode = Math.max(REPEAT_OFF, Math.min(REPEAT_ONE, mode)); sendShuffleState(); }
@@ -304,7 +325,27 @@ public class MusicPlayerService extends Service {
 
     private void addToQueue(String uri) { if (uri == null || uri.trim().isEmpty()) return; AudioFile song = findSongByUri(uri); if (song == null || findSongIndex(uri) >= 0) return; queue.add(song); if (currentIndex < 0) currentIndex = 0; sendQueueChanged(); }
     private void removeFromQueue(int index) { if (index < 0 || index >= queue.size()) return; boolean current = index == currentIndex; queue.remove(index); if (queue.isEmpty()) { stopPlayback(); return; } if (index < currentIndex) { currentIndex--; sendQueueChanged(); return; } if (!current) { sendQueueChanged(); return; } currentIndex = Math.min(index, queue.size() - 1); AudioFile song = queue.get(currentIndex); if (song != null && song.getUri() != null) playSong(song.getUri()); sendQueueChanged(); }
-    private void clearQueue() { queue.clear(); shuffleHistory.clear(); currentIndex = -1; sendQueueChanged(); }
+    private void clearQueue() {
+        String uriToKeep = currentUri;
+        AudioFile currentlyPlaying = null;
+        if (uriToKeep != null && !uriToKeep.trim().isEmpty()) {
+            for (AudioFile song : queue) {
+                if (song != null && uriToKeep.equals(song.getUri())) {
+                    currentlyPlaying = song;
+                    break;
+                }
+            }
+        }
+        queue.clear();
+        shuffleHistory.clear();
+        if (currentlyPlaying != null) {
+            queue.add(currentlyPlaying);
+            currentIndex = 0;
+        } else {
+            currentIndex = -1;
+        }
+        sendQueueChanged();
+    }
     private void playQueueItem(int index) { if (index < 0 || index >= queue.size()) return; AudioFile song = queue.get(index); if (song == null || song.getUri() == null) return; shuffleHistory.clear(); currentIndex = index; playSong(song.getUri()); }
     private void setQueueOrder(ArrayList<String> orderedUris, int requestedCurrentIndex) { if (orderedUris == null || orderedUris.isEmpty()) return; ArrayList<AudioFile> reordered = new ArrayList<>(); for (String uri : orderedUris) { AudioFile song = findSongByUri(uri); if (song != null) reordered.add(song); } if (reordered.isEmpty()) return; String playingUri = currentUri; queue.clear(); queue.addAll(reordered); currentIndex = -1; if (playingUri != null) currentIndex = findSongIndex(playingUri); if (currentIndex < 0 && requestedCurrentIndex >= 0 && requestedCurrentIndex < queue.size()) currentIndex = requestedCurrentIndex; sendQueueChanged(); }
     private void sendQueueChanged() { Intent intent = new Intent(ACTION_QUEUE_CHANGED).setPackage(getPackageName()); ArrayList<String> uris = new ArrayList<>(), titles = new ArrayList<>(), artists = new ArrayList<>(), albums = new ArrayList<>(); for (AudioFile song : queue) { uris.add(song == null || song.getUri() == null ? "" : song.getUri()); titles.add(song == null ? "Unknown title" : safeText(song.getTitle(), "Unknown title")); artists.add(song == null ? "Unknown artist" : safeText(song.getArtist(), "Unknown artist")); albums.add(song == null ? "Unknown album" : safeText(song.getAlbum(), "Unknown album")); } intent.putStringArrayListExtra(EXTRA_QUEUE_URIS, uris); intent.putStringArrayListExtra(EXTRA_QUEUE_TITLES, titles); intent.putStringArrayListExtra(EXTRA_QUEUE_ARTISTS, artists); intent.putStringArrayListExtra(EXTRA_QUEUE_ALBUMS, albums); intent.putExtra(EXTRA_QUEUE_SIZE, queue.size()); intent.putExtra(EXTRA_QUEUE_INDEX, currentIndex); sendBroadcast(intent); }
