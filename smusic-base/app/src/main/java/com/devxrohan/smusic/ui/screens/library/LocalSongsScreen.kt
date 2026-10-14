@@ -2,8 +2,6 @@ package com.devxrohan.smusic.ui.screens.library
 
 import android.Manifest
 import android.os.Build
-import android.util.Log
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -220,29 +218,11 @@ fun LocalSongsScreen(
                             LocalSongItem(
                                 song = song,
                                 onClick = {
-                                    val pc = playerConnection
-                                    if (pc == null) {
-                                        Log.e("SMusicLocalPlayback", "Song tapped but PlayerConnection is null")
-                                        Toast.makeText(
-                                            context,
-                                            "Player is still connecting. Wait a moment and try again.",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                    } else {
-                                        try {
-                                            val mediaItems = songs.map { it.toMediaItem() }
-                                            Log.d("SMusicLocalPlayback", "Starting local song: ${song.title}, uri=${song.uri}")
-                                            pc.player.setMediaItems(mediaItems, index, 0L)
-                                            pc.player.prepare()
-                                            pc.player.play()
-                                        } catch (e: Exception) {
-                                            Log.e("SMusicLocalPlayback", "Failed to start local song: ${song.title}", e)
-                                            Toast.makeText(
-                                                context,
-                                                "Couldn't start playback: ${e.localizedMessage ?: "unknown error"}",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
+                                    playerConnection?.let { pc ->
+                                        val mediaItems = songs.map { it.toMediaItem() }
+                                        pc.player.setMediaItems(mediaItems, index, 0L)
+                                        pc.player.prepare()
+                                        pc.player.play()
                                     }
                                 },
                             )
