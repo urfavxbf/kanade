@@ -794,21 +794,15 @@ public class PlayerFragment extends Fragment {
     private void updateLyricsPlaceholder() {
 
         if (lyricsPrevious != null) {
-
-            lyricsPrevious.setText(
-                    "Previous lyric");
+            lyricsPrevious.setText("");
         }
 
         if (lyricsCurrent != null) {
-
-            lyricsCurrent.setText(
-                    "Synchronized Lyrics");
+            lyricsCurrent.setText("Lyrics aren't available for this track yet");
         }
 
         if (lyricsNext != null) {
-
-            lyricsNext.setText(
-                    "Next lyric");
+            lyricsNext.setText("");
         }
     }
 
