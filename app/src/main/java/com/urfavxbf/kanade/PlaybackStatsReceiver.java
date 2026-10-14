@@ -22,6 +22,11 @@ public class PlaybackStatsReceiver extends BroadcastReceiver {
         if (intent == null || !MusicPlayerService.ACTION_STATE_CHANGED.equals(intent.getAction())) {
             return;
         }
+        // Shuffle/repeat state broadcasts share this action but do not represent a playback transition.
+        if (!intent.hasExtra(MusicPlayerService.EXTRA_CURRENT_URI)
+                && !intent.hasExtra(MusicPlayerService.EXTRA_IS_PLAYING)) {
+            return;
+        }
 
         String uri = intent.getStringExtra(MusicPlayerService.EXTRA_CURRENT_URI);
         boolean playing = intent.getBooleanExtra(MusicPlayerService.EXTRA_IS_PLAYING, false);
