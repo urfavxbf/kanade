@@ -1,6 +1,6 @@
 # Kanade migration plan: SMusic as the foundation
 
-Status: upstream source snapshot imported into `smusic-base/` on `migration/smusic-base`; CI build of that imported snapshot succeeded on 2026-10-14. This is a source/build baseline only, not yet a Kanade-branded or feature-complete migration, and it has not been verified on the user's phone.
+Status: upstream source snapshot imported into `smusic-base/` on `migration/smusic-base`; CI build of that imported snapshot succeeded on 2026-10-14. This is a source/build baseline only, not yet a Kanade-branded or feature-complete migration, and it has been smoke-tested on the user's phone for local playback, background playback, notification/lock-screen controls, queue, shuffle/repeat, and YouTube Music playback; the remaining feature-parity and data-migration checks are still pending.
 
 ## Goals
 
@@ -41,7 +41,7 @@ Audius discovery is intended to be replaced as the primary online source by SMus
 
 - [x] Import the complete upstream project and required modules into `smusic-base/`; preserve its license and notices.
 - [x] Build the imported snapshot in GitHub Actions (run [38498523231](https://github.com/urfavxbf/kanade/actions/runs/38498523231)).
-- [ ] Install and smoke-test the imported baseline on the user's phone.
+- [x] Install and smoke-test the imported baseline on the user's phone for local playback, background playback, notification/lock-screen controls, queue, shuffle/repeat, and YouTube Music playback (user-confirmed 2026-10-14).
 - Inspect Gradle wrapper, Android Gradle Plugin, Kotlin, KSP, compile SDK, JDK, and dependency requirements against the actual Code On The Go environment.
 - Resolve build compatibility in the migration branch only; avoid blind global version upgrades.
 - Build and install an unmodified or minimally branded baseline before porting Kanade-specific features. CI build success does not prove phone installation or runtime playback.
