@@ -8,6 +8,27 @@
   <strong>Local Music • Audius • Playback • Metadata • Album Art • Playlists</strong>
 </p>
 
+
+
+## UI Design Preview
+
+Kanade's refreshed UI direction is being designed in Figma before implementation in the Android app.
+
+**[Open the editable Kanade UI concepts in Figma](https://www.figma.com/design/vF0dJKj9y8cHkPiXJShJBM?node-id=12-54)**
+
+The concept board currently includes these screen directions:
+
+| Screen | Design focus |
+|---|---|
+| Home | Personalized greeting, search, continue listening, quick access, recently played |
+| Now Playing | Large artwork, clear playback controls, progress, Up Next |
+| Search & Browse | Search-first discovery, recent searches, mood collections, featured playlists |
+| Library | Songs, artists, albums, playlists, favorites, downloads |
+| Playlist & Artist | Playlist hero, play/shuffle actions, track list, artist spotlight |
+| Settings | Appearance, playback, library, notifications, storage, app information |
+
+**Design direction:** dark-first, minimalist, music-first UI with purple/pink accents, rounded surfaces, readable hierarchy, and reusable patterns. These are editable Figma concept frames—not yet a claim that the same redesign has shipped in the Android app.
+
 ## Features
 
 - 🎵 **Local music library** — Scans audio files available through Android's MediaStore.
