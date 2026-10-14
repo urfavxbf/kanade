@@ -27,7 +27,7 @@ jobs:
         with:
           repository: devxrohan/SMusic
           ref: main
-          path: /tmp/smusic-upstream
+          path: upstream-smusic
           persist-credentials: false
 
       - name: Import source while preserving Kanade files
@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p smusic-base
-          rsync -a --delete             --exclude='.git/'             --exclude='**/build/'             --exclude='.gradle/'             /tmp/smusic-upstream/ smusic-base/
+          rsync -a --delete             --exclude='.git/'             --exclude='**/build/'             --exclude='.gradle/'             upstream-smusic/ smusic-base/
           git add smusic-base
           if git diff --cached --quiet; then
             echo "Upstream source already matches this branch."
