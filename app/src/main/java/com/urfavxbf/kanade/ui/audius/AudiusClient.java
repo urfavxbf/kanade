@@ -45,6 +45,9 @@ public final class AudiusClient {
 
         if (candidates.size() < 8 && queryTokens.length > 1) {
             for (String token : queryTokens) {
+                if (candidates.size() >= 8) {
+                    break;
+                }
                 if (token.length() < 2) {
                     continue;
                 }

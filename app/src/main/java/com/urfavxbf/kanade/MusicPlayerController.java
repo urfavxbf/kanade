@@ -2,6 +2,9 @@ package com.urfavxbf.kanade;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
+
+import androidx.core.content.ContextCompat;
 
 import java.util.ArrayList;
 
@@ -26,7 +29,7 @@ public class MusicPlayerController {
         Intent intent = new Intent(context, MusicPlayerService.class);
         intent.setAction(MusicPlayerService.ACTION_PLAY);
         intent.putExtra(MusicPlayerService.EXTRA_SONG_URI, songUri);
-        context.startService(intent);
+        startService(intent);
     }
 
     public void playQueue(ArrayList<AudioFile> songs, int index) {
@@ -90,7 +93,7 @@ public class MusicPlayerController {
         intent.setAction(MusicPlayerService.ACTION_SET_QUEUE_AND_PLAY);
         intent.putStringArrayListExtra(MusicPlayerService.EXTRA_QUEUE_URIS, validUris);
         intent.putExtra(MusicPlayerService.EXTRA_QUEUE_INDEX, requestedIndex);
-        context.startService(intent);
+        startService(intent);
     }
 
     public void pause() {
@@ -111,14 +114,14 @@ public class MusicPlayerController {
         Intent intent = new Intent(context, MusicPlayerService.class);
         intent.setAction(MusicPlayerService.ACTION_SEEK);
         intent.putExtra(MusicPlayerService.EXTRA_SEEK_POSITION, position);
-        context.startService(intent);
+        startService(intent);
     }
 
     public void setShuffle(boolean enabled) {
         Intent intent = new Intent(context, MusicPlayerService.class);
         intent.setAction(MusicPlayerService.ACTION_SET_SHUFFLE);
         intent.putExtra(MusicPlayerService.EXTRA_SHUFFLE_ENABLED, enabled);
-        context.startService(intent);
+        startService(intent);
     }
 
     public void toggleShuffle() {
@@ -133,7 +136,7 @@ public class MusicPlayerController {
         Intent intent = new Intent(context, MusicPlayerService.class);
         intent.setAction(MusicPlayerService.ACTION_SET_REPEAT);
         intent.putExtra(MusicPlayerService.EXTRA_REPEAT_MODE, mode);
-        context.startService(intent);
+        startService(intent);
     }
 
     public void toggleRepeat() {
@@ -146,7 +149,7 @@ public class MusicPlayerController {
         Intent intent = new Intent(context, MusicPlayerService.class);
         intent.setAction(MusicPlayerService.ACTION_ADD_TO_QUEUE);
         intent.putExtra(MusicPlayerService.EXTRA_SONG_URI, songUri);
-        context.startService(intent);
+        startService(intent);
     }
 
     public void clearQueue() {
@@ -157,12 +160,26 @@ public class MusicPlayerController {
         Intent intent = new Intent(context, MusicPlayerService.class);
         intent.setAction(MusicPlayerService.ACTION_PLAY_QUEUE_ITEM);
         intent.putExtra(MusicPlayerService.EXTRA_QUEUE_INDEX, index);
-        context.startService(intent);
+        startService(intent);
     }
 
     private void sendAction(String action) {
         Intent intent = new Intent(context, MusicPlayerService.class);
         intent.setAction(action);
-        context.startService(intent);
+        startService(intent);
+    }
+
+    private void startService(Intent intent) {
+        String action = intent.getAction();
+        boolean startsPlayback = MusicPlayerService.ACTION_PLAY.equals(action)
+                || MusicPlayerService.ACTION_NEXT.equals(action)
+                || MusicPlayerService.ACTION_PREVIOUS.equals(action)
+                || MusicPlayerService.ACTION_PLAY_QUEUE_ITEM.equals(action)
+                || MusicPlayerService.ACTION_SET_QUEUE_AND_PLAY.equals(action);
+        if (startsPlayback && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(context, intent);
+        } else {
+            context.startService(intent);
+        }
     }
 }
