@@ -32,7 +32,7 @@ jobs:
           java-version: '21'
 
       - name: Build upstream debug APK
-        working-directory: upstream-smusic
+        working-directory: smusic-base
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon assembleDebug
@@ -41,6 +41,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: smusic-upstream-debug-apk
-          path: upstream-smusic/**/build/outputs/apk/debug/*.apk
+          path: smusic-base/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7
