@@ -2,6 +2,9 @@ name: SMusic upstream baseline
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - migration/smusic-base
 
 permissions:
   contents: read
