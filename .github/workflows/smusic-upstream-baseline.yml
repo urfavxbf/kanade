@@ -1,0 +1,46 @@
+name: SMusic upstream baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-upstream:
+    name: Build SMusic baseline (no Kanade changes)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v4
+
+      - name: Check out SMusic upstream
+        uses: actions/checkout@v4
+        with:
+          repository: devxrohan/SMusic
+          ref: main
+          path: upstream-smusic
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build upstream debug APK
+        working-directory: upstream-smusic
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload baseline APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: smusic-upstream-debug-apk
+          path: upstream-smusic/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
