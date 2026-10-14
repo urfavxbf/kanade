@@ -1,0 +1,47 @@
+name: Import SMusic source into migration branch
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - migration/smusic-base
+    paths:
+      - 'docs/**'
+      - '.github/workflows/smusic-source-import.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  import-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Kanade migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: migration/smusic-base
+          persist-credentials: true
+
+      - name: Check out SMusic upstream
+        uses: actions/checkout@v4
+        with:
+          repository: devxrohan/SMusic
+          ref: main
+          path: /tmp/smusic-upstream
+          persist-credentials: false
+
+      - name: Import source while preserving Kanade files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p smusic-base
+          rsync -a --delete             --exclude='.git/'             --exclude='**/build/'             --exclude='.gradle/'             /tmp/smusic-upstream/ smusic-base/
+          git add smusic-base
+          if git diff --cached --quiet; then
+            echo "Upstream source already matches this branch."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "migration: import SMusic upstream source snapshot"
+          git push origin HEAD:migration/smusic-base
