@@ -77,6 +77,7 @@ public class PlayerFragment extends Fragment {
     private boolean lyricsMode = false;
 
     private String currentUri = null;
+    private int audioSessionId = -1;
 
     private int currentPosition = 0;
     private int currentDuration = 0;
@@ -539,12 +540,25 @@ public class PlayerFragment extends Fragment {
 
                         @Override
                         public void onClick(View v) {
-
-                            Toast.makeText(
-                                            requireContext(),
-                                            "Equalizer settings",
-                                            Toast.LENGTH_SHORT)
-                                    .show();
+                            if (!isAdded()) return;
+                            if (audioSessionId <= 0) {
+                                Toast.makeText(requireContext(),
+                                        "Start playing a song to open the equalizer.",
+                                        Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            Intent equalizerIntent = new Intent(
+                                    "android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL");
+                            equalizerIntent.putExtra("android.media.extra.AUDIO_SESSION", audioSessionId);
+                            equalizerIntent.putExtra("android.media.extra.PACKAGE_NAME",
+                                    requireContext().getPackageName());
+                            if (equalizerIntent.resolveActivity(requireContext().getPackageManager()) != null) {
+                                startActivity(equalizerIntent);
+                            } else {
+                                Toast.makeText(requireContext(),
+                                        "No system equalizer panel is available on this device.",
+                                        Toast.LENGTH_LONG).show();
+                            }
                         }
                     });
         }
@@ -894,6 +908,10 @@ public class PlayerFragment extends Fragment {
                 intent.getIntExtra(
                         MusicPlayerService.EXTRA_DURATION,
                         0);
+
+        audioSessionId = intent.getIntExtra(
+                MusicPlayerService.EXTRA_AUDIO_SESSION_ID,
+                audioSessionId);
 
         shuffleEnabled =
                 intent.getBooleanExtra(
