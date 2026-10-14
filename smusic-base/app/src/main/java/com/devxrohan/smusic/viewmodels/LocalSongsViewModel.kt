@@ -145,6 +145,22 @@ class LocalSongsViewModel @Inject constructor(
         }
     }
 
+    fun saveMetadata(song: LocalSong, title: String, artist: String, album: String): Boolean {
+        val editedSong = AudioFile(
+            song.id,
+            title.trim().ifEmpty { song.title },
+            artist.trim().ifEmpty { song.artist },
+            album.trim().ifEmpty { song.album },
+            song.uri.toString(),
+            null,
+            song.duration,
+            song.dateAdded
+        )
+        val saved = metadataOverrides.save(editedSong)
+        if (saved) loadSongs()
+        return saved
+    }
+
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
         applyFilter(_songs.value, query)
