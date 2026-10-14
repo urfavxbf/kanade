@@ -25,9 +25,14 @@ public class PlaybackStatsReceiver extends BroadcastReceiver {
 
         String uri = intent.getStringExtra(MusicPlayerService.EXTRA_CURRENT_URI);
         boolean playing = intent.getBooleanExtra(MusicPlayerService.EXTRA_IS_PLAYING, false);
-        if (uri == null || uri.trim().isEmpty()) return;
-
         Context appContext = context.getApplicationContext();
+        if (uri == null || uri.trim().isEmpty()) {
+            SharedPreferences state = appContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+            synchronized (LOCK) {
+                state.edit().putBoolean(KEY_PLAYING, false).apply();
+            }
+            return;
+        }
         SharedPreferences state = appContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         long now = System.currentTimeMillis();
         boolean newPlay;
