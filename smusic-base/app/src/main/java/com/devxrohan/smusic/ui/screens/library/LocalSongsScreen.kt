@@ -53,6 +53,7 @@ fun LocalSongsScreen(
     val songs by viewModel.filteredSongs.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    var editingSong by remember { mutableStateOf<LocalSong?>(null) }
 
     // ── Permission state ──────────────────────────────────────────────────────
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -225,6 +226,7 @@ fun LocalSongsScreen(
                                         pc.player.play()
                                     }
                                 },
+                                onEdit = { editingSong = song },
                             )
                             if (index < songs.lastIndex) {
                                 HorizontalDivider(
@@ -239,6 +241,18 @@ fun LocalSongsScreen(
             }
         }
     }
+
+    editingSong?.let { song ->
+        MetadataEditDialog(
+            song = song,
+            onDismiss = { editingSong = null },
+            onSave = { title, artist, album ->
+                val saved = viewModel.saveMetadata(song, title, artist, album)
+                if (saved) editingSong = null
+                saved
+            }
+        )
+    }
 }
 
 // ── Song row item ─────────────────────────────────────────────────────────────
@@ -246,6 +260,7 @@ fun LocalSongsScreen(
 private fun LocalSongItem(
     song: LocalSong,
     onClick: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -300,7 +315,73 @@ private fun LocalSongItem(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
         )
+        Spacer(modifier = Modifier.width(4.dp))
+        TextButton(
+            onClick = onEdit,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Text("Edit", fontSize = 12.sp)
+        }
     }
+}
+
+@Composable
+private fun MetadataEditDialog(
+    song: LocalSong,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String) -> Boolean,
+) {
+    var title by remember(song.id) { mutableStateOf(song.title) }
+    var artist by remember(song.id) { mutableStateOf(song.artist) }
+    var album by remember(song.id) { mutableStateOf(song.album) }
+    var saveError by remember(song.id) { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit song details") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Changes are saved inside the app and won't modify the original audio file.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it; saveError = false },
+                    label = { Text("Title") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = artist,
+                    onValueChange = { artist = it; saveError = false },
+                    label = { Text("Artist") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = album,
+                    onValueChange = { album = it; saveError = false },
+                    label = { Text("Album") },
+                    singleLine = true
+                )
+                if (saveError) {
+                    Text(
+                        "Couldn't save changes. Please try again.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { saveError = !onSave(title, artist, album) }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 // ── Search bar ────────────────────────────────────────────────────────────────
