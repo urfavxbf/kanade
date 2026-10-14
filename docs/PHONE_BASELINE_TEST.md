@@ -8,14 +8,14 @@ Use this checklist with the debug APK produced by the `SMusic upstream baseline`
 - The APK is a debug/test build, not a release.
 
 ## First launch
-- [ ] App opens without crashing.
+- [x] App opens without crashing (user-confirmed on phone).
 - [ ] Grant audio/media access when prompted.
-- [ ] Local songs, artists and albums appear after scanning.
+- [x] Local library/playback baseline is working (user-confirmed on phone; detailed artist/album counts not yet checked).
 - [ ] Denying media permission does not crash the app; granting it later allows scanning.
 - [ ] Dark/light theme and navigation render correctly.
 
 ## Playback
-- [ ] Play a local track; pause/resume, seek and skip work.
+- [x] Local music playback starts (user-confirmed on phone). Pause/resume, seek and skip still need explicit checks.
 - [ ] Next/previous work with multiple tracks.
 - [ ] Queue, shuffle and repeat behave correctly.
 - [ ] Leave the app / lock the screen; playback continues as expected.
