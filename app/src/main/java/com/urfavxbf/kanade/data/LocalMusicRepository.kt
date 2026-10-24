@@ -3,6 +3,7 @@ package com.urfavxbf.kanade.data
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.provider.MediaStore
+import android.os.Build
 import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import kotlinx.coroutines.Dispatchers
@@ -17,11 +18,15 @@ class LocalMusicRepository(private val resolver: ContentResolver) {
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.DISPLAY_NAME,
         )
+        val columns = projection.toMutableList()
+        if (Build.VERSION.SDK_INT >= 29) columns += MediaStore.Audio.Media.RELATIVE_PATH
         val results = mutableListOf<Track>()
         resolver.query(
             collection,
-            projection,
+            columns.toTypedArray(),
             "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} > 0",
             null,
             "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC",
@@ -31,6 +36,9 @@ class LocalMusicRepository(private val resolver: ContentResolver) {
             val artistIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
             val durationIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val albumIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+            val albumNameIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+            val filenameIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+            val folderIndex = cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idIndex)
                 val albumId = cursor.getLong(albumIndex)
@@ -46,6 +54,9 @@ class LocalMusicRepository(private val resolver: ContentResolver) {
                     } else null,
                     durationMs = cursor.getLong(durationIndex),
                     source = TrackSource.LOCAL,
+                    album = cursor.getString(albumNameIndex).orEmpty(),
+                    filename = cursor.getString(filenameIndex).orEmpty(),
+                    folder = if (folderIndex >= 0) cursor.getString(folderIndex).orEmpty() else "",
                 )
             }
         }
