@@ -88,7 +88,10 @@ interface MusicDao {
     fun playlistTracks(id: Long): Flow<List<SavedTrack>>
 
     @Insert
-    suspend fun addPlay(entry: PlayEntry)
+    suspend fun addPlay(entry: PlayEntry): Long
+
+    @Query("UPDATE plays SET listenMs = :elapsed WHERE id = :id")
+    suspend fun updatePlay(id: Long, elapsed: Long)
 
     @Query("SELECT trackId, COUNT(*) AS plays FROM plays GROUP BY trackId ORDER BY plays DESC LIMIT :limit")
     fun topTracks(limit: Int): Flow<List<TopTrack>>

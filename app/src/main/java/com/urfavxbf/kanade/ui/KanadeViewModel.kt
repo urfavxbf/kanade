@@ -82,7 +82,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private var lastLyricTrack = ""
     private var playingId = ""
     private var listeningMs = 0L
-    private var counted = false
+    private var recordedEntryId: Long? = null
 
     init {
         viewModelScope.launch { store.favorites.collect { _favoriteIds.value = it.toSet() } }
@@ -97,18 +97,20 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
                 playback.sync()
                 val state = playback.state.value
                 if (playingId != state.mediaId) {
+                    recordedEntryId?.let { store.updateListenDuration(it, listeningMs) }
                     playingId = state.mediaId
                     listeningMs = 0L
-                    counted = false
+                    recordedEntryId = null
                     if (lastLyricTrack != playingId) {
                         lastLyricTrack = playingId
                         loadSavedLyrics(playingId)
                     }
                 }
                 if (state.playing && state.mediaId.isNotBlank()) listeningMs += 800
-                if (!counted && listeningMs >= 15_200) {
-                    counted = true
-                    findTrack(state.mediaId)?.let { store.recordPlay(it, listeningMs) }
+                if (recordedEntryId == null && listeningMs >= 15_200) {
+                    findTrack(state.mediaId)?.let { recordedEntryId = store.recordPlay(it, listeningMs) }
+                } else if (recordedEntryId != null && listeningMs > 0 && listeningMs % 4_000 < 800) {
+                    recordedEntryId?.let { store.updateListenDuration(it, listeningMs) }
                 }
                 delay(800)
             }

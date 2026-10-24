@@ -72,7 +72,7 @@ private val PrimaryText = Color(0xFFF6F3FF)
 private val Muted = Color(0xFFA7A6BB)
 
 private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS }
-private enum class Overlay { NONE, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST }
+private enum class Overlay { NONE, PLAYER, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST }
 
 @Composable
 fun KanadeScreen(model: KanadeViewModel) {
@@ -360,7 +360,8 @@ fun KanadeScreen(model: KanadeViewModel) {
                 onSeek = model.playback::seek,
                 onQueue = { overlay = Overlay.QUEUE },
                 onLyrics = { overlay = Overlay.LYRICS },
-                onAudio = { overlay = Overlay.AUDIO })
+                onAudio = { overlay = Overlay.AUDIO },
+                onExpand = { overlay = Overlay.PLAYER })
         }
         playback.error?.let { message ->
             Row(Modifier.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -373,6 +374,25 @@ fun KanadeScreen(model: KanadeViewModel) {
 
     when (overlay) {
         Overlay.NONE -> Unit
+        Overlay.PLAYER -> FeatureDialog("Now playing", { overlay = Overlay.NONE }) {
+            AlbumImage(playback.artworkUri, Modifier.fillMaxWidth().height(240.dp))
+            Spacer(Modifier.height(16.dp))
+            Label(playback.title, 22.sp, PrimaryText, FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Label(playback.artist, 15.sp, Muted)
+            Spacer(Modifier.height(12.dp))
+            PlayerPanel(playback,
+                onToggle = model.playback::toggle,
+                onNext = model.playback::next,
+                onPrevious = model.playback::previous,
+                onShuffle = model.playback::toggleShuffle,
+                onRepeat = model.playback::cycleRepeat,
+                onSeek = model.playback::seek,
+                onQueue = { overlay = Overlay.QUEUE },
+                onLyrics = { overlay = Overlay.LYRICS },
+                onAudio = { overlay = Overlay.AUDIO },
+                onExpand = {})
+        }
         Overlay.QUEUE -> FeatureDialog("Up next", { overlay = Overlay.NONE }) {
             if (playback.queue.isEmpty()) Label("Queue is empty", 14.sp, Muted)
             else {
@@ -555,7 +575,7 @@ private fun TrackList(
 
 @Composable
 private fun TinyButton(symbol: String, description: String, onClick: () -> Unit) {
-    Box(Modifier.size(34.dp).clip(CircleShape).clickable(onClick = onClick)
+    Box(Modifier.size(39.dp).clip(CircleShape).clickable(onClick = onClick)
         .semantics { contentDescription = description },
         contentAlignment = Alignment.Center) { Label(symbol, 18.sp, Accent) }
 }
@@ -599,15 +619,15 @@ private fun PlayerPanel(
     state: PlaybackState, onToggle: () -> Unit, onNext: () -> Unit,
     onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit,
     onSeek: (Long) -> Unit, onQueue: () -> Unit,
-    onLyrics: () -> Unit, onAudio: () -> Unit,
+    onLyrics: () -> Unit, onAudio: () -> Unit, onExpand: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
         .background(Brush.linearGradient(listOf(Color(0xFF332640), Color(0xFF1C1B2B), Surface)))
         .padding(horizontal = 13.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AlbumImage(state.artworkUri, Modifier.size(51.dp))
+            AlbumImage(state.artworkUri, Modifier.size(51.dp).clickable { onExpand() })
             Spacer(Modifier.width(11.dp))
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).clickable { onExpand() }) {
                 Label(state.title, 14.sp, PrimaryText, FontWeight.Bold, lines = 1)
                 Label(state.artist, 12.sp, Muted, lines = 1)
             }
