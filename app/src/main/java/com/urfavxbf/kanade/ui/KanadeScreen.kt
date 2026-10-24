@@ -347,7 +347,8 @@ fun KanadeScreen(model: KanadeViewModel) {
                         onPlay = { model.playListTracks(tracks, it) },
                         onFavorite = model::toggleFavorite,
                         onQueue = { model.playback.add(it, true) },
-                        onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST })
+                        onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
+                        onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                 }
             }
         }
@@ -572,6 +573,7 @@ private fun TrackList(
     onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit,
     onQueue: (Track) -> Unit, onPlaylist: (Track) -> Unit,
     playlistAction: String = "+",
+    onTags: (Track) -> Unit = {},
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(tracks, key = { it.id }) { track ->
