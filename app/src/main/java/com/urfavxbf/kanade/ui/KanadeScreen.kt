@@ -75,6 +75,17 @@ private val Pink = Color(0xFFF6A7D4)
 private val PrimaryText = Color(0xFFF6F3FF)
 private val Muted = Color(0xFFA7A6BB)
 
+private fun openSoundCloudSearch(context: android.content.Context, query: String) {
+    val url = MusicCatalogLinks.search(MusicCatalogProvider.SOUNDCLOUD, query)
+    val generic = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+    val installedApp = Intent(generic).setPackage("com.soundcloud.android")
+    // Prefer the installed SoundCloud app but fall back to a regular HTTPS link
+    // if the installed app is absent or doesn't handle this URL.
+    runCatching { context.startActivity(installedApp) }.onFailure {
+        runCatching { context.startActivity(generic) }
+    }
+}
+
 private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS }
 private enum class Overlay { NONE, PLAYER, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST, EDIT_TAGS }
 
@@ -260,49 +271,56 @@ fun KanadeScreen(model: KanadeViewModel) {
                     }
                 }
                 Page.ONLINE -> Column {
-                    Header("Discover music", "Audius streams independent and creator-uploaded music.")
-                    Spacer(Modifier.height(10.dp))
-                    SearchField(onlineQuery, "Search tracks or artists", { onlineQuery = it },
-                        { model.search(onlineQuery) })
+                    Header("Online music", "Discover more Pinoy tracks with SoundCloud.")
+                    Spacer(Modifier.height(12.dp))
+                    SearchField(onlineQuery, "Song or artist (e.g. OPM, BINI, SB19)", { onlineQuery = it },
+                        { openSoundCloudSearch(context, onlineQuery) })
+                    Spacer(Modifier.height(11.dp))
+                    Label("SOUNDCLOUD • EXTERNAL APP", 11.sp, Accent, FontWeight.SemiBold)
+                    Spacer(Modifier.height(7.dp))
+                    AccentAction("Search SoundCloud ↗") { openSoundCloudSearch(context, onlineQuery) }
+                    Spacer(Modifier.height(7.dp))
+                    Label("Uses the SoundCloud app when Android can open it, otherwise the browser. SoundCloud handles playback and subscriptions.",
+                        11.sp, Muted)
                     Spacer(Modifier.height(9.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        AccentAction("Search Audius") { model.search(onlineQuery) }
-                        Spacer(Modifier.width(10.dp))
-                        Label(discover.message, 11.sp, Muted, modifier = Modifier.weight(1f))
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Chip("YouTube Music ↗") {
+                            val url = MusicCatalogLinks.search(MusicCatalogProvider.YOUTUBE_MUSIC, onlineQuery)
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        }
+                        Chip("Spotify ↗") {
+                            val url = MusicCatalogLinks.search(MusicCatalogProvider.SPOTIFY, onlineQuery)
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        }
                     }
-                    Spacer(Modifier.height(15.dp))
-                    Label("PINOY MUSIC DISCOVERY", 11.sp, Accent, FontWeight.SemiBold)
+                    Spacer(Modifier.height(13.dp))
+                    Label("PINOY MUSIC", 11.sp, Accent, FontWeight.SemiBold)
                     Spacer(Modifier.height(7.dp))
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (term in listOf("OPM", "Pinoy indie", "P-pop", "Filipino", "BINI", "SB19", "Ben&Ben")) {
                             Chip(term, onlineQuery == term) {
                                 onlineQuery = term
-                                model.search(term)
+                                openSoundCloudSearch(context, term)
                             }
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Label("Can't find an OPM song on Audius?", 13.sp, PrimaryText, FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Label("Search a broader catalog using your chosen music app. Links open outside Kanade; playback and subscriptions belong to that provider.",
+                    Spacer(Modifier.height(15.dp))
+                    Label("STREAM IN KANADE • AUDIUS", 11.sp, Accent, FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    Label("Audius songs play directly in Kanade. Its catalog can be smaller than SoundCloud's.",
                         11.sp, Muted)
                     Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Chip("Find on YouTube Music ↗") {
-                            val url = MusicCatalogLinks.search(MusicCatalogProvider.YOUTUBE_MUSIC, onlineQuery)
-                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                        }
-                        Chip("Find on Spotify ↗") {
-                            val url = MusicCatalogLinks.search(MusicCatalogProvider.SPOTIFY, onlineQuery)
-                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Chip("Search Audius") { model.search(onlineQuery) }
+                        Spacer(Modifier.width(10.dp))
+                        Label(discover.message, 11.sp, Muted, modifier = Modifier.weight(1f))
                     }
-                    Spacer(Modifier.height(13.dp))
+                    Spacer(Modifier.height(11.dp))
                     if (discover.tracks.isEmpty()) {
-                        EmptyState("♬", "Limited Audius catalog",
-                            "Some mainstream OPM recordings are not uploaded to Audius. Try the external catalog links above.")
+                        EmptyState("♬", "Audius catalog",
+                            "No Audius results yet. For more Pinoy songs, use SoundCloud above.")
                     } else {
                         TrackList(discover.tracks, favoriteIds,
                             onPlay = model::playOnline,
