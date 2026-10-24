@@ -16,7 +16,7 @@ import androidx.media3.session.MediaSessionService
 /**
  * Background-owned playback and sleep timer. No Activity is required for an active timer.
  */
-@androidx.annotation.OptIn(markerClass = UnstableApi::class)
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 class KanadePlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private var player: ExoPlayer? = null
