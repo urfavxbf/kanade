@@ -11,6 +11,11 @@ data class Track(
     val artworkUri: String? = null,
     val durationMs: Long = 0L,
     val source: TrackSource,
+    val album: String = "",
+    val folder: String = "",
+    val filename: String = "",
+    val genre: String = "",
+    val addedAtMs: Long = 0,
 ) {
     fun mediaItem(): MediaItem = MediaItem.Builder()
         .setMediaId(id)
