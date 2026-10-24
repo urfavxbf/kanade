@@ -72,7 +72,7 @@ private val PrimaryText = Color(0xFFF6F3FF)
 private val Muted = Color(0xFFA7A6BB)
 
 private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS }
-private enum class Overlay { NONE, PLAYER, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST }
+private enum class Overlay { NONE, PLAYER, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
 fun KanadeScreen(model: KanadeViewModel) {
@@ -248,7 +248,8 @@ fun KanadeScreen(model: KanadeViewModel) {
                                     onPlay = { model.playListTracks(shown, it) },
                                     onFavorite = model::toggleFavorite,
                                     onQueue = { model.playback.add(it, true) },
-                                    onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST })
+                                    onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
+                                    onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                             }
                         }
                     }
@@ -273,7 +274,8 @@ fun KanadeScreen(model: KanadeViewModel) {
                             onPlay = model::playOnline,
                             onFavorite = model::toggleFavorite,
                             onQueue = { model.playback.add(it, true) },
-                            onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST })
+                            onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
+                            onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                     }
                 }
                 Page.PLAYLISTS -> Column {
@@ -318,7 +320,8 @@ fun KanadeScreen(model: KanadeViewModel) {
                             onFavorite = model::toggleFavorite,
                             onQueue = { model.playback.add(it, true) },
                             onPlaylist = { model.removeFromPlaylist(selectedPlaylistId, it.id) },
-                            playlistAction = "−")
+                            playlistAction = "−",
+                            onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                     }
                 }
                 Page.INSIGHTS -> Column {
@@ -467,6 +470,26 @@ fun KanadeScreen(model: KanadeViewModel) {
             Label("Gapless playback uses Media3's supported codec path. Equalizer effects depend on device audio routing.",
                 12.sp, Muted)
         }
+        Overlay.EDIT_TAGS -> FeatureDialog("Edit display metadata", { overlay = Overlay.NONE }) {
+            val track = selectedTrack
+            if (track != null && track.source == TrackSource.LOCAL) {
+                var editTitle by remember(track.id) { mutableStateOf(track.title) }
+                var editArtist by remember(track.id) { mutableStateOf(track.artist) }
+                var editAlbum by remember(track.id) { mutableStateOf(track.album) }
+                Label("Changes only affect Kanade's labels, not your original music file.", 12.sp, Muted)
+                Spacer(Modifier.height(12.dp))
+                SearchField(editTitle, "Title", { editTitle = it }, {})
+                Spacer(Modifier.height(8.dp))
+                SearchField(editArtist, "Artist", { editArtist = it }, {})
+                Spacer(Modifier.height(8.dp))
+                SearchField(editAlbum, "Album", { editAlbum = it }, {})
+                Spacer(Modifier.height(14.dp))
+                AccentAction("Save displayed metadata") {
+                    model.editDisplayTags(track, editTitle, editArtist, editAlbum)
+                    overlay = Overlay.NONE
+                }
+            }
+        }
         Overlay.PICK_PLAYLIST -> FeatureDialog("Add to playlist", { overlay = Overlay.NONE }) {
             if (playlists.isEmpty()) Label("Create a playlist in the Playlists tab first.", 13.sp, Muted)
             for (playlist in playlists) {
@@ -568,6 +591,7 @@ private fun TrackList(
                 TinyButton(if (track.id in favoriteIds) "♥" else "♡", "Favorite") { onFavorite(track) }
                 TinyButton("⇥", "Play next") { onQueue(track) }
                 TinyButton(playlistAction, "Playlist") { onPlaylist(track) }
+                if (track.source == TrackSource.LOCAL) TinyButton("✎", "Edit display metadata") { onTags(track) }
             }
         }
     }

@@ -26,6 +26,8 @@ class MusicStore(private val dao: MusicDao) {
 
     fun playlist(id: Long) = dao.playlistTracks(id)
 
+    suspend fun updateTrack(track: Track) = dao.saveTrack(track.saved())
+
     suspend fun toggleFavorite(track: Track) {
         dao.saveTrack(track.saved())
         if (dao.isFavorite(track.id)) dao.removeFavorite(track.id)
@@ -43,7 +45,10 @@ class MusicStore(private val dao: MusicDao) {
     }
 
     suspend fun removeFromPlaylist(id: Long, trackId: String) = dao.removeItem(id, trackId)
-    suspend fun removePlaylist(id: Long) = dao.deletePlaylist(id)
+    suspend fun removePlaylist(id: Long) {
+        dao.clearPlaylistItems(id)
+        dao.deletePlaylist(id)
+    }
 
     suspend fun recordPlay(track: Track, listenMs: Long): Long {
         dao.saveTrack(track.saved())

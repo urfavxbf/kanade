@@ -20,6 +20,7 @@ class LocalMusicRepository(private val resolver: ContentResolver) {
             MediaStore.Audio.Media.ALBUM_ID,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DISPLAY_NAME,
+            MediaStore.Audio.Media.DATE_ADDED,
         )
         val columns = projection.toMutableList()
         if (Build.VERSION.SDK_INT >= 29) columns += MediaStore.Audio.Media.RELATIVE_PATH
@@ -38,6 +39,7 @@ class LocalMusicRepository(private val resolver: ContentResolver) {
             val albumIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
             val albumNameIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
             val filenameIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+            val addedIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val folderIndex = cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idIndex)
@@ -57,6 +59,7 @@ class LocalMusicRepository(private val resolver: ContentResolver) {
                     album = cursor.getString(albumNameIndex).orEmpty(),
                     filename = cursor.getString(filenameIndex).orEmpty(),
                     folder = if (folderIndex >= 0) cursor.getString(folderIndex).orEmpty() else "",
+                    addedAtMs = cursor.getLong(addedIndex) * 1000L,
                 )
             }
         }

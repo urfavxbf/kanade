@@ -12,6 +12,7 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.urfavxbf.kanade.data.DisplayTagOverrides
 import com.urfavxbf.kanade.data.AudiusRepository
 import com.urfavxbf.kanade.data.KanadeDatabase
 import com.urfavxbf.kanade.data.LocalMusicRepository
@@ -47,6 +48,7 @@ data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: St
 
 class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val local = LocalMusicRepository(app.contentResolver)
+    private val tagOverrides = DisplayTagOverrides(app)
     private val audius = AudiusRepository()
     private val store = MusicStore(KanadeDatabase.open(app).musicDao())
     private val lyricPrefs = app.getSharedPreferences("kanade_lyrics", Context.MODE_PRIVATE)
@@ -132,7 +134,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _library.value = _library.value.copy(loading = true, error = null)
             try {
-                val tracks = local.load()
+                val tracks = local.load().map(tagOverrides::apply)
                 tracks.forEach { known[it.id] = it }
                 _library.value = LibraryState(tracks = tracks)
             } catch (e: Exception) {
@@ -196,6 +198,16 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             ?: recent.value.firstOrNull { it.id == id }
             ?: topTracks.value.firstOrNull { it.id == id }
 
+    fun editDisplayTags(track: Track, title: String, artist: String, album: String) {
+        if (!track.id.startsWith("local:")) return
+        val updated = tagOverrides.save(track, title, artist, album)
+        known[track.id] = updated
+        _library.value = _library.value.copy(tracks = library.value.tracks.map {
+            if (it.id == track.id) updated else it
+        })
+        viewModelScope.launch { store.updateTrack(updated) }
+    }
+
     fun toggleFavorite(track: Track) = viewModelScope.launch { store.toggleFavorite(track) }
     fun createPlaylist(name: String) = viewModelScope.launch { store.newPlaylist(name) }
     fun addToPlaylist(id: Long, track: Track) = viewModelScope.launch { store.addToPlaylist(id, track) }
@@ -212,7 +224,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         "Most played" -> topTracks.value
         "Recently played" -> recent.value
         "Favorites" -> favorites.value
-        "Recently added" -> library.value.tracks.reversed().take(100)
+        "Recently added" -> library.value.tracks.sortedByDescending { it.addedAtMs }.take(100)
         else -> emptyList()
     }
 

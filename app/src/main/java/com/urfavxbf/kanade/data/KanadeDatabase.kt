@@ -72,6 +72,9 @@ interface MusicDao {
     @Query("SELECT * FROM playlists ORDER BY createdAt DESC")
     fun playlists(): Flow<List<Playlist>>
 
+    @Query("DELETE FROM playlist_items WHERE playlistId = :id")
+    suspend fun clearPlaylistItems(id: Long)
+
     @Query("DELETE FROM playlists WHERE id = :id")
     suspend fun deletePlaylist(id: Long)
 

@@ -15,6 +15,7 @@ data class Track(
     val folder: String = "",
     val filename: String = "",
     val genre: String = "",
+    val addedAtMs: Long = 0,
 ) {
     fun mediaItem(): MediaItem = MediaItem.Builder()
         .setMediaId(id)
