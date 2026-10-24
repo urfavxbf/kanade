@@ -1,6 +1,7 @@
 package com.urfavxbf.kanade.ui
 
 import android.net.Uri
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -59,6 +61,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import com.urfavxbf.kanade.lyrics.LrcParser
+import com.urfavxbf.kanade.data.MusicCatalogLinks
+import com.urfavxbf.kanade.data.MusicCatalogProvider
 import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackState
@@ -76,6 +80,7 @@ private enum class Overlay { NONE, PLAYER, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST, 
 
 @Composable
 fun KanadeScreen(model: KanadeViewModel) {
+    val context = LocalContext.current
     val library by model.library.collectAsState()
     val discover by model.discover.collectAsState()
     val playback by model.playback.state.collectAsState()
@@ -255,20 +260,49 @@ fun KanadeScreen(model: KanadeViewModel) {
                     }
                 }
                 Page.ONLINE -> Column {
-                    Header("Discover music", "Explore independent artists on Audius.")
-                    Spacer(Modifier.height(13.dp))
-                    SearchField(onlineQuery, "Search Audius tracks and artists", { onlineQuery = it },
-                        { model.search(onlineQuery) })
+                    Header("Discover music", "Audius streams independent and creator-uploaded music.")
                     Spacer(Modifier.height(10.dp))
+                    SearchField(onlineQuery, "Search tracks or artists", { onlineQuery = it },
+                        { model.search(onlineQuery) })
+                    Spacer(Modifier.height(9.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AccentAction("Search Audius") { model.search(onlineQuery) }
                         Spacer(Modifier.width(10.dp))
                         Label(discover.message, 11.sp, Muted, modifier = Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(15.dp))
+                    Label("PINOY MUSIC DISCOVERY", 11.sp, Accent, FontWeight.SemiBold)
+                    Spacer(Modifier.height(7.dp))
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (term in listOf("OPM", "Pinoy indie", "P-pop", "Filipino", "BINI", "SB19", "Ben&Ben")) {
+                            Chip(term, onlineQuery == term) {
+                                onlineQuery = term
+                                model.search(term)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Label("Can't find an OPM song on Audius?", 13.sp, PrimaryText, FontWeight.SemiBold)
+                    Spacer(Modifier.height(4.dp))
+                    Label("Search a broader catalog using your chosen music app. Links open outside Kanade; playback and subscriptions belong to that provider.",
+                        11.sp, Muted)
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Chip("Find on YouTube Music ↗") {
+                            val url = MusicCatalogLinks.search(MusicCatalogProvider.YOUTUBE_MUSIC, onlineQuery)
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        }
+                        Chip("Find on Spotify ↗") {
+                            val url = MusicCatalogLinks.search(MusicCatalogProvider.SPOTIFY, onlineQuery)
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        }
+                    }
+                    Spacer(Modifier.height(13.dp))
                     if (discover.tracks.isEmpty()) {
-                        EmptyState("♬", "Explore new sounds",
-                            "Streaming requires internet. Your local library works offline.")
+                        EmptyState("♬", "Limited Audius catalog",
+                            "Some mainstream OPM recordings are not uploaded to Audius. Try the external catalog links above.")
                     } else {
                         TrackList(discover.tracks, favoriteIds,
                             onPlay = model::playOnline,
