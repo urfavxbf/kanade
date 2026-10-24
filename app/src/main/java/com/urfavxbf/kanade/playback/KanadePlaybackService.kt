@@ -8,6 +8,7 @@ import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -15,6 +16,7 @@ import androidx.media3.session.MediaSessionService
 /**
  * Background-owned playback and sleep timer. No Activity is required for an active timer.
  */
+@OptIn(UnstableApi::class)
 class KanadePlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private var player: ExoPlayer? = null
