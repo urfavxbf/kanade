@@ -12,6 +12,8 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.urfavxbf.kanade.data.YouTubeDiscoveryRepository
+import com.urfavxbf.kanade.data.YouTubeVideo
 import com.urfavxbf.kanade.data.DisplayTagOverrides
 import com.urfavxbf.kanade.data.AudiusRepository
 import com.urfavxbf.kanade.data.KanadeDatabase
@@ -46,10 +48,24 @@ data class DiscoverState(
 )
 data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Select a local LRC lyrics file.")
 
+data class YouTubeDiscoveryState(
+    val results: List<YouTubeVideo> = emptyList(),
+    val loading: Boolean = false,
+    val message: String = "Search the YouTube music catalog (metadata only; no Kanade playback).",
+)
+
 class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val local = LocalMusicRepository(app.contentResolver)
     private val tagOverrides = DisplayTagOverrides(app)
     private val audius = AudiusRepository()
+    private val youtubeRepo = YouTubeDiscoveryRepository(app)
+    private val youtubePreferences = app.getSharedPreferences("kanade_youtube_api", Context.MODE_PRIVATE)
+    private val _youtube = MutableStateFlow(YouTubeDiscoveryState())
+    val youtube: StateFlow<YouTubeDiscoveryState> = _youtube
+    private val _youtubeConfigured = MutableStateFlow(!youtubePreferences.getString("apiKey", null).isNullOrBlank())
+    val youtubeConfigured: StateFlow<Boolean> = _youtubeConfigured
+    private val _youtubeConsent = MutableStateFlow(youtubePreferences.getBoolean("privacyConsent", false))
+    val youtubeConsent: StateFlow<Boolean> = _youtubeConsent
     private val store = MusicStore(KanadeDatabase.open(app).musicDao())
     private val lyricPrefs = app.getSharedPreferences("kanade_lyrics", Context.MODE_PRIVATE)
     val playback = PlaybackConnection(app)
@@ -79,6 +95,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val lyrics: StateFlow<LyricsState> = _lyrics
 
     private var searchJob: Job? = null
+    private var youtubeSearchJob: Job? = null
     private var playlistJob: Job? = null
     private var lyricJob: Job? = null
     private var lastLyricTrack = ""
@@ -140,6 +157,72 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _library.value = LibraryState(error = "Could not scan your music. Try again.")
+            }
+        }
+    }
+
+    /**
+     * The user enters a Google Cloud project API key in their own app instance.
+     * Never bundle a shared key into a distributable APK.
+     */
+    fun configureYouTubeKey(input: String) {
+        val normalized = input.trim()
+        if (normalized.length !in 20..180 || !normalized.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
+            _youtube.value = YouTubeDiscoveryState(message = "Invalid key format. Paste the key from Google Cloud Console.")
+            return
+        }
+        youtubeSearchJob?.cancel()
+        youtubePreferences.edit().putString("apiKey", normalized).apply()
+        _youtubeConfigured.value = true
+        _youtube.value = YouTubeDiscoveryState(message = "API key saved on this device. Search YouTube to test it.")
+    }
+
+    fun setYouTubePrivacyConsent(agreed: Boolean) {
+        youtubePreferences.edit().putBoolean("privacyConsent", agreed).apply()
+        _youtubeConsent.value = agreed
+        if (!agreed) {
+            youtubeSearchJob?.cancel()
+            _youtube.value = YouTubeDiscoveryState(message = "YouTube discovery disabled until privacy consent is granted.")
+        }
+    }
+
+    fun clearYouTubeConfiguration() {
+        youtubeSearchJob?.cancel()
+        youtubePreferences.edit().remove("apiKey").putBoolean("privacyConsent", false).apply()
+        _youtubeConsent.value = false
+        _youtubeConfigured.value = false
+        _youtube.value = YouTubeDiscoveryState()
+    }
+
+    fun searchYouTube(query: String) {
+        youtubeSearchJob?.cancel()
+        if (!_youtubeConsent.value) {
+            _youtube.value = YouTubeDiscoveryState(message = "Read and agree to the privacy policy before using YouTube discovery.")
+            return
+        }
+        val key = youtubePreferences.getString("apiKey", null)
+        if (key.isNullOrBlank()) {
+            _youtube.value = YouTubeDiscoveryState(message = "Configure your YouTube Data API key first.")
+            return
+        }
+        if (query.trim().length !in 1..120) {
+            _youtube.value = YouTubeDiscoveryState(message = "Enter 1 to 120 characters.")
+            return
+        }
+        if (!hasNetwork()) {
+            _youtube.value = YouTubeDiscoveryState(message = "Internet required to search YouTube.")
+            return
+        }
+        youtubeSearchJob = viewModelScope.launch {
+            _youtube.value = YouTubeDiscoveryState(loading = true, message = "Searching YouTube...")
+            try {
+                val results = youtubeRepo.search(query, key)
+                _youtube.value = YouTubeDiscoveryState(results = results, message =
+                    if (results.isEmpty()) "No matches in this search. Try another title or artist."
+                    else "YouTube results for Philippines. These are not playable in Kanade.")
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _youtube.value = YouTubeDiscoveryState(message = e.message ?: "YouTube search failed.")
             }
         }
     }
@@ -277,6 +360,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         searchJob?.cancel()
+        youtubeSearchJob?.cancel()
         playlistJob?.cancel()
         lyricJob?.cancel()
         playback.close()
