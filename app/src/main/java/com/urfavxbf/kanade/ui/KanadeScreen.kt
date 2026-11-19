@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -126,7 +128,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                 Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
                     .background(Brush.linearGradient(listOf(Accent, Pink))),
                 contentAlignment = Alignment.Center,
-            ) { Label("♫", 27.sp, Background, FontWeight.Bold) }
+            ) { KanadeGlyph(KanadeIcon.MUSIC, Background, selected = true, size = 24.dp) }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Label("KANADE", 21.sp, PrimaryText, FontWeight.Bold)
@@ -137,15 +139,23 @@ fun KanadeScreen(model: KanadeViewModel) {
         }
 
         Spacer(Modifier.height(19.dp))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             for (tab in Page.entries) {
-                Chip(when (tab) {
-                    Page.LIBRARY -> "Library"
-                    Page.ONLINE -> "Online"
-                    Page.PLAYLISTS -> "Playlists"
-                    Page.INSIGHTS -> "Insights"
-                }, selected = page == tab) { page = tab }
+                val (label, icon) = when (tab) {
+                    Page.LIBRARY -> "Library" to KanadeIcon.LIBRARY
+                    Page.ONLINE -> "Online" to KanadeIcon.ONLINE
+                    Page.PLAYLISTS -> "Playlists" to KanadeIcon.PLAYLIST
+                    Page.INSIGHTS -> "Insights" to KanadeIcon.INSIGHTS
+                }
+                val active = page == tab
+                Column(Modifier.weight(1f).clip(RoundedCornerShape(13.dp))
+                    .selectable(selected = active, role = Role.Tab, onClick = { page = tab })
+                    .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    KanadeGlyph(icon, if (active) Accent else Muted, selected = active)
+                    Spacer(Modifier.height(4.dp))
+                    Label(label, 11.sp, if (active) Accent else Muted,
+                        if (active) FontWeight.Bold else FontWeight.Normal)
+                }
             }
         }
         Spacer(Modifier.height(18.dp))
@@ -156,7 +166,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                     Header("Your library", "Your music stays yours, even offline.")
                     Spacer(Modifier.height(12.dp))
                     if (!model.hasPermission()) {
-                        EmptyState("♫", "Grant music permission", "Browse audio stored on your device.") {
+                        EmptyState(KanadeIcon.MUSIC, "Grant music permission", "Browse audio stored on your device.") {
                             permissions.launch(model.permission())
                         }
                     } else {
@@ -180,7 +190,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                                     else -> "Title"
                                 }
                             }
-                            Chip("↻") { model.loadLocal() }
+                            TinyButton(KanadeIcon.REFRESH, "Refresh library") { model.loadLocal() }
                         }
                         Spacer(Modifier.height(10.dp))
                         if (filter == "Folders" && folder.isBlank()) {
@@ -213,7 +223,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                         } else {
                             if ((filter == "Folders" && folder.isNotEmpty()) ||
                                 ((filter == "Albums" || filter == "Artists") && album.isNotEmpty())) {
-                                Chip("← Back") { folder = ""; album = "" }
+                                IconTextButton(KanadeIcon.BACK, "Back") { folder = ""; album = "" }
                                 Spacer(Modifier.height(8.dp))
                             }
                             val source = when (filter) {
@@ -240,7 +250,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                                 } }
                             }
                             if (shown.isEmpty()) {
-                                EmptyState("♪", "Nothing here yet", library.error ?: "Try another filter or scan again.") {
+                                EmptyState(KanadeIcon.MUSIC, "Nothing here yet", library.error ?: "Try another filter or scan again.") {
                                     model.loadLocal()
                                 }
                             } else {
@@ -267,7 +277,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                     }
                     Spacer(Modifier.height(13.dp))
                     if (discover.tracks.isEmpty()) {
-                        EmptyState("♬", "Find music", "Search for a song or artist to start listening.")
+                        EmptyState(KanadeIcon.SEARCH, "Find music", "Search for a song or artist to start listening.")
                     } else {
                         TrackList(discover.tracks, favoriteIds,
                             onPlay = model::playOnline,
@@ -283,7 +293,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                     if (selectedPlaylistId < 0) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.weight(1f)) {
-                                SearchField(playlistName, "New playlist name", { playlistName = it }, {})
+                                SearchField(playlistName, "New playlist name", { playlistName = it }, {}, showSearchIcon = false)
                             }
                             Spacer(Modifier.width(8.dp))
                             AccentAction("Create") {
@@ -303,7 +313,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                     } else {
                         val playlist = playlists.firstOrNull { it.id == selectedPlaylistId }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Chip("← All") { selectedPlaylistId = -1L }
+                            IconTextButton(KanadeIcon.BACK, "All") { selectedPlaylistId = -1L }
                             Spacer(Modifier.width(8.dp))
                             Label(playlist?.name ?: "Playlist", 18.sp, PrimaryText, FontWeight.SemiBold,
                                 modifier = Modifier.weight(1f))
@@ -312,14 +322,14 @@ fun KanadeScreen(model: KanadeViewModel) {
                             Chip("Delete") { model.deletePlaylist(selectedPlaylistId); selectedPlaylistId = -1L }
                         }
                         Spacer(Modifier.height(12.dp))
-                        if (selectedTracks.isEmpty()) EmptyState("♫", "Playlist is empty",
+                        if (selectedTracks.isEmpty()) EmptyState(KanadeIcon.MUSIC, "Playlist is empty",
                             "Use the + button on a track to add music.")
                         else TrackList(selectedTracks, favoriteIds,
                             onPlay = { model.playListTracks(selectedTracks, it) },
                             onFavorite = model::toggleFavorite,
                             onQueue = { model.playback.add(it, true) },
                             onPlaylist = { model.removeFromPlaylist(selectedPlaylistId, it.id) },
-                            playlistAction = "−",
+                            removeFromPlaylist = true,
                             onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                     }
                 }
@@ -341,7 +351,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                     }
                     Spacer(Modifier.height(12.dp))
                     val tracks = if (selectedSmart.isBlank()) recent else model.smartTracks(selectedSmart)
-                    if (tracks.isEmpty()) EmptyState("◇", "Make some memories", "Play some tracks to build your personal history.")
+                    if (tracks.isEmpty()) EmptyState(KanadeIcon.INSIGHTS, "Make some memories", "Play some tracks to build your personal history.")
                     else TrackList(tracks, favoriteIds,
                         onPlay = { model.playListTracks(tracks, it) },
                         onFavorite = model::toggleFavorite,
@@ -411,14 +421,14 @@ fun KanadeScreen(model: KanadeViewModel) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f).clickable { model.playback.playAt(index) }) {
-                                Label("${if (index == playback.index) "♪ " else ""}${entry.title}",
+                                Label(entry.title,
                                     13.sp, if (index == playback.index) Accent else PrimaryText,
                                     lines = 1)
                                 Label(entry.artist, 11.sp, Muted, lines = 1)
                             }
-                            if (index > 0) Chip("↑") { model.playback.move(index, index - 1) }
-                            if (index < playback.queue.lastIndex) Chip("↓") { model.playback.move(index, index + 1) }
-                            Chip("×") { model.playback.remove(index) }
+                            if (index > 0) TinyButton(KanadeIcon.UP, "Move up") { model.playback.move(index, index - 1) }
+                            if (index < playback.queue.lastIndex) TinyButton(KanadeIcon.DOWN, "Move down") { model.playback.move(index, index + 1) }
+                            TinyButton(KanadeIcon.CLOSE, "Remove from queue") { model.playback.remove(index) }
                         }
                     }
                 }
@@ -478,11 +488,11 @@ fun KanadeScreen(model: KanadeViewModel) {
                 var editAlbum by remember(track.id) { mutableStateOf(track.album) }
                 Label("Changes only affect Kanade's labels, not your original music file.", 12.sp, Muted)
                 Spacer(Modifier.height(12.dp))
-                SearchField(editTitle, "Title", { editTitle = it }, {})
+                SearchField(editTitle, "Title", { editTitle = it }, {}, showSearchIcon = false)
                 Spacer(Modifier.height(8.dp))
-                SearchField(editArtist, "Artist", { editArtist = it }, {})
+                SearchField(editArtist, "Artist", { editArtist = it }, {}, showSearchIcon = false)
                 Spacer(Modifier.height(8.dp))
-                SearchField(editAlbum, "Album", { editAlbum = it }, {})
+                SearchField(editAlbum, "Album", { editAlbum = it }, {}, showSearchIcon = false)
                 Spacer(Modifier.height(14.dp))
                 AccentAction("Save displayed metadata") {
                     model.editDisplayTags(track, editTitle, editArtist, editAlbum)
@@ -536,7 +546,7 @@ private fun Label(
 }
 
 @Composable
-private fun SearchField(value: String, hint: String, change: (String) -> Unit, search: () -> Unit) {
+private fun SearchField(value: String, hint: String, change: (String) -> Unit, search: () -> Unit, showSearchIcon: Boolean = true) {
     BasicTextField(
         value = value, onValueChange = change, singleLine = true,
         textStyle = TextStyle(color = PrimaryText, fontSize = 14.sp),
@@ -544,10 +554,17 @@ private fun SearchField(value: String, hint: String, change: (String) -> Unit, s
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { search() }),
         decorationBox = { inner ->
-            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                .background(Surface).padding(horizontal = 16.dp, vertical = 16.dp)) {
-                if (value.isBlank()) Label(hint, 13.sp, Muted)
-                inner()
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                .background(Surface).padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                if (showSearchIcon) {
+                    KanadeGlyph(KanadeIcon.SEARCH, Muted, size = 19.dp)
+                    Spacer(Modifier.width(10.dp))
+                }
+                Box(Modifier.weight(1f)) {
+                    if (value.isBlank()) Label(hint, 13.sp, Muted)
+                    inner()
+                }
             }
         },
     )
@@ -558,7 +575,7 @@ private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
     Box(modifier.clip(RoundedCornerShape(15.dp))
         .background(Brush.linearGradient(listOf(Color(0xFF4F3E70), Color(0xFF241E39)))),
         contentAlignment = Alignment.Center) {
-        Label("♫", 28.sp, Accent)
+        KanadeGlyph(KanadeIcon.MUSIC, Accent, selected = true, size = 28.dp)
         if (!artwork.isNullOrEmpty()) {
             AsyncImage(model = artwork, contentDescription = "Album cover",
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -571,7 +588,7 @@ private fun TrackList(
     tracks: List<Track>, favoriteIds: Set<String>,
     onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit,
     onQueue: (Track) -> Unit, onPlaylist: (Track) -> Unit,
-    playlistAction: String = "+",
+    removeFromPlaylist: Boolean = false,
     onTags: (Track) -> Unit = {},
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -589,20 +606,32 @@ private fun TrackList(
                     Label(when (track.source) { TrackSource.LOCAL -> "ON DEVICE"; TrackSource.AUDIUS -> "AUDIUS STREAM"; TrackSource.YOUTUBE -> "YOUTUBE" },
                         9.sp, Accent)
                 }
-                TinyButton(if (track.id in favoriteIds) "♥" else "♡", "Favorite") { onFavorite(track) }
-                TinyButton("⇥", "Play next") { onQueue(track) }
-                TinyButton(playlistAction, "Playlist") { onPlaylist(track) }
-                if (track.source == TrackSource.LOCAL) TinyButton("✎", "Edit display metadata") { onTags(track) }
+                TinyButton(KanadeIcon.FAVORITE, if (track.id in favoriteIds) "Remove from favorites" else "Add to favorites", selected = track.id in favoriteIds) { onFavorite(track) }
+                TinyButton(KanadeIcon.PLAY_NEXT, "Play next") { onQueue(track) }
+                TinyButton(if (removeFromPlaylist) KanadeIcon.REMOVE else KanadeIcon.ADD, if (removeFromPlaylist) "Remove from playlist" else "Add to playlist") { onPlaylist(track) }
+                if (track.source == TrackSource.LOCAL) TinyButton(KanadeIcon.EDIT, "Edit display metadata") { onTags(track) }
             }
         }
     }
 }
 
 @Composable
-private fun TinyButton(symbol: String, description: String, onClick: () -> Unit) {
-    Box(Modifier.size(39.dp).clip(CircleShape).clickable(onClick = onClick)
-        .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center) { Label(symbol, 18.sp, Accent) }
+private fun TinyButton(icon: KanadeIcon, description: String, selected: Boolean = false, onClick: () -> Unit) {
+    Box(Modifier.size(39.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClick)
+        .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
+        KanadeGlyph(icon, if (selected) Accent else Muted, selected = selected, size = 21.dp)
+    }
+}
+
+@Composable
+private fun IconTextButton(icon: KanadeIcon, text: String, onClick: () -> Unit) {
+    Row(Modifier.clip(RoundedCornerShape(13.dp)).background(SurfaceLight)
+        .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        KanadeGlyph(icon, PrimaryText, size = 17.dp)
+        Spacer(Modifier.width(5.dp))
+        Label(text, 12.sp, PrimaryText)
+    }
 }
 
 @Composable private fun SimpleRow(title: String, subtitle: String, click: () -> Unit) {
@@ -613,7 +642,7 @@ private fun TinyButton(symbol: String, description: String, onClick: () -> Unit)
             Label(title, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
             Label(subtitle, 11.sp, Muted, lines = 1)
         }
-        Label("›", 24.sp, Accent)
+        KanadeGlyph(KanadeIcon.FORWARD, Muted, size = 19.dp)
     }
 }
 
@@ -626,11 +655,11 @@ private fun TinyButton(symbol: String, description: String, onClick: () -> Unit)
 }
 
 @Composable
-private fun EmptyState(icon: String, title: String, detail: String, action: (() -> Unit)? = null) {
+private fun EmptyState(icon: KanadeIcon, title: String, detail: String, action: (() -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().padding(top = 45.dp, bottom = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(80.dp).clip(RoundedCornerShape(23.dp)).background(SurfaceLight),
-            contentAlignment = Alignment.Center) { Label(icon, 36.sp, Accent) }
+            contentAlignment = Alignment.Center) { KanadeGlyph(icon, Accent, selected = true, size = 36.dp) }
         Spacer(Modifier.height(13.dp))
         Label(title, 17.sp, PrimaryText, FontWeight.SemiBold)
         Spacer(Modifier.height(7.dp))
@@ -656,12 +685,13 @@ private fun PlayerPanel(
                 Label(state.title, 14.sp, PrimaryText, FontWeight.Bold, lines = 1)
                 Label(state.artist, 12.sp, Muted, lines = 1)
             }
-            TinyButton("⏮", "Previous") { onPrevious() }
-            Box(Modifier.size(44.dp).clip(CircleShape).background(Accent).clickable(onClick = onToggle),
+            TinyButton(KanadeIcon.PREVIOUS, "Previous") { onPrevious() }
+            Box(Modifier.size(44.dp).clip(CircleShape).background(Accent).clickable(role = Role.Button, onClick = onToggle)
+                .semantics { contentDescription = if (state.playing) "Pause" else "Play" },
                 contentAlignment = Alignment.Center) {
-                Label(if (state.playing) "❚❚" else "▶", 17.sp, Background, FontWeight.Bold)
+                KanadeGlyph(if (state.playing) KanadeIcon.PAUSE else KanadeIcon.PLAY, Background, selected = true)
             }
-            TinyButton("⏭", "Next") { onNext() }
+            TinyButton(KanadeIcon.NEXT, "Next") { onNext() }
         }
         Spacer(Modifier.height(10.dp))
         Box(Modifier.fillMaxWidth().height(14.dp)
@@ -678,20 +708,18 @@ private fun PlayerPanel(
                 else 0f
             ).height(4.dp).clip(CircleShape).background(Accent))
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Label(DurationFormatter.format(state.positionMs), 10.sp, Muted)
-            Spacer(Modifier.weight(1f))
-            TinyButton("⇄", "Shuffle") { onShuffle() }
-            Label(if (state.shuffle) "ON" else "OFF", 9.sp, if (state.shuffle) Accent else Muted)
-            TinyButton(when (state.repeatMode) {
-                Player.REPEAT_MODE_ALL -> "↻"
-                Player.REPEAT_MODE_ONE -> "↺"
-                else -> "×"
-            }, "Repeat mode") { onRepeat() }
-            TinyButton("☷", "Queue") { onQueue() }
-            TinyButton("♫", "Lyrics") { onLyrics() }
-            TinyButton("☷", "Audio settings") { onAudio() }
-            Spacer(Modifier.weight(1f))
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                TinyButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle) { onShuffle() }
+                TinyButton(if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
+                    when (state.repeatMode) { Player.REPEAT_MODE_ONE -> "Repeat one"; Player.REPEAT_MODE_ALL -> "Repeat all"; else -> "Repeat off" },
+                    selected = state.repeatMode != Player.REPEAT_MODE_OFF) { onRepeat() }
+                TinyButton(KanadeIcon.QUEUE, "Queue") { onQueue() }
+                TinyButton(KanadeIcon.LYRICS, "Lyrics") { onLyrics() }
+                TinyButton(KanadeIcon.AUDIO, "Audio settings") { onAudio() }
+            }
             Label(DurationFormatter.format(state.durationMs), 10.sp, Muted)
         }
     }
@@ -704,7 +732,7 @@ private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composab
             .background(Color(0xFF1C1D2C)).padding(19.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Label(title, 20.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f))
-                Chip("✕") { dismiss() }
+                TinyButton(KanadeIcon.CLOSE, "Close dialog") { dismiss() }
             }
             Spacer(Modifier.height(15.dp))
             content()
