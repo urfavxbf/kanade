@@ -81,6 +81,7 @@ class PlaybackConnection(context: Context) {
 
     fun play(tracks: List<Track>, position: Int) {
         if (tracks.isEmpty()) return
+        _state.value = _state.value.copy(error = null)
         val target = position.coerceIn(0, tracks.lastIndex)
         val player = controller
         if (player == null) {
@@ -98,6 +99,7 @@ class PlaybackConnection(context: Context) {
     fun playAt(index: Int) {
         controller?.let { if (index in 0 until it.mediaItemCount) {
             it.seekToDefaultPosition(index)
+            if (it.playbackState == Player.STATE_IDLE) it.prepare()
             it.play()
         } }
     }
@@ -131,7 +133,12 @@ class PlaybackConnection(context: Context) {
         sync()
     }
 
-    fun toggle() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
+    fun toggle() { controller?.let {
+        if (it.isPlaying) it.pause() else {
+            if (it.playbackState == Player.STATE_IDLE) it.prepare()
+            it.play()
+        }
+    } }
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPreviousMediaItem() }
     fun seek(positionMs: Long) { controller?.seekTo(positionMs.coerceAtLeast(0)) }
@@ -203,7 +210,11 @@ class PlaybackConnection(context: Context) {
                 .put("artist", item.mediaMetadata.artist?.toString().orEmpty())
                 .put("uri", track?.uri ?: item.localConfiguration?.uri?.toString().orEmpty())
                 .put("artwork", item.mediaMetadata.artworkUri?.toString())
-                .put("source", track?.source?.name ?: if (item.mediaId.startsWith("audius:")) "AUDIUS" else "LOCAL")
+                .put("source", track?.source?.name ?: when {
+                    item.mediaId.startsWith("audius:") -> "AUDIUS"
+                    item.mediaId.startsWith("youtube:") -> "YOUTUBE"
+                    else -> "LOCAL"
+                })
                 .put("duration", track?.durationMs ?: 0L)
                 .put("album", track?.album.orEmpty())
                 .put("folder", track?.folder.orEmpty()))

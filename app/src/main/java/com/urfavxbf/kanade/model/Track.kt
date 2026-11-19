@@ -30,4 +30,4 @@ data class Track(
         .build()
 }
 
-enum class TrackSource { LOCAL, AUDIUS }
+enum class TrackSource { LOCAL, AUDIUS, YOUTUBE }

@@ -1,7 +1,6 @@
 package com.urfavxbf.kanade.ui
 
 import android.net.Uri
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -31,8 +30,6 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,7 +45,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -62,10 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
-import com.urfavxbf.kanade.data.YouTubeVideo
 import com.urfavxbf.kanade.lyrics.LrcParser
-import com.urfavxbf.kanade.data.MusicCatalogLinks
-import com.urfavxbf.kanade.data.MusicCatalogProvider
 import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackState
@@ -78,23 +71,13 @@ private val Pink = Color(0xFFF6A7D4)
 private val PrimaryText = Color(0xFFF6F3FF)
 private val Muted = Color(0xFFA7A6BB)
 
-private fun openSafeLink(context: android.content.Context, url: String) {
-    if (url.startsWith("https://")) runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-    }
-}
-
 private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS }
 private enum class Overlay { NONE, PLAYER, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
 fun KanadeScreen(model: KanadeViewModel) {
-    val context = LocalContext.current
     val library by model.library.collectAsState()
     val discover by model.discover.collectAsState()
-    val youtube by model.youtube.collectAsState()
-    val youtubeConfigured by model.youtubeConfigured.collectAsState()
-    val youtubeConsent by model.youtubeConsent.collectAsState()
     val playback by model.playback.state.collectAsState()
     val favorites by model.favorites.collectAsState()
     val favoriteIds by model.favoriteIds.collectAsState()
@@ -110,9 +93,6 @@ fun KanadeScreen(model: KanadeViewModel) {
     var overlay by remember { mutableStateOf(Overlay.NONE) }
     var query by rememberSaveable { mutableStateOf("") }
     var onlineQuery by rememberSaveable { mutableStateOf("") }
-    var onlineProvider by rememberSaveable { mutableStateOf("YouTube") }
-    var youtubeKeyDialog by remember { mutableStateOf(false) }
-    var youtubeKeyInput by remember { mutableStateOf("") }
     var playlistName by rememberSaveable { mutableStateOf("") }
     var selectedPlaylistId by rememberSaveable { mutableStateOf(-1L) }
     var selectedSmart by rememberSaveable { mutableStateOf("") }
@@ -275,109 +255,26 @@ fun KanadeScreen(model: KanadeViewModel) {
                     }
                 }
                 Page.ONLINE -> Column {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Chip("YouTube discovery", onlineProvider == "YouTube") { onlineProvider = "YouTube" }
-                        Chip("Play in Kanade · Audius", onlineProvider == "Audius") { onlineProvider = "Audius" }
+                    Header("Online music", "Search YouTube and play inside Kanade")
+                    Spacer(Modifier.height(10.dp))
+                    SearchField(onlineQuery, "Search songs or artists…", { onlineQuery = it },
+                        { model.search(onlineQuery) })
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AccentAction("Search") { model.search(onlineQuery) }
+                        Spacer(Modifier.width(10.dp))
+                        Label(discover.message, 11.sp, Muted, modifier = Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(13.dp))
-                    if (onlineProvider == "YouTube") {
-                        Header("Discover on YouTube", "Official music metadata • Philippines catalog")
-                        Spacer(Modifier.height(10.dp))
-                        Label("YouTube Data API v3 can find OPM videos, but does not provide playable audio for Kanade.",
-                            12.sp, Muted)
-                        Spacer(Modifier.height(11.dp))
-                        SearchField(onlineQuery, "Search music or artists…", { onlineQuery = it },
-                            { model.searchYouTube(onlineQuery) })
-                        Spacer(Modifier.height(8.dp))
-                        Row(Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            for (term in listOf("OPM", "BINI", "SB19", "Ben&Ben", "Pinoy indie", "P-pop")) {
-                                Chip(term, onlineQuery == term) { onlineQuery = term }
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        if (!youtubeConsent) {
-                            Label("Privacy consent is required before any YouTube API request.", 12.sp, Muted)
-                            Spacer(Modifier.height(9.dp))
-                            Chip("Read Kanade privacy policy ↗") {
-                                openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/privacy-policy.md")
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Chip("YouTube Terms of Service ↗") {
-                                openSafeLink(context, "https://www.youtube.com/t/terms")
-                            }
-                            Spacer(Modifier.height(9.dp))
-                            AccentAction("I agree to the privacy policy and YouTube Terms") {
-                                model.setYouTubePrivacyConsent(true)
-                            }
-                        } else {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Label(if (youtubeConfigured) "YouTube API key configured on device"
-                                    else "YouTube API key needed (not included with APK)",
-                                    11.sp, Muted, modifier = Modifier.weight(1f))
-                                Chip(if (youtubeConfigured) "Change key" else "Set API key") {
-                                    youtubeKeyDialog = true
-                                }
-                            }
-                            Spacer(Modifier.height(10.dp))
-                            AccentAction("Search YouTube") { model.searchYouTube(onlineQuery) }
-                            Spacer(Modifier.height(7.dp))
-                            Label(youtube.message, 12.sp, Muted)
-                            Spacer(Modifier.height(10.dp))
-                            if (youtube.results.isNotEmpty()) {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                                    items(youtube.results, key = { it.id }) { video ->
-                                        YouTubeResultRow(video) {
-                                            openSafeLink(context, video.watchUrl)
-                                        }
-                                    }
-                                }
-                            } else if (youtube.loading) {
-                                Label("Searching…", 14.sp, Accent)
-                            } else {
-                                EmptyState("♫", "YouTube discovery only",
-                                    "These videos cannot play in Kanade's audio player. Use Audius or your local songs for in-app playback.")
-                            }
-                        }
-                        Spacer(Modifier.height(9.dp))
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Chip("Privacy ↗") {
-                                openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/privacy-policy.md")
-                            }
-                            Chip("Terms ↗") {
-                                openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/terms.md")
-                            }
-                            Chip("API setup ↗") {
-                                openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/youtube-api.md")
-                            }
-                            if (youtubeConsent || youtubeConfigured) Chip("Clear YouTube settings") {
-                                model.clearYouTubeConfiguration()
-                            }
-                        }
+                    if (discover.tracks.isEmpty()) {
+                        EmptyState("♬", "Find music", "Search for a song or artist to start listening.")
                     } else {
-                        Header("Stream inside Kanade", "Authorized independent music from Audius")
-                        Spacer(Modifier.height(10.dp))
-                        SearchField(onlineQuery, "Search Audius music…", { onlineQuery = it },
-                            { model.search(onlineQuery) })
-                        Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            AccentAction("Search Audius") { model.search(onlineQuery) }
-                            Spacer(Modifier.width(10.dp))
-                            Label(discover.message, 11.sp, Muted, modifier = Modifier.weight(1f))
-                        }
-                        Spacer(Modifier.height(13.dp))
-                        if (discover.tracks.isEmpty()) {
-                            EmptyState("♬", "Explore Audius",
-                                "These tracks can play directly in Kanade. OPM availability depends on the Audius catalog.")
-                        } else {
-                            TrackList(discover.tracks, favoriteIds,
-                                onPlay = model::playOnline,
-                                onFavorite = model::toggleFavorite,
-                                onQueue = { model.playback.add(it, true) },
-                                onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
-                                onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
-                        }
+                        TrackList(discover.tracks, favoriteIds,
+                            onPlay = model::playOnline,
+                            onFavorite = model::toggleFavorite,
+                            onQueue = { model.playback.add(it, true) },
+                            onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
+                            onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                     }
                 }
                 Page.PLAYLISTS -> Column {
@@ -476,40 +373,6 @@ fun KanadeScreen(model: KanadeViewModel) {
             }
         }
         Spacer(Modifier.height(9.dp))
-    }
-
-    if (youtubeKeyDialog) FeatureDialog("YouTube Data API key", { youtubeKeyDialog = false }) {
-        Label("Create a YouTube Data API v3 key in Google Cloud Console. Restrict it to YouTube Data API and the Android app's signing certificate.",
-            12.sp, Muted)
-        Spacer(Modifier.height(8.dp))
-        Chip("Google Cloud credentials ↗") {
-            openSafeLink(context, "https://console.cloud.google.com/apis/credentials")
-        }
-        Spacer(Modifier.height(10.dp))
-        BasicTextField(
-            value = youtubeKeyInput, onValueChange = { youtubeKeyInput = it.take(180) },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            textStyle = TextStyle(color = PrimaryText, fontSize = 14.sp),
-            cursorBrush = SolidColor(Accent),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            decorationBox = { input ->
-                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                    .background(SurfaceLight).padding(15.dp)) {
-                    if (youtubeKeyInput.isEmpty()) Label("Paste Google API key", 13.sp, Muted)
-                    input()
-                }
-            }
-        )
-        Spacer(Modifier.height(12.dp))
-        AccentAction("Save key on this device") {
-            model.configureYouTubeKey(youtubeKeyInput)
-            youtubeKeyInput = ""
-            youtubeKeyDialog = false
-        }
-        Spacer(Modifier.height(9.dp))
-        Label("No key is bundled with the APK. This setting is local to your device. YouTube searches consume your project's API quota.",
-            11.sp, Muted)
     }
 
     when (overlay) {
@@ -723,7 +586,7 @@ private fun TrackList(
                 Column(Modifier.weight(1f).clickable { onPlay(track) }) {
                     Label(track.title, 13.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
                     Label(track.artist, 11.sp, Muted, lines = 1)
-                    Label(if (track.source == TrackSource.LOCAL) "ON DEVICE" else "AUDIUS STREAM",
+                    Label(when (track.source) { TrackSource.LOCAL -> "ON DEVICE"; TrackSource.AUDIUS -> "AUDIUS STREAM"; TrackSource.YOUTUBE -> "YOUTUBE" },
                         9.sp, Accent)
                 }
                 TinyButton(if (track.id in favoriteIds) "♥" else "♡", "Favorite") { onFavorite(track) }
@@ -846,28 +709,5 @@ private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composab
             Spacer(Modifier.height(15.dp))
             content()
         }
-    }
-}
-
-@Composable
-private fun YouTubeResultRow(video: YouTubeVideo, onOpen: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-        .background(Surface).padding(9.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        AsyncImage(
-            model = video.thumbnail,
-            contentDescription = "YouTube thumbnail for ${video.title}",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(width = 108.dp, height = 69.dp)
-                .clip(RoundedCornerShape(10.dp))
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Label(video.title, 13.sp, PrimaryText, FontWeight.SemiBold, lines = 2)
-            Spacer(Modifier.height(3.dp))
-            Label(video.channelTitle, 11.sp, Muted, lines = 1)
-            Label("YOUTUBE • DISCOVERY ONLY", 9.sp, Accent)
-        }
-        Chip("Open ↗") { onOpen() }
     }
 }
