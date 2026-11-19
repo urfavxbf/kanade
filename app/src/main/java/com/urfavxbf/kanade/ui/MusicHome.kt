@@ -21,7 +21,7 @@ import com.urfavxbf.kanade.playback.PlaybackState
 
 @Composable
 internal fun MusicHome(
-    playback: PlaybackState, recent: List<Track>, favorites: List<Track>, songs: List<Track>,
+    playback: PlaybackState, trending: List<Track>, recent: List<Track>, favorites: List<Track>, songs: List<Track>,
     openError: String?, pickFile: () -> Unit, showLibrary: () -> Unit, discover: () -> Unit,
     openPlayer: () -> Unit, toggle: () -> Unit, play: (List<Track>, Track) -> Unit,
 ) {
@@ -43,6 +43,7 @@ internal fun MusicHome(
                 Chip(if (playback.playing) "Pause" else "Resume", onClick = toggle)
             }
         }
+        if (trending.isNotEmpty()) item { SongShelf("Trending on Audius", trending, play, featured = true) }
         item {
             if (playback.hasItem) SimpleRow("Open audio file", "Choose a song from your phone", pickFile)
             else Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Surface)
@@ -66,13 +67,14 @@ internal fun MusicHome(
 }
 
 @Composable
-private fun SongShelf(title: String, songs: List<Track>, play: (List<Track>, Track) -> Unit) {
+private fun SongShelf(title: String, songs: List<Track>, play: (List<Track>, Track) -> Unit, featured: Boolean = false) {
+    val size = if (featured) 180.dp else 124.dp
     Label(title, 19.sp, PrimaryText, FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(songs.take(12)) { track ->
-            Column(Modifier.width(124.dp).clickable(role = Role.Button) { play(songs, track) }) {
-                AlbumImage(track.artworkUri, Modifier.size(124.dp))
+            Column(Modifier.width(size).clickable(role = Role.Button) { play(songs, track) }) {
+                AlbumImage(track.artworkUri, Modifier.size(size))
                 Spacer(Modifier.height(6.dp))
                 Label(track.title, 14.sp, PrimaryText, FontWeight.Bold, lines = 1)
                 Label(track.artist, 12.sp, Muted, lines = 1)

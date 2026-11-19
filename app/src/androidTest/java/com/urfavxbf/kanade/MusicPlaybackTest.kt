@@ -54,6 +54,8 @@ class MusicPlaybackTest {
             resolver.update(uri, ContentValues().apply { put(MediaStore.Audio.Media.IS_PENDING, 0) }, null, null)
             Intents.intending(hasAction(Intent.ACTION_OPEN_DOCUMENT))
                 .respondWith(ActivityResult(Activity.RESULT_OK, Intent().setData(uri)))
+            compose.onNodeWithText("Your music").assertExists()
+            compose.onNodeWithText("YouTube player").assertDoesNotExist()
             compose.onNodeWithText("Open audio file").performClick()
             compose.waitUntil(15000) {
                 compose.onAllNodesWithContentDescription("Pause").fetchSemanticsNodes().isNotEmpty()

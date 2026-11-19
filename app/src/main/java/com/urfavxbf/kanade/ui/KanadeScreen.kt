@@ -13,7 +13,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
-import com.urfavxbf.kanade.data.YouTubeLink
 import android.net.Uri
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -121,8 +120,9 @@ fun KanadeScreen(model: KanadeViewModel) {
     var page by rememberSaveable { mutableStateOf(Page.HOME) }
     var overlay by remember { mutableStateOf(Overlay.NONE) }
     var query by rememberSaveable { mutableStateOf("") }
-    var onlineQuery by rememberSaveable { mutableStateOf("") }
-    var onlineProvider by rememberSaveable { mutableStateOf("Audius") }
+    var searchType by rememberSaveable { mutableStateOf("All") }
+    var catalogQuery by rememberSaveable { mutableStateOf("") }
+    var submitted by rememberSaveable { mutableStateOf("") }
     var audioQuery by rememberSaveable { mutableStateOf("") }
     var youtubeKeyDialog by rememberSaveable { mutableStateOf(false) }
     var searchAfterKey by rememberSaveable { mutableStateOf(false) }
@@ -138,34 +138,20 @@ fun KanadeScreen(model: KanadeViewModel) {
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var selectedTrack by remember { mutableStateOf<Track?>(null) }
 
-    val queuedVideos by model.videoQueue.videos.collectAsState()
-    var showVideoQueue by rememberSaveable { mutableStateOf(false) }
-    var watchIds by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
-    var pendingMix by rememberSaveable { mutableStateOf(false) }
     var pendingSearch by rememberSaveable { mutableStateOf(false) }
     var setup by rememberSaveable { mutableStateOf(false) }
-    fun watch(ids: List<String>) {
-        model.playback.pause()
-        watchIds = ArrayList(ids.distinct())
-    }
-    fun playStarterMix() {
-        watch(listOf("5NV6Rdv1a3I", "djV11Xbc914", "dQw4w9WgXcQ"))
-    }
-    fun searchVideo() {
-        val id = YouTubeLink.videoId(onlineQuery)
-        when {
-            !youtubeConsent -> { pendingSearch = true; setup = true }
-            id != null -> watch(listOf(id))
-            !youtubeConfigured -> { searchAfterKey = true; youtubeKeyDialog = true }
-            else -> model.searchYouTube(onlineQuery)
+    fun submitSearch() {
+        if (searchType == "Catalog") {
+            catalogQuery = audioQuery.trim()
+            when {
+                !youtubeConsent -> { pendingSearch = true; setup = true }
+                !youtubeConfigured -> { searchAfterKey = true; youtubeKeyDialog = true }
+                else -> model.searchYouTube(catalogQuery)
+            }
+        } else {
+            submitted = audioQuery.trim()
+            model.search(submitted)
         }
-    }
-    fun findMusicVideo(title: String, artist: String) {
-        overlay = Overlay.NONE
-        page = Page.ONLINE
-        onlineProvider = "YouTube"
-        onlineQuery = listOf(title, artist).filter { it.isNotBlank() }.joinToString(" ").take(120)
-        searchVideo()
     }
     BackHandler(page == Page.PLAYLISTS && selectedPlaylistId >= 0) { selectedPlaylistId = -1L }
     BackHandler(page == Page.LIBRARY && (album.isNotEmpty() || folder.isNotEmpty())) { album = ""; folder = "" }
@@ -194,22 +180,24 @@ fun KanadeScreen(model: KanadeViewModel) {
     ) {
         Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Label("kanade", 27.sp, PrimaryText, FontWeight.Black, Modifier.weight(1f))
-            if (page == Page.ONLINE && onlineProvider == "YouTube") Chip("YouTube settings") { setup = true }
+            if (page == Page.ONLINE && searchType == "Catalog") Chip("YouTube settings") { setup = true }
             else if (page == Page.HOME) Chip("Listening history") { page = Page.INSIGHTS }
         }
         Box(Modifier.weight(1f)) {
             when (page) {
                 Page.HOME -> {
                     val openError by model.audioOpenError.collectAsState()
+                    LaunchedEffect(Unit) { model.loadTrending() }
                     MusicHome(
                         playback = playback,
+                        trending = model.trending.collectAsState().value,
                         recent = recent,
                         favorites = favorites,
                         songs = library.tracks,
                         openError = openError,
                         pickFile = { audioPicker.launch(arrayOf("audio/*")) },
                         showLibrary = { page = Page.LIBRARY },
-                        discover = { onlineProvider = "Audius"; page = Page.ONLINE },
+                        discover = { searchType = "All"; page = Page.ONLINE },
                         openPlayer = { overlay = Overlay.PLAYER },
                         toggle = model.playback::toggle,
                         play = model::playListTracks,
@@ -304,7 +292,6 @@ fun KanadeScreen(model: KanadeViewModel) {
                                     onPlay = { model.playListTracks(shown, it) },
                                     onFavorite = model::toggleFavorite,
                                     onQueue = model.playback::add,
-                                    onFindVideo = { findMusicVideo(it.title, it.artist) },
                                     onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                                     onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                             }
@@ -312,66 +299,39 @@ fun KanadeScreen(model: KanadeViewModel) {
                     }
                 }
                 Page.ONLINE -> Column {
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Chip("Songs", onlineProvider == "Audius") { onlineProvider = "Audius" }
-                        Chip("Music videos", onlineProvider == "YouTube") { onlineProvider = "YouTube" }
-                        if (onlineProvider == "YouTube") Chip("Video queue · ${queuedVideos.size}") {
-                            showVideoQueue = true
-                            if (!youtubeConsent) setup = true
+                    SearchField(audioQuery, "Search songs, artists, albums or playlists", { audioQuery = it.take(120) }, ::submitSearch)
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (type in listOf("All", "Songs", "Artists", "Albums", "Playlists", "Catalog")) {
+                            Chip(type, type == searchType) { searchType = type }
                         }
                     }
-                    Spacer(Modifier.height(13.dp))
-                    if (onlineProvider == "YouTube") {
-                        val listState = rememberLazyListState()
-                        LaunchedEffect(youtube.results) {
-                            if (youtube.results.isNotEmpty()) listState.scrollToItem(5)
-                        }
-                        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            item { RecordSleeve {
-                                if (youtubeConsent) playStarterMix() else { pendingMix = true; setup = true }
-                            } }
-                            item { Header("Find your music", "Search the Philippines catalog or paste a video link.") }
-                            item { SearchField(onlineQuery, "Song, artist or YouTube link", { onlineQuery = it }, ::searchVideo) }
-                            item {
-                                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    listOf("OPM", "BINI", "SB19", "Ben&Ben", "Pinoy indie").forEach { term ->
-                                        Chip(term, onlineQuery == term) { onlineQuery = term; searchVideo() }
-                                    }
-                                }
-                            }
-                            item { AccentAction(if (YouTubeLink.videoId(onlineQuery) != null) "Open video" else "Search YouTube") { searchVideo() } }
-                            item { Label(youtube.message, 13.sp, Muted) }
+                    if (searchType == "Catalog") {
+                        AccentAction("Search YouTube catalog", ::submitSearch)
+                        Label(youtube.message, 13.sp, Muted, modifier = Modifier.padding(vertical = 8.dp))
+                        if (catalogQuery == audioQuery.trim()) LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(youtube.results, key = { it.id }) { video ->
-                                YouTubeResultRow(video, queuedVideos.any { it.id == video.id }, { model.videoQueue.add(video) }) {
-                                    val selection = youtube.results.dropWhile { it.id != video.id }
-                                    watch(selection.map { it.id })
+                                YouTubeResultRow(video) {
+                                    audioQuery = video.title.replace(Regex("""(?i)\s*[\[(](?:official|lyrics?|music video|audio)[^\])]*[\])]"""), "").trim().take(120)
+                                    searchType = "Songs"
+                                    submitSearch()
                                 }
                             }
                         }
                     } else {
-                        Header("Discover songs", "Search artists and tracks on Audius.")
-                        Spacer(Modifier.height(10.dp))
-                        SearchField(audioQuery, "Search for a song or artist…", { audioQuery = it },
-                            { model.search(audioQuery) })
-                        Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            AccentAction("Search songs") { model.search(audioQuery) }
-                            Spacer(Modifier.width(10.dp))
-                            Label(discover.message, 11.sp, Muted, modifier = Modifier.weight(1f))
+                        if (searchType in listOf("All", "Songs")) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Chip("Search online", onClick = ::submitSearch)
+                                if (submitted.isNotBlank() && submitted == audioQuery.trim())
+                                    Label(discover.message, 12.sp, Muted, modifier = Modifier.padding(start = 8.dp))
+                            }
                         }
-                        Spacer(Modifier.height(13.dp))
-                        if (discover.tracks.isEmpty()) {
-                            EmptyState("♬", "Explore Audius",
-                                "These tracks can play directly in Kanade. OPM availability depends on the Audius catalog.")
-                        } else {
-                            TrackList(discover.tracks, favoriteIds,
-                                onPlay = model::playOnline,
-                                onFavorite = model::toggleFavorite,
-                                onQueue = model.playback::add,
-                                onFindVideo = { findMusicVideo(it.title, it.artist) },
-                                onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
-                                onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
-                        }
+                        MusicResults(audioQuery, searchType, library.tracks,
+                            if (submitted == audioQuery.trim()) discover.tracks else emptyList(),
+                            playlists, model::playListTracks,
+                            openArtist = { name -> page = Page.LIBRARY; filter = "Artists"; album = name; folder = ""; query = "" },
+                            openAlbum = { name -> page = Page.LIBRARY; filter = "Albums"; album = name; folder = ""; query = "" },
+                            openPlaylist = { id -> selectedPlaylistId = id; model.selectPlaylist(id); page = Page.PLAYLISTS })
                     }
                 }
                 Page.PLAYLISTS -> Column {
@@ -416,7 +376,6 @@ fun KanadeScreen(model: KanadeViewModel) {
                             onPlay = { model.playListTracks(selectedTracks, it) },
                             onFavorite = model::toggleFavorite,
                             onQueue = model.playback::add,
-                            onFindVideo = { findMusicVideo(it.title, it.artist) },
                             onPlaylist = { model.removeFromPlaylist(selectedPlaylistId, it.id) },
                             playlistAction = "−",
                             onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
@@ -445,7 +404,6 @@ fun KanadeScreen(model: KanadeViewModel) {
                         onPlay = { model.playListTracks(tracks, it) },
                         onFavorite = model::toggleFavorite,
                         onQueue = model.playback::add,
-                        onFindVideo = { findMusicVideo(it.title, it.artist) },
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                 }
@@ -467,7 +425,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                 val active = tab == page || (tab == Page.HOME && page == Page.INSIGHTS)
                 val title = when (tab) {
                     Page.HOME -> "Home"
-                    Page.ONLINE -> "Discover"
+                    Page.ONLINE -> "Search"
                     Page.LIBRARY -> "Library"
                     Page.PLAYLISTS -> "Playlists"
                     Page.INSIGHTS -> "Insights"
@@ -493,51 +451,8 @@ fun KanadeScreen(model: KanadeViewModel) {
             confirmDelete = false
         }
     }
-    if (youtubeConsent && showVideoQueue) FeatureDialog("YouTube queue", { showVideoQueue = false }) {
-        var link by rememberSaveable { mutableStateOf("") }
-        var linkMessage by rememberSaveable { mutableStateOf("") }
-        fun addLink() {
-            val id = YouTubeLink.videoId(link)
-            if (id == null) {
-                linkMessage = "Paste a YouTube video link."
-                return
-            }
-            if (queuedVideos.any { it.id == id }) linkMessage = "Already in the queue."
-            else {
-                model.videoQueue.add(YouTubeVideo(id, "YouTube video · $id", "", ""))
-                linkMessage = "Video added."
-            }
-            link = ""
-        }
-        SearchField(link, "Paste a YouTube video link", { link = it; linkMessage = "" }, ::addLink)
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("Add link", onClick = ::addLink)
-            if (queuedVideos.isNotEmpty()) AccentAction("Play queue") {
-                showVideoQueue = false
-                watch(queuedVideos.map { it.id })
-            }
-        }
-        if (linkMessage.isNotEmpty()) Label(linkMessage, 12.sp, Accent)
-        Spacer(Modifier.height(12.dp))
-        if (queuedVideos.isEmpty()) Label("Add a link above or choose + Queue on a search result.", 14.sp, Muted)
-        else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(queuedVideos.size, key = { queuedVideos[it].id }) { index ->
-                val video = queuedVideos[index]
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Label("${index + 1}. ${video.title}", 14.sp, PrimaryText, modifier = Modifier.weight(1f), lines = 2)
-                    if (index > 0) TinyButton("↑", "Move ${video.title} earlier") { model.videoQueue.move(video.id, -1) }
-                    if (index < queuedVideos.lastIndex) TinyButton("↓", "Move ${video.title} later") { model.videoQueue.move(video.id, 1) }
-                    TinyButton("×", "Remove ${video.title}") { model.videoQueue.remove(video.id) }
-                }
-            }
-        }
-    }
-    if (youtubeConsent && watchIds.isNotEmpty()) FeatureDialog("YouTube player", { watchIds = arrayListOf() }) {
-        YouTubePlayer(watchIds)
-    }
-    if (setup) FeatureDialog("YouTube settings", { setup = false; pendingSearch = false; pendingMix = false; showVideoQueue = false }) {
-        Label("Search uses your Google API key. Opening a video loads YouTube’s embedded player and connects to Google.", 14.sp, Muted)
+    if (setup) FeatureDialog("YouTube catalog settings", { setup = false; pendingSearch = false }) {
+        Label("Catalog searches send your query to Google. Choose Find recording to look for playable audio in Kanade.", 14.sp, Muted)
         Spacer(Modifier.height(12.dp))
         SimpleRow("Privacy policy", "Kanade") { openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/privacy-policy.md") }
         SimpleRow("Terms of use", "Kanade") { openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/terms.md") }
@@ -547,20 +462,15 @@ fun KanadeScreen(model: KanadeViewModel) {
         if (!youtubeConsent) AccentAction("Agree and continue") {
             model.setYouTubePrivacyConsent(true)
             setup = false
-            if (pendingMix) {
-                pendingMix = false
-                playStarterMix()
-            } else if (pendingSearch) {
+            if (pendingSearch) {
                 pendingSearch = false
-                val id = YouTubeLink.videoId(onlineQuery)
-                if (id != null) watch(listOf(id))
-                else if (!youtubeConfigured) { searchAfterKey = true; youtubeKeyDialog = true }
-                else model.searchYouTube(onlineQuery)
+                if (!youtubeConfigured) { searchAfterKey = true; youtubeKeyDialog = true }
+                else model.searchYouTube(audioQuery)
             }
         } else {
             AccentAction(if (youtubeConfigured) "Change search key" else "Add search key") { setup = false; youtubeKeyDialog = true }
             Spacer(Modifier.height(8.dp))
-            Chip("Clear key and consent") { watchIds = arrayListOf(); model.clearYouTubeConfiguration(); setup = false }
+            Chip("Clear key and consent") { model.clearYouTubeConfiguration(); setup = false }
         }
     }
     if (youtubeKeyDialog) FeatureDialog("YouTube Data API key", { youtubeKeyDialog = false; youtubeKeyInput = ""; searchAfterKey = false; keyError = false }) {
@@ -601,7 +511,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                 youtubeKeyInput = ""
                 youtubeKeyDialog = false
                 keyError = false
-                if (searchAfterKey) model.searchYouTube(onlineQuery)
+                if (searchAfterKey) model.searchYouTube(audioQuery)
                 searchAfterKey = false
             } else keyError = true
         }
@@ -623,13 +533,21 @@ fun KanadeScreen(model: KanadeViewModel) {
                 Spacer(Modifier.height(16.dp))
                 AlbumImage(playback.artworkUri, Modifier.widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f))
                 Spacer(Modifier.height(16.dp))
-                Label(playback.title, 22.sp, PrimaryText, FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Label(playback.title, 22.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f))
+                    model.findTrack(playback.mediaId)?.let { track ->
+                        TinyButton(if (track.id in favoriteIds) "♥" else "♡", "Favorite current song") { model.toggleFavorite(track) }
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 Label(playback.artist, 15.sp, Muted)
                 Spacer(Modifier.height(12.dp))
+                val line = LrcParser.current(lyrics.lines, playback.positionMs)
+                lyrics.lines.getOrNull(line)?.let {
+                    Label(it.text, 14.sp, Accent, modifier = Modifier.clickable { overlay = Overlay.LYRICS }, lines = 2)
+                }
                 TransportControls(playback, model, { overlay = it })
                 Spacer(Modifier.height(12.dp))
-                SimpleRow("Find music video", "Search YouTube") { findMusicVideo(playback.title, playback.artist) }
             }
         }
         Overlay.QUEUE -> FeatureDialog("Up next", { overlay = Overlay.NONE }) {
@@ -851,7 +769,6 @@ private fun TrackList(
     tracks: List<Track>, favoriteIds: Set<String>,
     onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit,
     onQueue: (Track, Boolean) -> Unit, onPlaylist: (Track) -> Unit,
-    onFindVideo: (Track) -> Unit,
     playlistAction: String = "+",
     onTags: (Track) -> Unit = {},
 ) {
@@ -874,7 +791,6 @@ private fun TrackList(
                 var menu by remember { mutableStateOf(false) }
                 TinyButton("⋯", "More actions for ${track.title}") { menu = true }
                 if (menu) FeatureDialog(track.title, { menu = false }) {
-                    SimpleRow("Find music video", "Search YouTube") { menu = false; onFindVideo(track) }
                     SimpleRow("Play next", track.artist) { menu = false; onQueue(track, true) }
                     SimpleRow("Add to end of queue", track.artist) { menu = false; onQueue(track, false) }
                     SimpleRow(if (playlistAction == "−") "Remove from playlist" else "Add to playlist", track.artist) { menu = false; onPlaylist(track) }
@@ -993,7 +909,7 @@ private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composab
 }
 
 @Composable
-private fun YouTubeResultRow(video: YouTubeVideo, queued: Boolean, enqueue: () -> Unit, onOpen: () -> Unit) {
+private fun YouTubeResultRow(video: YouTubeVideo, onOpen: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
         .background(Surface).padding(9.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -1011,34 +927,7 @@ private fun YouTubeResultRow(video: YouTubeVideo, queued: Boolean, enqueue: () -
             Label(video.channelTitle, 11.sp, Muted, lines = 1)
             Label("YouTube", 11.sp, Accent)
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Chip("Play", onClick = onOpen)
-            if (queued) Label("Queued", 12.sp, Accent, modifier = Modifier.padding(8.dp))
-            else Chip("+ Queue", onClick = enqueue)
-        }
-    }
-}
-
-@Composable
-private fun RecordSleeve(play: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(22.dp))
-        .background(Color(0xFFE89265)).clickable(role = Role.Button, onClickLabel = "Play Pop essentials on YouTube", onClick = play)) {
-        Canvas(Modifier.fillMaxSize()) {
-            val radius = size.height * .81f
-            val center = Offset(size.width * .94f, size.height * .58f)
-            drawCircle(Color(0xFF242521), radius, center)
-            for (ring in 10..26) drawCircle(Color(0xFF45443C), radius * ring / 27f, center, style = Stroke(1.dp.toPx()))
-            drawCircle(Color(0xFFF5CEA3), radius * .32f, center)
-            drawCircle(Color(0xFF242521), radius * .045f, center)
-        }
-        Column(Modifier.align(Alignment.CenterStart).padding(start = 20.dp)) {
-            Label("YOUTUBE  /  3 VIDEOS", 10.sp, Background, FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            BasicText("Pop\nessentials", style = TextStyle(color = Background, fontSize = 41.sp,
-                lineHeight = 39.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold))
-            Spacer(Modifier.height(7.dp))
-            Label("▶   Play mix", 13.sp, Background, FontWeight.Bold)
-        }
+        Chip("Find recording", onClick = onOpen)
     }
 }
 

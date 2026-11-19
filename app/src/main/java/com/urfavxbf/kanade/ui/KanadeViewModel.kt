@@ -13,7 +13,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.urfavxbf.kanade.data.YouTubeDiscoveryRepository
-import com.urfavxbf.kanade.data.VideoQueue
 import com.urfavxbf.kanade.data.YouTubeVideo
 import com.urfavxbf.kanade.data.DisplayTagOverrides
 import com.urfavxbf.kanade.data.AudiusRepository
@@ -52,14 +51,13 @@ data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: St
 data class YouTubeDiscoveryState(
     val results: List<YouTubeVideo> = emptyList(),
     val loading: Boolean = false,
-    val message: String = "Search by song or artist, or paste a YouTube link.",
+    val message: String = "Find titles and artists in the YouTube catalog.",
 )
 
 class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val local = LocalMusicRepository(app.contentResolver)
     private val tagOverrides = DisplayTagOverrides(app)
     private val audius = AudiusRepository()
-    val videoQueue = VideoQueue()
     private val youtubeRepo = YouTubeDiscoveryRepository(app)
     private val youtubePreferences = app.getSharedPreferences("kanade_youtube_api", Context.MODE_PRIVATE)
     private val _youtube = MutableStateFlow(YouTubeDiscoveryState())
@@ -181,6 +179,23 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _trending = MutableStateFlow<List<Track>>(emptyList())
+    val trending: StateFlow<List<Track>> = _trending
+    private var trendingJob: Job? = null
+
+    fun loadTrending() {
+        if (_trending.value.isNotEmpty() || trendingJob?.isActive == true || !hasNetwork()) return
+        trendingJob = viewModelScope.launch {
+            try {
+                val tracks = audius.trending()
+                tracks.forEach { known[it.id] = it }
+                _trending.value = tracks
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
     fun youtubeKeyFingerprint(): String? = youtubeRepo.signingCertificateSha1()?.chunked(2)?.joinToString(":")
 
     /**
@@ -210,7 +225,6 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearYouTubeConfiguration() {
-        videoQueue.clear()
         youtubeSearchJob?.cancel()
         youtubePreferences.edit().remove("apiKey").putBoolean("playerConsentV2", false).apply()
         _youtubeConsent.value = false
@@ -243,7 +257,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
                 val results = youtubeRepo.search(query, key)
                 _youtube.value = YouTubeDiscoveryState(results = results, message =
                     if (results.isEmpty()) "No matches in this search. Try another title or artist."
-                    else "Choose a video to start watching.")
+                    else "Select a title to search for playable recordings.")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _youtube.value = YouTubeDiscoveryState(message = e.message ?: "YouTube search failed.")

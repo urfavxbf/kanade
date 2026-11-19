@@ -15,10 +15,15 @@ import java.net.URL
 
 /** Official Audius read-only API. Does not cache or download copyrighted streams. */
 class AudiusRepository {
-    suspend fun search(input: String): List<Track> = withContext(Dispatchers.IO) {
+    suspend fun search(input: String): List<Track> {
         val query = input.trim()
         require(query.isNotEmpty() && query.length <= 120) { "Invalid search query" }
-        val endpoint = "https://api.audius.co/v1/tracks/search?query=${Uri.encode(query)}&limit=25"
+        return fetch("https://api.audius.co/v1/tracks/search?query=${Uri.encode(query)}&limit=25")
+    }
+
+    suspend fun trending(): List<Track> = fetch("https://api.audius.co/v1/tracks/trending?limit=12")
+
+    private suspend fun fetch(endpoint: String): List<Track> = withContext(Dispatchers.IO) {
         var lastFailure: IOException? = null
         for (attempt in 0..2) {
             currentCoroutineContext().ensureActive()

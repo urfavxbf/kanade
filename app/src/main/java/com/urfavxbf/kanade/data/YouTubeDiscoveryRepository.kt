@@ -18,9 +18,7 @@ data class YouTubeVideo(
     val title: String,
     val channelTitle: String,
     val thumbnail: String,
-) {
-    val watchUrl: String get() = "https://www.youtube.com/watch?v=$id"
-}
+)
 
 /** YouTube Data API search returns metadata only; it is NOT a playable audio source. */
 object YouTubeSearchUrl {
@@ -31,7 +29,7 @@ object YouTubeSearchUrl {
         val key = URLEncoder.encode(apiKey.trim(), "UTF-8")
         return "https://www.googleapis.com/youtube/v3/search" +
             "?part=snippet&type=video&videoCategoryId=10&regionCode=PH" +
-            "&videoEmbeddable=true&videoSyndicated=true&safeSearch=moderate&maxResults=15&q=$encoded&key=$key"
+            "&safeSearch=moderate&maxResults=15&q=$encoded&key=$key"
     }
 }
 

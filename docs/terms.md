@@ -6,7 +6,7 @@ Kanade provides native playback of on-device audio and compatible authorized aud
 
 ## YouTube API feature
 
-By using Kanade's YouTube discovery feature, you also agree to be bound by the [YouTube Terms of Service](https://www.youtube.com/t/terms). YouTube Data API results are provided for **discovery and metadata only**. This API does **not** license Kanade to download, isolate, stream, cache or play YouTube audio in its native player. Watching a video loads the official foreground YouTube embed. The queue, retry controls and video playback stay inside Kanade. No YouTube Premium background playback or offline rights are transferred to Kanade.
+By using Kanade's YouTube discovery feature, you also agree to be bound by the [YouTube Terms of Service](https://www.youtube.com/t/terms). YouTube Data API results are provided for **discovery and metadata only**. This API does **not** license Kanade to download, isolate, stream, cache or play YouTube audio in its native player. The Find recording action searches the local library and Audius for audio available through those sources. No YouTube Premium background playback or offline rights are transferred to Kanade.
 
 The YouTube metadata service may be unavailable due to request quota, API credential configuration, regional availability or API policy changes.
 
