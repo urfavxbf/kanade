@@ -128,16 +128,21 @@ fun KanadeScreen(model: KanadeViewModel) {
     var folder by rememberSaveable { mutableStateOf("") }
     var album by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf("Title") }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var selectedTrack by remember { mutableStateOf<Track?>(null) }
 
     var watchIds by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var watchTitle by rememberSaveable { mutableStateOf("") }
+    var pendingMix by rememberSaveable { mutableStateOf(false) }
     var pendingSearch by rememberSaveable { mutableStateOf(false) }
     var setup by rememberSaveable { mutableStateOf(false) }
     fun watch(title: String, ids: List<String>) {
         model.playback.pause()
         watchTitle = title
         watchIds = ArrayList(ids.distinct())
+    }
+    fun playStarterMix() {
+        watch("Pop essentials", listOf("5NV6Rdv1a3I", "djV11Xbc914", "dQw4w9WgXcQ"))
     }
     fun searchVideo() {
         val id = YouTubeLink.videoId(onlineQuery)
@@ -270,7 +275,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                                 TrackList(shown, favoriteIds,
                                     onPlay = { model.playListTracks(shown, it) },
                                     onFavorite = model::toggleFavorite,
-                                    onQueue = { model.playback.add(it, true) },
+                                    onQueue = model.playback::add,
                                     onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                                     onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                             }
@@ -285,7 +290,9 @@ fun KanadeScreen(model: KanadeViewModel) {
                     Spacer(Modifier.height(13.dp))
                     if (onlineProvider == "YouTube") {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            item { RecordSleeve() }
+                            item { RecordSleeve {
+                                if (youtubeConsent) playStarterMix() else { pendingMix = true; setup = true }
+                            } }
                             item { Header("Find your music", "Search the Philippines catalog or paste a video link.") }
                             item { SearchField(onlineQuery, "Song, artist or YouTube link", { onlineQuery = it }, ::searchVideo) }
                             item {
@@ -323,7 +330,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                             TrackList(discover.tracks, favoriteIds,
                                 onPlay = model::playOnline,
                                 onFavorite = model::toggleFavorite,
-                                onQueue = { model.playback.add(it, true) },
+                                onQueue = model.playback::add,
                                 onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                                 onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                         }
@@ -362,7 +369,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                                 modifier = Modifier.weight(1f))
                             Chip("Import") { m3uImporter.launch(arrayOf("audio/x-mpegurl", "text/*", "*/*")) }
                             Chip("Export") { m3uExporter.launch("kanade-playlist.m3u") }
-                            Chip("Delete") { model.deletePlaylist(selectedPlaylistId); selectedPlaylistId = -1L }
+                            Chip("Delete") { confirmDelete = true }
                         }
                         Spacer(Modifier.height(12.dp))
                         if (selectedTracks.isEmpty()) EmptyState("♫", "Playlist is empty",
@@ -370,7 +377,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                         else TrackList(selectedTracks, favoriteIds,
                             onPlay = { model.playListTracks(selectedTracks, it) },
                             onFavorite = model::toggleFavorite,
-                            onQueue = { model.playback.add(it, true) },
+                            onQueue = model.playback::add,
                             onPlaylist = { model.removeFromPlaylist(selectedPlaylistId, it.id) },
                             playlistAction = "−",
                             onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
@@ -398,7 +405,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                     else TrackList(tracks, favoriteIds,
                         onPlay = { model.playListTracks(tracks, it) },
                         onFavorite = model::toggleFavorite,
-                        onQueue = { model.playback.add(it, true) },
+                        onQueue = model.playback::add,
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                 }
@@ -436,6 +443,15 @@ fun KanadeScreen(model: KanadeViewModel) {
         }
     }
 
+    if (confirmDelete) FeatureDialog("Delete playlist?", { confirmDelete = false }) {
+        Label("Remove this playlist from your library? Your tracks will stay on the device.", 14.sp, Muted)
+        Spacer(Modifier.height(12.dp))
+        AccentAction("Delete playlist") {
+            model.deletePlaylist(selectedPlaylistId)
+            selectedPlaylistId = -1L
+            confirmDelete = false
+        }
+    }
     if (youtubeConsent && watchIds.isNotEmpty()) FeatureDialog("YouTube player", { watchIds = arrayListOf() }) {
         YouTubePlayer(watchIds)
         Spacer(Modifier.height(12.dp))
@@ -443,7 +459,7 @@ fun KanadeScreen(model: KanadeViewModel) {
         Spacer(Modifier.height(8.dp))
         Chip("Open first video on YouTube ↗") { openSafeLink(context, "https://www.youtube.com/watch?v=${watchIds.first()}") }
     }
-    if (setup) FeatureDialog("YouTube settings", { setup = false; pendingSearch = false }) {
+    if (setup) FeatureDialog("YouTube settings", { setup = false; pendingSearch = false; pendingMix = false }) {
         Label("Search uses your Google API key. Opening a video loads YouTube’s embedded player and connects to Google.", 14.sp, Muted)
         Spacer(Modifier.height(12.dp))
         SimpleRow("Privacy policy", "Kanade") { openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/privacy-policy.md") }
@@ -454,7 +470,10 @@ fun KanadeScreen(model: KanadeViewModel) {
         if (!youtubeConsent) AccentAction("Agree and continue") {
             model.setYouTubePrivacyConsent(true)
             setup = false
-            if (pendingSearch) {
+            if (pendingMix) {
+                pendingMix = false
+                playStarterMix()
+            } else if (pendingSearch) {
                 pendingSearch = false
                 val id = YouTubeLink.videoId(onlineQuery)
                 if (id != null) watch("YouTube video", listOf(id))
@@ -561,7 +580,7 @@ fun KanadeScreen(model: KanadeViewModel) {
             }
         }
         Overlay.AUDIO -> FeatureDialog("Audio controls", { overlay = Overlay.NONE }) {
-            Label("SLEEP TIMER", 12.sp, Accent, FontWeight.SemiBold)
+            Label(if (playback.sleepMinutesRemaining > 0) "SLEEP TIMER · ${playback.sleepMinutesRemaining} MIN LEFT" else "SLEEP TIMER · OFF", 12.sp, Accent, FontWeight.SemiBold)
             Spacer(Modifier.height(7.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (minutes in listOf(0, 15, 30, 60, 90)) {
@@ -572,7 +591,7 @@ fun KanadeScreen(model: KanadeViewModel) {
             Label("EQUALIZER", 12.sp, Accent, FontWeight.SemiBold)
             Spacer(Modifier.height(7.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                for (preset in listOf("Off", "Bass", "Vocal")) Chip(preset) { model.playback.equalizer(preset) }
+                for (preset in listOf("Off", "Bass", "Vocal")) Chip(preset, playback.equalizerPreset == preset) { model.playback.equalizer(preset) }
             }
             Spacer(Modifier.height(17.dp))
             Label("PLAYBACK SPEED", 12.sp, Accent, FontWeight.SemiBold)
@@ -674,7 +693,13 @@ private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
     Box(modifier.clip(RoundedCornerShape(15.dp))
         .background(Brush.linearGradient(listOf(Color(0xFF735243), Color(0xFF392E26)))),
         contentAlignment = Alignment.Center) {
-        Label("♫", 28.sp, Accent)
+        Canvas(Modifier.fillMaxSize()) {
+            val radius = size.minDimension * .4f
+            drawCircle(Color(0xFF23241F), radius)
+            for (ring in 4..9) drawCircle(Color(0xFF46443C), radius * ring / 10f, style = Stroke(1.dp.toPx()))
+            drawCircle(Accent, radius * .34f)
+            drawCircle(Background, radius * .06f)
+        }
         if (!artwork.isNullOrEmpty()) {
             AsyncImage(model = artwork, contentDescription = "Album cover",
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -686,7 +711,7 @@ private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
 private fun TrackList(
     tracks: List<Track>, favoriteIds: Set<String>,
     onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit,
-    onQueue: (Track) -> Unit, onPlaylist: (Track) -> Unit,
+    onQueue: (Track, Boolean) -> Unit, onPlaylist: (Track) -> Unit,
     playlistAction: String = "+",
     onTags: (Track) -> Unit = {},
 ) {
@@ -709,7 +734,8 @@ private fun TrackList(
                 var menu by remember { mutableStateOf(false) }
                 TinyButton("⋯", "More actions for ${track.title}") { menu = true }
                 if (menu) FeatureDialog(track.title, { menu = false }) {
-                    SimpleRow("Play next", track.artist) { menu = false; onQueue(track) }
+                    SimpleRow("Play next", track.artist) { menu = false; onQueue(track, true) }
+                    SimpleRow("Add to end of queue", track.artist) { menu = false; onQueue(track, false) }
                     SimpleRow(if (playlistAction == "−") "Remove from playlist" else "Add to playlist", track.artist) { menu = false; onPlaylist(track) }
                     if (track.source == TrackSource.LOCAL) SimpleRow("Edit track details", track.album) { menu = false; onTags(track) }
                 }
@@ -849,9 +875,9 @@ private fun YouTubeResultRow(video: YouTubeVideo, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun RecordSleeve() {
+private fun RecordSleeve(play: () -> Unit) {
     Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(22.dp))
-        .background(Color(0xFFE89265))) {
+        .background(Color(0xFFE89265)).clickable(role = Role.Button, onClickLabel = "Play Pop essentials on YouTube", onClick = play)) {
         Canvas(Modifier.fillMaxSize()) {
             val radius = size.height * .81f
             val center = Offset(size.width * .94f, size.height * .58f)
@@ -861,10 +887,12 @@ private fun RecordSleeve() {
             drawCircle(Color(0xFF242521), radius * .045f, center)
         }
         Column(Modifier.align(Alignment.CenterStart).padding(start = 20.dp)) {
-            Label("YOUTUBE MUSIC VIDEOS", 10.sp, Background, FontWeight.Bold)
+            Label("YOUTUBE  /  3 VIDEOS", 10.sp, Background, FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            BasicText("Listening\nroom", style = TextStyle(color = Background, fontSize = 41.sp,
+            BasicText("Pop\nessentials", style = TextStyle(color = Background, fontSize = 41.sp,
                 lineHeight = 39.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold))
+            Spacer(Modifier.height(7.dp))
+            Label("▶   Play mix", 13.sp, Background, FontWeight.Bold)
         }
     }
 }

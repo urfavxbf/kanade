@@ -31,6 +31,8 @@ data class PlaybackState(
     val shuffle: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val speed: Float = 1f,
+    val sleepMinutesRemaining: Long = 0,
+    val equalizerPreset: String = "Off",
     val index: Int = 0,
     val queue: List<QueueEntry> = emptyList(),
     val error: String? = null,
@@ -39,6 +41,7 @@ data class PlaybackState(
 class PlaybackConnection(context: Context) {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("kanade_queue", Context.MODE_PRIVATE)
+    private val soundPrefs = app.getSharedPreferences("kanade_audio", Context.MODE_PRIVATE)
     private val future: ListenableFuture<MediaController> =
         MediaController.Builder(
             app,
@@ -177,6 +180,8 @@ class PlaybackConnection(context: Context) {
             shuffle = player.shuffleModeEnabled,
             repeatMode = player.repeatMode,
             speed = player.playbackParameters.speed,
+            sleepMinutesRemaining = ((soundPrefs.getLong("sleepDeadline", 0L) - System.currentTimeMillis() + 59_999L) / 60_000L).coerceAtLeast(0L),
+            equalizerPreset = soundPrefs.getString("eq", "Off") ?: "Off",
             index = player.currentMediaItemIndex.coerceAtLeast(0),
             queue = (0 until player.mediaItemCount).map { i ->
                 val item = player.getMediaItemAt(i)
