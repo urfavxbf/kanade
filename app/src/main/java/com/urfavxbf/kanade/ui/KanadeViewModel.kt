@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.urfavxbf.kanade.data.YouTubeDiscoveryRepository
+import com.urfavxbf.kanade.data.VideoQueue
 import com.urfavxbf.kanade.data.YouTubeVideo
 import com.urfavxbf.kanade.data.DisplayTagOverrides
 import com.urfavxbf.kanade.data.AudiusRepository
@@ -58,6 +59,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val local = LocalMusicRepository(app.contentResolver)
     private val tagOverrides = DisplayTagOverrides(app)
     private val audius = AudiusRepository()
+    val videoQueue = VideoQueue()
     private val youtubeRepo = YouTubeDiscoveryRepository(app)
     private val youtubePreferences = app.getSharedPreferences("kanade_youtube_api", Context.MODE_PRIVATE)
     private val _youtube = MutableStateFlow(YouTubeDiscoveryState())
@@ -190,6 +192,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearYouTubeConfiguration() {
+        videoQueue.clear()
         youtubeSearchJob?.cancel()
         youtubePreferences.edit().remove("apiKey").putBoolean("playerConsentV2", false).apply()
         _youtubeConsent.value = false

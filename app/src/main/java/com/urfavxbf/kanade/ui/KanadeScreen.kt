@@ -137,24 +137,24 @@ fun KanadeScreen(model: KanadeViewModel) {
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var selectedTrack by remember { mutableStateOf<Track?>(null) }
 
+    val queuedVideos by model.videoQueue.videos.collectAsState()
+    var showVideoQueue by rememberSaveable { mutableStateOf(false) }
     var watchIds by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
-    var watchTitle by rememberSaveable { mutableStateOf("") }
     var pendingMix by rememberSaveable { mutableStateOf(false) }
     var pendingSearch by rememberSaveable { mutableStateOf(false) }
     var setup by rememberSaveable { mutableStateOf(false) }
-    fun watch(title: String, ids: List<String>) {
+    fun watch(ids: List<String>) {
         model.playback.pause()
-        watchTitle = title
         watchIds = ArrayList(ids.distinct())
     }
     fun playStarterMix() {
-        watch("Pop essentials", listOf("5NV6Rdv1a3I", "djV11Xbc914", "dQw4w9WgXcQ"))
+        watch(listOf("5NV6Rdv1a3I", "djV11Xbc914", "dQw4w9WgXcQ"))
     }
     fun searchVideo() {
         val id = YouTubeLink.videoId(onlineQuery)
         when {
             !youtubeConsent -> { pendingSearch = true; setup = true }
-            id != null -> watch("YouTube video", listOf(id))
+            id != null -> watch(listOf(id))
             !youtubeConfigured -> { searchAfterKey = true; youtubeKeyDialog = true }
             else -> model.searchYouTube(onlineQuery)
         }
@@ -290,8 +290,12 @@ fun KanadeScreen(model: KanadeViewModel) {
                     }
                 }
                 Page.ONLINE -> Column {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Chip("YouTube", onlineProvider == "YouTube") { onlineProvider = "YouTube" }
+                        if (onlineProvider == "YouTube") Chip("Video queue · ${queuedVideos.size}") {
+                            showVideoQueue = true
+                            if (!youtubeConsent) setup = true
+                        }
                         Chip("Audius", onlineProvider == "Audius") { onlineProvider = "Audius" }
                     }
                     Spacer(Modifier.height(13.dp))
@@ -316,9 +320,9 @@ fun KanadeScreen(model: KanadeViewModel) {
                             item { AccentAction(if (YouTubeLink.videoId(onlineQuery) != null) "Open video" else "Search YouTube") { searchVideo() } }
                             item { Label(youtube.message, 13.sp, Muted) }
                             items(youtube.results, key = { it.id }) { video ->
-                                YouTubeResultRow(video) {
+                                YouTubeResultRow(video, queuedVideos.any { it.id == video.id }, { model.videoQueue.add(video) }) {
                                     val selection = youtube.results.dropWhile { it.id != video.id }
-                                    watch(video.title, selection.map { it.id })
+                                    watch(selection.map { it.id })
                                 }
                             }
                         }
@@ -466,14 +470,50 @@ fun KanadeScreen(model: KanadeViewModel) {
             confirmDelete = false
         }
     }
+    if (youtubeConsent && showVideoQueue) FeatureDialog("YouTube queue", { showVideoQueue = false }) {
+        var link by rememberSaveable { mutableStateOf("") }
+        var linkMessage by rememberSaveable { mutableStateOf("") }
+        fun addLink() {
+            val id = YouTubeLink.videoId(link)
+            if (id == null) {
+                linkMessage = "Paste a YouTube video link."
+                return
+            }
+            if (queuedVideos.any { it.id == id }) linkMessage = "Already in the queue."
+            else {
+                model.videoQueue.add(YouTubeVideo(id, "YouTube video · $id", "", ""))
+                linkMessage = "Video added."
+            }
+            link = ""
+        }
+        SearchField(link, "Paste a YouTube video link", { link = it; linkMessage = "" }, ::addLink)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("Add link", onClick = ::addLink)
+            if (queuedVideos.isNotEmpty()) AccentAction("Play queue") {
+                showVideoQueue = false
+                watch(queuedVideos.map { it.id })
+            }
+        }
+        if (linkMessage.isNotEmpty()) Label(linkMessage, 12.sp, Accent)
+        Spacer(Modifier.height(12.dp))
+        if (queuedVideos.isEmpty()) Label("Add a link above or choose + Queue on a search result.", 14.sp, Muted)
+        else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(queuedVideos.size, key = { queuedVideos[it].id }) { index ->
+                val video = queuedVideos[index]
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Label("${index + 1}. ${video.title}", 14.sp, PrimaryText, modifier = Modifier.weight(1f), lines = 2)
+                    if (index > 0) TinyButton("↑", "Move ${video.title} earlier") { model.videoQueue.move(video.id, -1) }
+                    if (index < queuedVideos.lastIndex) TinyButton("↓", "Move ${video.title} later") { model.videoQueue.move(video.id, 1) }
+                    TinyButton("×", "Remove ${video.title}") { model.videoQueue.remove(video.id) }
+                }
+            }
+        }
+    }
     if (youtubeConsent && watchIds.isNotEmpty()) FeatureDialog("YouTube player", { watchIds = arrayListOf() }) {
         YouTubePlayer(watchIds)
-        Spacer(Modifier.height(12.dp))
-        Label(if (watchIds.size == 1) watchTitle else "Video mix · ${watchIds.size} videos", 17.sp, PrimaryText, FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Chip("Open first video on YouTube ↗") { openSafeLink(context, "https://www.youtube.com/watch?v=${watchIds.first()}") }
     }
-    if (setup) FeatureDialog("YouTube settings", { setup = false; pendingSearch = false; pendingMix = false }) {
+    if (setup) FeatureDialog("YouTube settings", { setup = false; pendingSearch = false; pendingMix = false; showVideoQueue = false }) {
         Label("Search uses your Google API key. Opening a video loads YouTube’s embedded player and connects to Google.", 14.sp, Muted)
         Spacer(Modifier.height(12.dp))
         SimpleRow("Privacy policy", "Kanade") { openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/privacy-policy.md") }
@@ -490,7 +530,7 @@ fun KanadeScreen(model: KanadeViewModel) {
             } else if (pendingSearch) {
                 pendingSearch = false
                 val id = YouTubeLink.videoId(onlineQuery)
-                if (id != null) watch("YouTube video", listOf(id))
+                if (id != null) watch(listOf(id))
                 else if (!youtubeConfigured) { searchAfterKey = true; youtubeKeyDialog = true }
                 else model.searchYouTube(onlineQuery)
             }
@@ -921,7 +961,7 @@ private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composab
 }
 
 @Composable
-private fun YouTubeResultRow(video: YouTubeVideo, onOpen: () -> Unit) {
+private fun YouTubeResultRow(video: YouTubeVideo, queued: Boolean, enqueue: () -> Unit, onOpen: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
         .background(Surface).padding(9.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -939,7 +979,11 @@ private fun YouTubeResultRow(video: YouTubeVideo, onOpen: () -> Unit) {
             Label(video.channelTitle, 11.sp, Muted, lines = 1)
             Label("YouTube", 11.sp, Accent)
         }
-        Chip("Play") { onOpen() }
+        Column(horizontalAlignment = Alignment.End) {
+            Chip("Play", onClick = onOpen)
+            if (queued) Label("Queued", 12.sp, Accent, modifier = Modifier.padding(8.dp))
+            else Chip("+ Queue", onClick = enqueue)
+        }
     }
 }
 
