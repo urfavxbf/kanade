@@ -18,9 +18,7 @@ data class YouTubeVideo(
     val title: String,
     val channelTitle: String,
     val thumbnail: String,
-) {
-    val watchUrl: String get() = "https://www.youtube.com/watch?v=$id"
-}
+)
 
 /** YouTube Data API search returns metadata only; it is NOT a playable audio source. */
 object YouTubeSearchUrl {
@@ -79,7 +77,7 @@ class YouTubeDiscoveryRepository(private val context: Context) {
         }
     }
 
-    private fun signingCertificateSha1(): String? = runCatching {
+    internal fun signingCertificateSha1(): String? = runCatching {
         @Suppress("DEPRECATION")
         val info = if (Build.VERSION.SDK_INT >= 28) {
             context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)

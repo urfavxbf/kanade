@@ -1,5 +1,18 @@
 package com.urfavxbf.kanade.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontFamily
 import android.net.Uri
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -7,7 +20,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +59,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
@@ -70,13 +81,13 @@ import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackState
 
-private val Background = Color(0xFF0B0D16)
-private val Surface = Color(0xFF171925)
-private val SurfaceLight = Color(0xFF292A3D)
-private val Accent = Color(0xFFBDA5FF)
-private val Pink = Color(0xFFF6A7D4)
-private val PrimaryText = Color(0xFFF6F3FF)
-private val Muted = Color(0xFFA7A6BB)
+private val Background = Color(0xFF141513)
+internal val Surface = Color(0xFF20211F)
+private val SurfaceLight = Color(0xFF323430)
+internal val Accent = Color(0xFFFFAB7D)
+private val Pink = Color(0xFFFFC8A7)
+internal val PrimaryText = Color(0xFFFAF4E8)
+internal val Muted = Color(0xFFBCBDB2)
 
 private fun openSafeLink(context: android.content.Context, url: String) {
     if (url.startsWith("https://")) runCatching {
@@ -84,7 +95,7 @@ private fun openSafeLink(context: android.content.Context, url: String) {
     }
 }
 
-private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS }
+private enum class Page { HOME, LIBRARY, ONLINE, PLAYLISTS, INSIGHTS }
 private enum class Overlay { NONE, PLAYER, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
@@ -106,12 +117,17 @@ fun KanadeScreen(model: KanadeViewModel) {
     val totalListenMs by model.totalListenMs.collectAsState()
     val lyrics by model.lyrics.collectAsState()
 
-    var page by rememberSaveable { mutableStateOf(Page.LIBRARY) }
+    var page by rememberSaveable { mutableStateOf(Page.HOME) }
     var overlay by remember { mutableStateOf(Overlay.NONE) }
     var query by rememberSaveable { mutableStateOf("") }
-    var onlineQuery by rememberSaveable { mutableStateOf("") }
-    var onlineProvider by rememberSaveable { mutableStateOf("YouTube") }
-    var youtubeKeyDialog by remember { mutableStateOf(false) }
+    var searchType by rememberSaveable { mutableStateOf("All") }
+    var catalogQuery by rememberSaveable { mutableStateOf("") }
+    var useAudius by rememberSaveable { mutableStateOf(false) }
+    var submitted by rememberSaveable { mutableStateOf("") }
+    var audioQuery by rememberSaveable { mutableStateOf("") }
+    var youtubeKeyDialog by rememberSaveable { mutableStateOf(false) }
+    var searchAfterKey by rememberSaveable { mutableStateOf(false) }
+    var keyError by remember { mutableStateOf(false) }
     var youtubeKeyInput by remember { mutableStateOf("") }
     var playlistName by rememberSaveable { mutableStateOf("") }
     var selectedPlaylistId by rememberSaveable { mutableStateOf(-1L) }
@@ -120,11 +136,33 @@ fun KanadeScreen(model: KanadeViewModel) {
     var folder by rememberSaveable { mutableStateOf("") }
     var album by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf("Title") }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var selectedTrack by remember { mutableStateOf<Track?>(null) }
 
+    var pendingSearch by rememberSaveable { mutableStateOf(false) }
+    var setup by rememberSaveable { mutableStateOf(false) }
+    fun submitSearch() {
+        if (searchType == "Catalog") {
+            catalogQuery = audioQuery.trim()
+            when {
+                !youtubeConsent -> { pendingSearch = true; setup = true }
+                !youtubeConfigured -> { searchAfterKey = true; youtubeKeyDialog = true }
+                else -> model.searchYouTube(catalogQuery)
+            }
+        } else {
+            submitted = audioQuery.trim()
+            model.search(submitted, useAudius)
+        }
+    }
+    BackHandler(page == Page.PLAYLISTS && selectedPlaylistId >= 0) { selectedPlaylistId = -1L }
+    BackHandler(page == Page.LIBRARY && (album.isNotEmpty() || folder.isNotEmpty())) { album = ""; folder = "" }
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) model.loadLocal()
     }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(model::openAudio)
+    }
+    BackHandler(page == Page.INSIGHTS) { page = Page.HOME }
     val lyricsPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) model.loadLyrics(uri)
     }
@@ -138,42 +176,36 @@ fun KanadeScreen(model: KanadeViewModel) {
     LaunchedEffect(Unit) { if (model.hasPermission()) model.loadLocal() }
 
     Column(
-        Modifier.fillMaxSize().background(Background)
+        Modifier.fillMaxSize().background(Background).safeDrawingPadding().imePadding()
             .padding(start = 16.dp, end = 16.dp, top = 16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
-                    .background(Brush.linearGradient(listOf(Accent, Pink))),
-                contentAlignment = Alignment.Center,
-            ) { Label("♫", 27.sp, Background, FontWeight.Bold) }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Label("KANADE", 21.sp, PrimaryText, FontWeight.Bold)
-                Label("Your sound. Your space.", 11.sp, Muted)
-            }
-            Label("HI-FI • MUSIC", 10.sp, Accent, modifier = Modifier
-                .clip(RoundedCornerShape(12.dp)).background(Surface).padding(10.dp))
+        Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Label("kanade", 27.sp, PrimaryText, FontWeight.Black, Modifier.weight(1f))
+            if (page == Page.ONLINE && searchType == "Catalog") Chip("YouTube settings") { setup = true }
+            else if (page == Page.HOME) Chip("Listening history") { page = Page.INSIGHTS }
         }
-
-        Spacer(Modifier.height(19.dp))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            for (tab in Page.entries) {
-                Chip(when (tab) {
-                    Page.LIBRARY -> "Library"
-                    Page.ONLINE -> "Online"
-                    Page.PLAYLISTS -> "Playlists"
-                    Page.INSIGHTS -> "Insights"
-                }, selected = page == tab) { page = tab }
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-
         Box(Modifier.weight(1f)) {
             when (page) {
+                Page.HOME -> {
+                    val openError by model.audioOpenError.collectAsState()
+                    LaunchedEffect(Unit) { model.loadTrending() }
+                    MusicHome(
+                        playback = playback,
+                        trending = model.trending.collectAsState().value,
+                        recent = recent,
+                        favorites = favorites,
+                        songs = library.tracks,
+                        openError = openError,
+                        pickFile = { audioPicker.launch(arrayOf("audio/*")) },
+                        showLibrary = { page = Page.LIBRARY },
+                        discover = { searchType = "All"; page = Page.ONLINE },
+                        openPlayer = { overlay = Overlay.PLAYER },
+                        toggle = model.playback::toggle,
+                        play = model::playListTracks,
+                    )
+                }
                 Page.LIBRARY -> Column {
-                    Header("Your library", "Your music stays yours, even offline.")
+                    Header("Record collection", "Songs, artists and albums on your device.")
                     Spacer(Modifier.height(12.dp))
                     if (!model.hasPermission()) {
                         EmptyState("♫", "Grant music permission", "Browse audio stored on your device.") {
@@ -213,14 +245,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                                 }
                             }
                         } else if (filter == "Albums" && album.isBlank()) {
-                            val albums = library.tracks.map { it.album.ifBlank { "Unknown album" } }.distinct().sorted()
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                                items(albums) { item ->
-                                    SimpleRow(item, "${library.tracks.count { it.album.ifBlank { "Unknown album" } == item }} tracks") {
-                                        album = item
-                                    }
-                                }
-                            }
+                            AlbumShelf(library.tracks, query) { album = it; query = "" }
                         } else if (filter == "Artists" && album.isBlank()) {
                             val artists = library.tracks.map { it.artist }.distinct().sorted()
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -267,7 +292,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                                 TrackList(shown, favoriteIds,
                                     onPlay = { model.playListTracks(shown, it) },
                                     onFavorite = model::toggleFavorite,
-                                    onQueue = { model.playback.add(it, true) },
+                                    onQueue = model.playback::add,
                                     onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                                     onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                             }
@@ -275,113 +300,57 @@ fun KanadeScreen(model: KanadeViewModel) {
                     }
                 }
                 Page.ONLINE -> Column {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Chip("YouTube discovery", onlineProvider == "YouTube") { onlineProvider = "YouTube" }
-                        Chip("Play in Kanade · Audius", onlineProvider == "Audius") { onlineProvider = "Audius" }
+                    SearchField(audioQuery, "Search songs, artists, albums or playlists", { audioQuery = it.take(120) }, ::submitSearch)
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (type in listOf("All", "Songs", "Artists", "Albums", "Playlists", "Catalog")) {
+                            Chip(type, type == searchType) { searchType = type }
+                        }
                     }
-                    Spacer(Modifier.height(13.dp))
-                    if (onlineProvider == "YouTube") {
-                        Header("Discover on YouTube", "Official music metadata • Philippines catalog")
-                        Spacer(Modifier.height(10.dp))
-                        Label("YouTube Data API v3 can find OPM videos, but does not provide playable audio for Kanade.",
-                            12.sp, Muted)
-                        Spacer(Modifier.height(11.dp))
-                        SearchField(onlineQuery, "Search music or artists…", { onlineQuery = it },
-                            { model.searchYouTube(onlineQuery) })
-                        Spacer(Modifier.height(8.dp))
-                        Row(Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            for (term in listOf("OPM", "BINI", "SB19", "Ben&Ben", "Pinoy indie", "P-pop")) {
-                                Chip(term, onlineQuery == term) { onlineQuery = term }
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        if (!youtubeConsent) {
-                            Label("Privacy consent is required before any YouTube API request.", 12.sp, Muted)
-                            Spacer(Modifier.height(9.dp))
-                            Chip("Read Kanade privacy policy ↗") {
-                                openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/privacy-policy.md")
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Chip("YouTube Terms of Service ↗") {
-                                openSafeLink(context, "https://www.youtube.com/t/terms")
-                            }
-                            Spacer(Modifier.height(9.dp))
-                            AccentAction("I agree to the privacy policy and YouTube Terms") {
-                                model.setYouTubePrivacyConsent(true)
-                            }
-                        } else {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Label(if (youtubeConfigured) "YouTube API key configured on device"
-                                    else "YouTube API key needed (not included with APK)",
-                                    11.sp, Muted, modifier = Modifier.weight(1f))
-                                Chip(if (youtubeConfigured) "Change key" else "Set API key") {
-                                    youtubeKeyDialog = true
+                    if (searchType == "Catalog") {
+                        AccentAction("Search YouTube catalog", ::submitSearch)
+                        Label(youtube.message, 13.sp, Muted, modifier = Modifier.padding(vertical = 8.dp))
+                        if (catalogQuery == audioQuery.trim()) LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(youtube.results, key = { it.id }) { video ->
+                                YouTubeResultRow(video) {
+                                    audioQuery = video.title.replace(Regex("""(?i)\s*[\[(](?:official|lyrics?|music video|audio)[^\])]*[\])]"""), "").trim().take(120)
+                                    searchType = "Songs"
+                                    submitSearch()
                                 }
-                            }
-                            Spacer(Modifier.height(10.dp))
-                            AccentAction("Search YouTube") { model.searchYouTube(onlineQuery) }
-                            Spacer(Modifier.height(7.dp))
-                            Label(youtube.message, 12.sp, Muted)
-                            Spacer(Modifier.height(10.dp))
-                            if (youtube.results.isNotEmpty()) {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                                    items(youtube.results, key = { it.id }) { video ->
-                                        YouTubeResultRow(video) {
-                                            openSafeLink(context, video.watchUrl)
-                                        }
-                                    }
-                                }
-                            } else if (youtube.loading) {
-                                Label("Searching…", 14.sp, Accent)
-                            } else {
-                                EmptyState("♫", "YouTube discovery only",
-                                    "These videos cannot play in Kanade's audio player. Use Audius or your local songs for in-app playback.")
-                            }
-                        }
-                        Spacer(Modifier.height(9.dp))
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Chip("Privacy ↗") {
-                                openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/privacy-policy.md")
-                            }
-                            Chip("Terms ↗") {
-                                openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/terms.md")
-                            }
-                            Chip("API setup ↗") {
-                                openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/youtube-api.md")
-                            }
-                            if (youtubeConsent || youtubeConfigured) Chip("Clear YouTube settings") {
-                                model.clearYouTubeConfiguration()
                             }
                         }
                     } else {
-                        Header("Stream inside Kanade", "Authorized independent music from Audius")
-                        Spacer(Modifier.height(10.dp))
-                        SearchField(onlineQuery, "Search Audius music…", { onlineQuery = it },
-                            { model.search(onlineQuery) })
-                        Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            AccentAction("Search Audius") { model.search(onlineQuery) }
-                            Spacer(Modifier.width(10.dp))
-                            Label(discover.message, 11.sp, Muted, modifier = Modifier.weight(1f))
+                        if (searchType in listOf("All", "Songs", "Artists")) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Chip(if (useAudius) "Search Audius" else "Search YouTube Music", onClick = ::submitSearch)
+                                if (submitted.isNotBlank() && submitted == audioQuery.trim())
+                                    Label(discover.message, 12.sp, Muted, modifier = Modifier.padding(start = 8.dp))
+                            }
                         }
-                        Spacer(Modifier.height(13.dp))
-                        if (discover.tracks.isEmpty()) {
-                            EmptyState("♬", "Explore Audius",
-                                "These tracks can play directly in Kanade. OPM availability depends on the Audius catalog.")
-                        } else {
-                            TrackList(discover.tracks, favoriteIds,
-                                onPlay = model::playOnline,
-                                onFavorite = model::toggleFavorite,
-                                onQueue = { model.playback.add(it, true) },
-                                onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
-                                onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
+                        if (searchType in listOf("All", "Songs", "Artists")) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Chip("YouTube Music", !useAudius) { if (useAudius) { useAudius = false; submitted = "" } }
+                                Chip("Audius", useAudius) { if (!useAudius) { useAudius = true; submitted = "" } }
+                            }
                         }
+                        MusicResults(audioQuery, searchType, library.tracks,
+                            if (submitted.isNotBlank() && submitted == audioQuery.trim()) discover.tracks else emptyList(),
+                            playlists, model::playListTracks,
+                            openArtist = { name, local ->
+                                if (local) {
+                                    page = Page.LIBRARY; filter = "Artists"; album = name; folder = ""; query = ""
+                                } else {
+                                    audioQuery = name
+                                    searchType = "Songs"
+                                    submitSearch()
+                                }
+                            },
+                            openAlbum = { name -> page = Page.LIBRARY; filter = "Albums"; album = name; folder = ""; query = "" },
+                            openPlaylist = { id -> selectedPlaylistId = id; model.selectPlaylist(id); page = Page.PLAYLISTS })
                     }
                 }
                 Page.PLAYLISTS -> Column {
-                    Header("My playlists", "Saved locally. No account required.")
+                    Header("Playlists", "Your handpicked tracks, saved on this device.")
                     Spacer(Modifier.height(12.dp))
                     if (selectedPlaylistId < 0) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -395,6 +364,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                             }
                         }
                         Spacer(Modifier.height(14.dp))
+                        if (playlists.isEmpty()) EmptyState("≡", "Create your first playlist", "Give it a name above, then add songs from your library.")
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                             items(playlists, key = { it.id }) { playlist ->
                                 SimpleRow(playlist.name, "Tap to open") {
@@ -412,15 +382,15 @@ fun KanadeScreen(model: KanadeViewModel) {
                                 modifier = Modifier.weight(1f))
                             Chip("Import") { m3uImporter.launch(arrayOf("audio/x-mpegurl", "text/*", "*/*")) }
                             Chip("Export") { m3uExporter.launch("kanade-playlist.m3u") }
-                            Chip("Delete") { model.deletePlaylist(selectedPlaylistId); selectedPlaylistId = -1L }
+                            Chip("Delete") { confirmDelete = true }
                         }
                         Spacer(Modifier.height(12.dp))
                         if (selectedTracks.isEmpty()) EmptyState("♫", "Playlist is empty",
-                            "Use the + button on a track to add music.")
+                            "Open a track’s actions and choose Add to playlist.")
                         else TrackList(selectedTracks, favoriteIds,
                             onPlay = { model.playListTracks(selectedTracks, it) },
                             onFavorite = model::toggleFavorite,
-                            onQueue = { model.playback.add(it, true) },
+                            onQueue = model.playback::add,
                             onPlaylist = { model.removeFromPlaylist(selectedPlaylistId, it.id) },
                             playlistAction = "−",
                             onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
@@ -448,7 +418,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                     else TrackList(tracks, favoriteIds,
                         onPlay = { model.playListTracks(tracks, it) },
                         onFavorite = model::toggleFavorite,
-                        onQueue = { model.playback.add(it, true) },
+                        onQueue = model.playback::add,
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                 }
@@ -457,17 +427,7 @@ fun KanadeScreen(model: KanadeViewModel) {
 
         if (playback.hasItem) {
             Spacer(Modifier.height(7.dp))
-            PlayerPanel(playback,
-                onToggle = model.playback::toggle,
-                onNext = model.playback::next,
-                onPrevious = model.playback::previous,
-                onShuffle = model.playback::toggleShuffle,
-                onRepeat = model.playback::cycleRepeat,
-                onSeek = model.playback::seek,
-                onQueue = { overlay = Overlay.QUEUE },
-                onLyrics = { overlay = Overlay.LYRICS },
-                onAudio = { overlay = Overlay.AUDIO },
-                onExpand = { overlay = Overlay.PLAYER })
+            MiniPlayer(playback, { overlay = Overlay.PLAYER }, model.playback::toggle, model.playback::next)
         }
         playback.error?.let { message ->
             Row(Modifier.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -475,19 +435,77 @@ fun KanadeScreen(model: KanadeViewModel) {
                 Chip("Dismiss") { model.playback.clearError() }
             }
         }
-        Spacer(Modifier.height(9.dp))
+        Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+            listOf(Page.HOME, Page.LIBRARY, Page.ONLINE, Page.PLAYLISTS).forEach { tab ->
+                val active = tab == page || (tab == Page.HOME && page == Page.INSIGHTS)
+                val title = when (tab) {
+                    Page.HOME -> "Home"
+                    Page.ONLINE -> "Search"
+                    Page.LIBRARY -> "Library"
+                    Page.PLAYLISTS -> "Playlists"
+                    Page.INSIGHTS -> "Insights"
+                }
+                Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                    .background(if (active) SurfaceLight else Background)
+                    .selectable(active, role = Role.Tab) { page = tab }.padding(vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Label(title, 13.sp, if (active) Accent else Muted, FontWeight.SemiBold)
+                    Spacer(Modifier.height(5.dp))
+                    Box(Modifier.width(18.dp).height(2.dp).background(if (active) Accent else Color.Transparent))
+                }
+            }
+        }
     }
 
-    if (youtubeKeyDialog) FeatureDialog("YouTube Data API key", { youtubeKeyDialog = false }) {
+    if (confirmDelete) FeatureDialog("Delete playlist?", { confirmDelete = false }) {
+        Label("Remove this playlist from your library? Your tracks will stay on the device.", 14.sp, Muted)
+        Spacer(Modifier.height(12.dp))
+        AccentAction("Delete playlist") {
+            model.deletePlaylist(selectedPlaylistId)
+            selectedPlaylistId = -1L
+            confirmDelete = false
+        }
+    }
+    if (setup) FeatureDialog("YouTube catalog settings", { setup = false; pendingSearch = false }) {
+        Label("Catalog searches send your query to Google. Choose Find recording to look for playable audio in Kanade.", 14.sp, Muted)
+        Spacer(Modifier.height(12.dp))
+        SimpleRow("Privacy policy", "Kanade") { openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/privacy-policy.md") }
+        SimpleRow("Terms of use", "Kanade") { openSafeLink(context, "https://github.com/urfavxbf/kanade/blob/main/docs/terms.md") }
+        SimpleRow("Terms of Service", "YouTube") { openSafeLink(context, "https://www.youtube.com/t/terms") }
+        SimpleRow("Privacy policy", "Google") { openSafeLink(context, "https://policies.google.com/privacy") }
+        Spacer(Modifier.height(12.dp))
+        if (!youtubeConsent) AccentAction("Agree and continue") {
+            model.setYouTubePrivacyConsent(true)
+            setup = false
+            if (pendingSearch) {
+                pendingSearch = false
+                if (!youtubeConfigured) { searchAfterKey = true; youtubeKeyDialog = true }
+                else model.searchYouTube(audioQuery)
+            }
+        } else {
+            AccentAction(if (youtubeConfigured) "Change search key" else "Add search key") { setup = false; youtubeKeyDialog = true }
+            Spacer(Modifier.height(8.dp))
+            Chip("Clear key and consent") { model.clearYouTubeConfiguration(); setup = false }
+        }
+    }
+    if (youtubeKeyDialog) FeatureDialog("YouTube Data API key", { youtubeKeyDialog = false; youtubeKeyInput = ""; searchAfterKey = false; keyError = false }) {
         Label("Create a YouTube Data API v3 key in Google Cloud Console. Restrict it to YouTube Data API and the Android app's signing certificate.",
             12.sp, Muted)
+        Spacer(Modifier.height(8.dp))
+        Label("Android app restriction", 13.sp, Accent, FontWeight.Bold)
+        SelectionContainer { Label(context.packageName, 14.sp, PrimaryText) }
+        val fingerprint = remember(model) { model.youtubeKeyFingerprint() }
+        if (fingerprint != null) {
+            Label("SHA-1 of this installation", 12.sp, Muted)
+            SelectionContainer { Label(fingerprint, 14.sp, PrimaryText) }
+        }
         Spacer(Modifier.height(8.dp))
         Chip("Google Cloud credentials ↗") {
             openSafeLink(context, "https://console.cloud.google.com/apis/credentials")
         }
         Spacer(Modifier.height(10.dp))
         BasicTextField(
-            value = youtubeKeyInput, onValueChange = { youtubeKeyInput = it.take(180) },
+            value = youtubeKeyInput, onValueChange = { youtubeKeyInput = it.take(180); keyError = false },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             textStyle = TextStyle(color = PrimaryText, fontSize = 14.sp),
@@ -502,10 +520,15 @@ fun KanadeScreen(model: KanadeViewModel) {
             }
         )
         Spacer(Modifier.height(12.dp))
+        if (keyError) Label("Enter the API key from Google Cloud Credentials.", 13.sp, Pink)
         AccentAction("Save key on this device") {
-            model.configureYouTubeKey(youtubeKeyInput)
-            youtubeKeyInput = ""
-            youtubeKeyDialog = false
+            if (model.configureYouTubeKey(youtubeKeyInput)) {
+                youtubeKeyInput = ""
+                youtubeKeyDialog = false
+                keyError = false
+                if (searchAfterKey) model.searchYouTube(audioQuery)
+                searchAfterKey = false
+            } else keyError = true
         }
         Spacer(Modifier.height(9.dp))
         Label("No key is bundled with the APK. This setting is local to your device. YouTube searches consume your project's API quota.",
@@ -514,24 +537,33 @@ fun KanadeScreen(model: KanadeViewModel) {
 
     when (overlay) {
         Overlay.NONE -> Unit
-        Overlay.PLAYER -> FeatureDialog("Now playing", { overlay = Overlay.NONE }) {
-            AlbumImage(playback.artworkUri, Modifier.fillMaxWidth().height(240.dp))
-            Spacer(Modifier.height(16.dp))
-            Label(playback.title, 22.sp, PrimaryText, FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Label(playback.artist, 15.sp, Muted)
-            Spacer(Modifier.height(12.dp))
-            PlayerPanel(playback,
-                onToggle = model.playback::toggle,
-                onNext = model.playback::next,
-                onPrevious = model.playback::previous,
-                onShuffle = model.playback::toggleShuffle,
-                onRepeat = model.playback::cycleRepeat,
-                onSeek = model.playback::seek,
-                onQueue = { overlay = Overlay.QUEUE },
-                onLyrics = { overlay = Overlay.LYRICS },
-                onAudio = { overlay = Overlay.AUDIO },
-                onExpand = {})
+        Overlay.PLAYER -> Dialog(onDismissRequest = { overlay = Overlay.NONE },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Column(Modifier.fillMaxSize().background(Background).safeDrawingPadding().verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Label("Now playing", 20.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f))
+                    Chip("Close") { overlay = Overlay.NONE }
+                }
+                Spacer(Modifier.height(16.dp))
+                AlbumImage(playback.artworkUri, Modifier.widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f))
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Label(playback.title, 22.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f))
+                    model.findTrack(playback.mediaId)?.let { track ->
+                        TinyButton(if (track.id in favoriteIds) "♥" else "♡", "Favorite current song") { model.toggleFavorite(track) }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Label(playback.artist, 15.sp, Muted)
+                Spacer(Modifier.height(12.dp))
+                val line = LrcParser.current(lyrics.lines, playback.positionMs)
+                lyrics.lines.getOrNull(line)?.let {
+                    Label(it.text, 14.sp, Accent, modifier = Modifier.clickable { overlay = Overlay.LYRICS }, lines = 2)
+                }
+                TransportControls(playback, model, { overlay = it })
+                Spacer(Modifier.height(12.dp))
+            }
         }
         Overlay.QUEUE -> FeatureDialog("Up next", { overlay = Overlay.NONE }) {
             if (playback.queue.isEmpty()) Label("Queue is empty", 14.sp, Muted)
@@ -582,7 +614,7 @@ fun KanadeScreen(model: KanadeViewModel) {
             }
         }
         Overlay.AUDIO -> FeatureDialog("Audio controls", { overlay = Overlay.NONE }) {
-            Label("SLEEP TIMER", 12.sp, Accent, FontWeight.SemiBold)
+            Label(if (playback.sleepMinutesRemaining > 0) "SLEEP TIMER · ${playback.sleepMinutesRemaining} MIN LEFT" else "SLEEP TIMER · OFF", 12.sp, Accent, FontWeight.SemiBold)
             Spacer(Modifier.height(7.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (minutes in listOf(0, 15, 30, 60, 90)) {
@@ -593,7 +625,7 @@ fun KanadeScreen(model: KanadeViewModel) {
             Label("EQUALIZER", 12.sp, Accent, FontWeight.SemiBold)
             Spacer(Modifier.height(7.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                for (preset in listOf("Off", "Bass", "Vocal")) Chip(preset) { model.playback.equalizer(preset) }
+                for (preset in listOf("Off", "Bass", "Vocal")) Chip(preset, playback.equalizerPreset == preset) { model.playback.equalizer(preset) }
             }
             Spacer(Modifier.height(17.dp))
             Label("PLAYBACK SPEED", 12.sp, Accent, FontWeight.SemiBold)
@@ -646,7 +678,7 @@ fun KanadeScreen(model: KanadeViewModel) {
 }
 
 @Composable
-private fun Label(
+internal fun Label(
     text: String, size: TextUnit, color: Color = PrimaryText,
     weight: FontWeight = FontWeight.Normal, modifier: Modifier = Modifier,
     lines: Int = Int.MAX_VALUE,
@@ -655,8 +687,8 @@ private fun Label(
         style = TextStyle(color = color, fontSize = size, fontWeight = weight))
 }
 
-@Composable private fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
-    Box(Modifier.clip(RoundedCornerShape(13.dp))
+@Composable internal fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
+    Box(Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(13.dp))
         .background(if (selected) Accent else SurfaceLight)
         .clickable(onClick = onClick)
         .padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
@@ -666,7 +698,7 @@ private fun Label(
 }
 
 @Composable private fun AccentAction(text: String, onClick: () -> Unit) {
-    Box(Modifier.clip(RoundedCornerShape(13.dp)).background(Accent)
+    Box(Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(13.dp)).background(Accent)
         .clickable(onClick = onClick).padding(horizontal = 17.dp, vertical = 14.dp)) {
         Label(text, 12.sp, Background, FontWeight.Bold)
     }
@@ -691,11 +723,17 @@ private fun SearchField(value: String, hint: String, change: (String) -> Unit, s
 }
 
 @Composable
-private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
+internal fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
     Box(modifier.clip(RoundedCornerShape(15.dp))
-        .background(Brush.linearGradient(listOf(Color(0xFF4F3E70), Color(0xFF241E39)))),
+        .background(Brush.linearGradient(listOf(Color(0xFF735243), Color(0xFF392E26)))),
         contentAlignment = Alignment.Center) {
-        Label("♫", 28.sp, Accent)
+        Canvas(Modifier.fillMaxSize()) {
+            val radius = size.minDimension * .4f
+            drawCircle(Color(0xFF23241F), radius)
+            for (ring in 4..9) drawCircle(Color(0xFF46443C), radius * ring / 10f, style = Stroke(1.dp.toPx()))
+            drawCircle(Accent, radius * .34f)
+            drawCircle(Background, radius * .06f)
+        }
         if (!artwork.isNullOrEmpty()) {
             AsyncImage(model = artwork, contentDescription = "Album cover",
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -704,10 +742,48 @@ private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun AlbumShelf(tracks: List<Track>, query: String, select: (String) -> Unit) {
+    val albums = remember(tracks) {
+        tracks.groupBy { it.album.ifBlank { "Unknown album" } }
+            .entries.sortedBy { it.key.lowercase() }
+    }
+    val matches = remember(albums, query) {
+        albums.filter { (name, songs) ->
+            name.contains(query, ignoreCase = true) || songs.any { song ->
+                listOf(song.artist, song.title, song.filename, song.folder).any { it.contains(query, ignoreCase = true) }
+            }
+        }
+    }
+    if (matches.isEmpty()) {
+        EmptyState("♪", "No albums found", if (query.isBlank()) "Scan local music to browse album covers." else "Try another artist, song or album.")
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(140.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        gridItems(matches, key = { it.key }) { (name, songs) ->
+            Column(Modifier.clip(RoundedCornerShape(16.dp)).background(Surface)
+                .clickable(role = Role.Button) { select(name) }.padding(9.dp)) {
+                AlbumImage(songs.firstNotNullOfOrNull { it.artworkUri }, Modifier.fillMaxWidth().aspectRatio(1f))
+                Column(Modifier.padding(start = 3.dp, top = 8.dp, bottom = 4.dp)) {
+                    Label(name, 15.sp, PrimaryText, FontWeight.Bold, lines = 2)
+                    val artist = songs.first().artist
+                    val credit = if (songs.all { it.artist == artist }) artist else "Various artists"
+                    Label(credit, 12.sp, Muted, lines = 1)
+                    Label(if (songs.size == 1) "1 track" else "${songs.size} tracks", 11.sp, Accent)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun TrackList(
     tracks: List<Track>, favoriteIds: Set<String>,
     onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit,
-    onQueue: (Track) -> Unit, onPlaylist: (Track) -> Unit,
+    onQueue: (Track, Boolean) -> Unit, onPlaylist: (Track) -> Unit,
     playlistAction: String = "+",
     onTags: (Track) -> Unit = {},
 ) {
@@ -723,13 +799,18 @@ private fun TrackList(
                 Column(Modifier.weight(1f).clickable { onPlay(track) }) {
                     Label(track.title, 13.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
                     Label(track.artist, 11.sp, Muted, lines = 1)
-                    Label(if (track.source == TrackSource.LOCAL) "ON DEVICE" else "AUDIUS STREAM",
+                    Label(track.source.label,
                         9.sp, Accent)
                 }
                 TinyButton(if (track.id in favoriteIds) "♥" else "♡", "Favorite") { onFavorite(track) }
-                TinyButton("⇥", "Play next") { onQueue(track) }
-                TinyButton(playlistAction, "Playlist") { onPlaylist(track) }
-                if (track.source == TrackSource.LOCAL) TinyButton("✎", "Edit display metadata") { onTags(track) }
+                var menu by remember { mutableStateOf(false) }
+                TinyButton("⋯", "More actions for ${track.title}") { menu = true }
+                if (menu) FeatureDialog(track.title, { menu = false }) {
+                    SimpleRow("Play next", track.artist) { menu = false; onQueue(track, true) }
+                    SimpleRow("Add to end of queue", track.artist) { menu = false; onQueue(track, false) }
+                    SimpleRow(if (playlistAction == "−") "Remove from playlist" else "Add to playlist", track.artist) { menu = false; onPlaylist(track) }
+                    if (track.source == TrackSource.LOCAL) SimpleRow("Edit track details", track.album) { menu = false; onTags(track) }
+                }
             }
         }
     }
@@ -737,12 +818,12 @@ private fun TrackList(
 
 @Composable
 private fun TinyButton(symbol: String, description: String, onClick: () -> Unit) {
-    Box(Modifier.size(39.dp).clip(CircleShape).clickable(onClick = onClick)
+    Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClick)
         .semantics { contentDescription = description },
         contentAlignment = Alignment.Center) { Label(symbol, 18.sp, Accent) }
 }
 
-@Composable private fun SimpleRow(title: String, subtitle: String, click: () -> Unit) {
+@Composable internal fun SimpleRow(title: String, subtitle: String, click: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
         .background(Surface).clickable(onClick = click).padding(15.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -777,60 +858,53 @@ private fun EmptyState(icon: String, title: String, detail: String, action: (() 
 }
 
 @Composable
-private fun PlayerPanel(
-    state: PlaybackState, onToggle: () -> Unit, onNext: () -> Unit,
-    onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit,
-    onSeek: (Long) -> Unit, onQueue: () -> Unit,
-    onLyrics: () -> Unit, onAudio: () -> Unit, onExpand: () -> Unit,
-) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
-        .background(Brush.linearGradient(listOf(Color(0xFF332640), Color(0xFF1C1B2B), Surface)))
-        .padding(horizontal = 13.dp, vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AlbumImage(state.artworkUri, Modifier.size(51.dp).clickable { onExpand() })
-            Spacer(Modifier.width(11.dp))
-            Column(Modifier.weight(1f).clickable { onExpand() }) {
-                Label(state.title, 14.sp, PrimaryText, FontWeight.Bold, lines = 1)
-                Label(state.artist, 12.sp, Muted, lines = 1)
-            }
-            TinyButton("⏮", "Previous") { onPrevious() }
-            Box(Modifier.size(44.dp).clip(CircleShape).background(Accent).clickable(onClick = onToggle),
-                contentAlignment = Alignment.Center) {
-                Label(if (state.playing) "❚❚" else "▶", 17.sp, Background, FontWeight.Bold)
-            }
-            TinyButton("⏭", "Next") { onNext() }
-        }
-        Spacer(Modifier.height(10.dp))
-        Box(Modifier.fillMaxWidth().height(14.dp)
-            .pointerInput(state.durationMs) {
-                detectTapGestures { point ->
-                    if (size.width > 0 && state.durationMs > 0L) {
-                        onSeek((state.durationMs * (point.x / size.width).coerceIn(0f, 1f)).toLong())
-                    }
+private fun TransportControls(state: PlaybackState, model: KanadeViewModel, open: (Overlay) -> Unit) {
+    val player = model.playback
+    val accentColor = android.graphics.Color.rgb(255, 171, 125)
+    androidx.compose.ui.viewinterop.AndroidView(
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        factory = { context -> android.widget.SeekBar(context).apply {
+            max = 1000
+            contentDescription = "Playback position"
+            progressTintList = android.content.res.ColorStateList.valueOf(accentColor)
+            thumbTintList = progressTintList
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: android.widget.SeekBar, position: Int, fromUser: Boolean) {
+                    if (fromUser) player.seek(player.state.value.durationMs * position / bar.max)
                 }
-            }, contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(SurfaceLight))
-            Box(Modifier.fillMaxWidth(
-                if (state.durationMs > 0) (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
-                else 0f
-            ).height(4.dp).clip(CircleShape).background(Accent))
+                override fun onStartTrackingTouch(bar: android.widget.SeekBar) = Unit
+                override fun onStopTrackingTouch(bar: android.widget.SeekBar) = Unit
+            })
+        } },
+        update = { bar ->
+            bar.isEnabled = state.durationMs > 0
+            if (!bar.isPressed) bar.progress = (state.positionMs * bar.max / state.durationMs.coerceAtLeast(1)).toInt()
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Label(DurationFormatter.format(state.positionMs), 10.sp, Muted)
-            Spacer(Modifier.weight(1f))
-            TinyButton("⇄", "Shuffle") { onShuffle() }
-            Label(if (state.shuffle) "ON" else "OFF", 9.sp, if (state.shuffle) Accent else Muted)
-            TinyButton(when (state.repeatMode) {
-                Player.REPEAT_MODE_ALL -> "↻"
-                Player.REPEAT_MODE_ONE -> "↺"
-                else -> "×"
-            }, "Repeat mode") { onRepeat() }
-            TinyButton("☷", "Queue") { onQueue() }
-            TinyButton("♫", "Lyrics") { onLyrics() }
-            TinyButton("☷", "Audio settings") { onAudio() }
-            Spacer(Modifier.weight(1f))
-            Label(DurationFormatter.format(state.durationMs), 10.sp, Muted)
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Label(DurationFormatter.format(state.positionMs), 12.sp, Muted)
+        Label(DurationFormatter.format(state.durationMs), 12.sp, Muted)
+    }
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically) {
+        TinyButton("⏮", "Previous track", player::previous)
+        AccentAction(if (state.playing) "Pause" else "Play", player::toggle)
+        TinyButton("⏭", "Next track", player::next)
+    }
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip("Shuffle", state.shuffle, player::toggleShuffle)
+        val repeat = when (state.repeatMode) {
+            Player.REPEAT_MODE_ALL -> "Repeat all"
+            Player.REPEAT_MODE_ONE -> "Repeat one"
+            else -> "Repeat off"
         }
+        Chip(repeat, state.repeatMode != Player.REPEAT_MODE_OFF, player::cycleRepeat)
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip("Up next") { open(Overlay.QUEUE) }
+        Chip("Lyrics") { open(Overlay.LYRICS) }
+        Chip("Sound") { open(Overlay.AUDIO) }
     }
 }
 
@@ -838,13 +912,13 @@ private fun PlayerPanel(
 private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = dismiss) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(25.dp))
-            .background(Color(0xFF1C1D2C)).padding(19.dp)) {
+            .background(Color(0xFF252621)).padding(19.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Label(title, 20.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f))
                 Chip("✕") { dismiss() }
             }
             Spacer(Modifier.height(15.dp))
-            content()
+            Column(Modifier.verticalScroll(rememberScrollState())) { content() }
         }
     }
 }
@@ -866,8 +940,24 @@ private fun YouTubeResultRow(video: YouTubeVideo, onOpen: () -> Unit) {
             Label(video.title, 13.sp, PrimaryText, FontWeight.SemiBold, lines = 2)
             Spacer(Modifier.height(3.dp))
             Label(video.channelTitle, 11.sp, Muted, lines = 1)
-            Label("YOUTUBE • DISCOVERY ONLY", 9.sp, Accent)
+            Label("YouTube", 11.sp, Accent)
         }
-        Chip("Open ↗") { onOpen() }
+        Chip("Find recording", onClick = onOpen)
+    }
+}
+
+@Composable
+private fun MiniPlayer(state: PlaybackState, expand: () -> Unit, toggle: () -> Unit, next: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceLight).padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f).clickable(onClick = expand), verticalAlignment = Alignment.CenterVertically) {
+            AlbumImage(state.artworkUri, Modifier.size(46.dp))
+            Column(Modifier.padding(start = 10.dp)) {
+                Label(state.title, 14.sp, PrimaryText, FontWeight.Bold, lines = 1)
+                Label(state.artist, 12.sp, Muted, lines = 1)
+            }
+        }
+        TinyButton(if (state.playing) "Ⅱ" else "▶", if (state.playing) "Pause" else "Play", toggle)
+        TinyButton("›", "Next track", next)
     }
 }

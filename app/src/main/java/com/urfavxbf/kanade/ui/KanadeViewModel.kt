@@ -12,6 +12,7 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.urfavxbf.kanade.data.YouTubeMusicRepository
 import com.urfavxbf.kanade.data.YouTubeDiscoveryRepository
 import com.urfavxbf.kanade.data.YouTubeVideo
 import com.urfavxbf.kanade.data.DisplayTagOverrides
@@ -44,14 +45,14 @@ data class LibraryState(
 data class DiscoverState(
     val tracks: List<Track> = emptyList(),
     val searching: Boolean = false,
-    val message: String = "Search for songs or artists on Audius.",
+    val message: String = "Search songs and artists online.",
 )
 data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Select a local LRC lyrics file.")
 
 data class YouTubeDiscoveryState(
     val results: List<YouTubeVideo> = emptyList(),
     val loading: Boolean = false,
-    val message: String = "Search the YouTube music catalog (metadata only; no Kanade playback).",
+    val message: String = "Find titles and artists in the YouTube catalog.",
 )
 
 class KanadeViewModel(app: Application) : AndroidViewModel(app) {
@@ -64,7 +65,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val youtube: StateFlow<YouTubeDiscoveryState> = _youtube
     private val _youtubeConfigured = MutableStateFlow(!youtubePreferences.getString("apiKey", null).isNullOrBlank())
     val youtubeConfigured: StateFlow<Boolean> = _youtubeConfigured
-    private val _youtubeConsent = MutableStateFlow(youtubePreferences.getBoolean("privacyConsent", false))
+    private val _youtubeConsent = MutableStateFlow(youtubePreferences.getBoolean("playerConsentV2", false))
     val youtubeConsent: StateFlow<Boolean> = _youtubeConsent
     private val store = MusicStore(KanadeDatabase.open(app).musicDao())
     private val lyricPrefs = app.getSharedPreferences("kanade_lyrics", Context.MODE_PRIVATE)
@@ -161,24 +162,62 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _audioOpenError = MutableStateFlow<String?>(null)
+    val audioOpenError: StateFlow<String?> = _audioOpenError
+    private var openAudioJob: Job? = null
+
+    fun openAudio(uri: Uri) {
+        openAudioJob?.cancel()
+        openAudioJob = viewModelScope.launch {
+            _audioOpenError.value = null
+            try {
+                val track = local.readDocument(uri)
+                playListTracks(listOf(track), track)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _audioOpenError.value = "Could not open this song. Choose another audio file."
+            }
+        }
+    }
+
+    private val _trending = MutableStateFlow<List<Track>>(emptyList())
+    val trending: StateFlow<List<Track>> = _trending
+    private var trendingJob: Job? = null
+
+    fun loadTrending() {
+        if (_trending.value.isNotEmpty() || trendingJob?.isActive == true || !hasNetwork()) return
+        trendingJob = viewModelScope.launch {
+            try {
+                val tracks = audius.trending()
+                tracks.forEach { known[it.id] = it }
+                _trending.value = tracks
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
+    fun youtubeKeyFingerprint(): String? = youtubeRepo.signingCertificateSha1()?.chunked(2)?.joinToString(":")
+
     /**
      * The user enters a Google Cloud project API key in their own app instance.
      * Never bundle a shared key into a distributable APK.
      */
-    fun configureYouTubeKey(input: String) {
+    fun configureYouTubeKey(input: String): Boolean {
         val normalized = input.trim()
         if (normalized.length !in 20..180 || !normalized.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
             _youtube.value = YouTubeDiscoveryState(message = "Invalid key format. Paste the key from Google Cloud Console.")
-            return
+            return false
         }
         youtubeSearchJob?.cancel()
         youtubePreferences.edit().putString("apiKey", normalized).apply()
         _youtubeConfigured.value = true
         _youtube.value = YouTubeDiscoveryState(message = "API key saved on this device. Search YouTube to test it.")
+        return true
     }
 
     fun setYouTubePrivacyConsent(agreed: Boolean) {
-        youtubePreferences.edit().putBoolean("privacyConsent", agreed).apply()
+        youtubePreferences.edit().putBoolean("playerConsentV2", agreed).apply()
         _youtubeConsent.value = agreed
         if (!agreed) {
             youtubeSearchJob?.cancel()
@@ -188,7 +227,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearYouTubeConfiguration() {
         youtubeSearchJob?.cancel()
-        youtubePreferences.edit().remove("apiKey").putBoolean("privacyConsent", false).apply()
+        youtubePreferences.edit().remove("apiKey").putBoolean("playerConsentV2", false).apply()
         _youtubeConsent.value = false
         _youtubeConfigured.value = false
         _youtube.value = YouTubeDiscoveryState()
@@ -219,7 +258,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
                 val results = youtubeRepo.search(query, key)
                 _youtube.value = YouTubeDiscoveryState(results = results, message =
                     if (results.isEmpty()) "No matches in this search. Try another title or artist."
-                    else "YouTube results for Philippines. These are not playable in Kanade.")
+                    else "Select a title to search for playable recordings.")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _youtube.value = YouTubeDiscoveryState(message = e.message ?: "YouTube search failed.")
@@ -227,7 +266,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun search(query: String) {
+    fun search(query: String, useAudius: Boolean) {
         searchJob?.cancel()
         val normalized = query.trim()
         if (normalized.isEmpty() || normalized.length > 120) {
@@ -238,16 +277,17 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             _discover.value = DiscoverState(message = "You're offline. Your local songs still work.")
             return
         }
+        val provider = if (useAudius) "Audius" else "YouTube Music"
         searchJob = viewModelScope.launch {
-            _discover.value = DiscoverState(searching = true, message = "Searching Audius…")
+            _discover.value = DiscoverState(searching = true, message = "Searching $provider…")
             try {
-                val tracks = audius.search(normalized)
+                val tracks = if (useAudius) audius.search(normalized) else YouTubeMusicRepository.search(normalized)
                 tracks.forEach { known[it.id] = it }
                 _discover.value = DiscoverState(tracks = tracks,
-                    message = if (tracks.isEmpty()) "No matches. Try another song." else "${tracks.size} results")
+                    message = if (tracks.isEmpty()) "No matching songs found on $provider." else "${tracks.size} results from $provider")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _discover.value = DiscoverState(message = "Couldn't reach Audius. Check your connection.")
+                _discover.value = DiscoverState(message = "Couldn't load $provider results. Try again.")
             }
         }
     }

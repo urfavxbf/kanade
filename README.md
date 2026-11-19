@@ -4,10 +4,13 @@ Kanade is a native Android music player for **offline local music** and **licens
 
 ## What works
 
+- Home opens on your music. Play a file from the Android picker, resume your queue, or browse recently played songs, favorites and new additions. Tap the mini-player for full-screen Now Playing.
 - Offline library: songs, folders, albums, artists, sorting, favorites, playlists, local display metadata, and listening history.
+- Search across songs, artists, albums and playlists. Home includes playable trending music from Audius while online.
 - Native playback: background media session, editable queue, shuffle/repeat, seek, sleep timer, audio presets on supported devices, and full Now Playing UI.
 - Audius: independent music search and authorized streams **playing inside Kanade** when available.
-- **YouTube Data API v3: OPM discovery / video metadata search only.** The YouTube API does **not** permit Kanade to isolate/stream YouTube audio in the native player, nor does it provide media stream URLs. YouTube results appear in a separate, clearly labeled discovery section and open on YouTube only if a user explicitly chooses to do so.
+- **Search YouTube Music** searches the signed-out InnerTube music catalog, using the song filter also used by SMusic. Kanade stores song IDs in queues and resolves available audio on play through Media3. No Google Cloud key is needed for this source. The internal API and availability can change.
+- **Search → Catalog** uses YouTube Data API v3 to discover music titles. Find recording searches local music and the selected online source. Tap an available recording to play it in the native player.
 
 ## YouTube setup — no paid service required
 
@@ -18,8 +21,8 @@ The feature requires active acceptance of **[Kanade Privacy Policy](docs/privacy
 ## Product principles
 
 - No separate external music player is required for local or authorized Audius songs.
-- No YouTube ripping, extracting audio, hidden/background video player, unauthorized download or caching, or embedded credentials in source.
-- All YouTube data remains **discovery metadata**; it is not inserted into a native audio queue.
+- YouTube Music playback uses transient audio URLs supplied by the player response. No audiovisual downloads or bundled credentials.
+- All playable songs use the same native audio session.
 - The playback queue has a single owner in the Android media service.
 - Local music continues offline.
 - Key setup, permissions and network errors are explicit.

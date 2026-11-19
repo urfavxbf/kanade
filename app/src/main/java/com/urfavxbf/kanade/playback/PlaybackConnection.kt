@@ -31,6 +31,8 @@ data class PlaybackState(
     val shuffle: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val speed: Float = 1f,
+    val sleepMinutesRemaining: Long = 0,
+    val equalizerPreset: String = "Off",
     val index: Int = 0,
     val queue: List<QueueEntry> = emptyList(),
     val error: String? = null,
@@ -39,6 +41,7 @@ data class PlaybackState(
 class PlaybackConnection(context: Context) {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("kanade_queue", Context.MODE_PRIVATE)
+    private val soundPrefs = app.getSharedPreferences("kanade_audio", Context.MODE_PRIVATE)
     private val future: ListenableFuture<MediaController> =
         MediaController.Builder(
             app,
@@ -56,7 +59,9 @@ class PlaybackConnection(context: Context) {
         override fun onEvents(player: Player, events: Player.Events) = sync()
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             _state.value = _state.value.copy(
-                error = "Could not play this track. Try another song or check your connection."
+                error = if (controller?.currentMediaItem?.mediaId?.startsWith("ytmusic:") == true)
+                    "YouTube Music could not play this recording. Try another result."
+                else "Could not play this track. Try another song or check your connection."
             )
         }
     }
@@ -131,7 +136,17 @@ class PlaybackConnection(context: Context) {
         sync()
     }
 
-    fun toggle() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
+    fun pause() { pendingQueue = null; controller?.pause() }
+    fun toggle() {
+        controller?.let { player ->
+            if (player.isPlaying) player.pause()
+            else {
+                if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                if (player.playbackState == Player.STATE_ENDED) player.seekToDefaultPosition()
+                player.play()
+            }
+        }
+    }
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPreviousMediaItem() }
     fun seek(positionMs: Long) { controller?.seekTo(positionMs.coerceAtLeast(0)) }
@@ -176,6 +191,8 @@ class PlaybackConnection(context: Context) {
             shuffle = player.shuffleModeEnabled,
             repeatMode = player.repeatMode,
             speed = player.playbackParameters.speed,
+            sleepMinutesRemaining = ((soundPrefs.getLong("sleepDeadline", 0L) - System.currentTimeMillis() + 59_999L) / 60_000L).coerceAtLeast(0L),
+            equalizerPreset = soundPrefs.getString("eq", "Off") ?: "Off",
             index = player.currentMediaItemIndex.coerceAtLeast(0),
             queue = (0 until player.mediaItemCount).map { i ->
                 val item = player.getMediaItemAt(i)

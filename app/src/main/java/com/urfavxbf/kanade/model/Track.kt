@@ -30,4 +30,4 @@ data class Track(
         .build()
 }
 
-enum class TrackSource { LOCAL, AUDIUS }
+enum class TrackSource(val label: String) { LOCAL("On device"), AUDIUS("Audius"), YOUTUBE_MUSIC("YouTube Music") }

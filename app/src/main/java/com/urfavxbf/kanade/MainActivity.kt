@@ -13,9 +13,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, true)
-        window.statusBarColor = android.graphics.Color.rgb(11, 12, 18)
-        window.navigationBarColor = android.graphics.Color.rgb(11, 12, 18)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.rgb(20, 21, 19)
+        window.navigationBarColor = android.graphics.Color.rgb(20, 21, 19)
         setContent { KanadeScreen(model) }
     }
 }
