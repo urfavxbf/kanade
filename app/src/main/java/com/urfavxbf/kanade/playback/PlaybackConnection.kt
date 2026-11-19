@@ -131,6 +131,7 @@ class PlaybackConnection(context: Context) {
         sync()
     }
 
+    fun pause() { pendingQueue = null; controller?.pause() }
     fun toggle() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPreviousMediaItem() }

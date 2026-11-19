@@ -31,7 +31,7 @@ object YouTubeSearchUrl {
         val key = URLEncoder.encode(apiKey.trim(), "UTF-8")
         return "https://www.googleapis.com/youtube/v3/search" +
             "?part=snippet&type=video&videoCategoryId=10&regionCode=PH" +
-            "&safeSearch=moderate&maxResults=15&q=$encoded&key=$key"
+            "&videoEmbeddable=true&videoSyndicated=true&safeSearch=moderate&maxResults=15&q=$encoded&key=$key"
     }
 }
 

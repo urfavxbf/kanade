@@ -51,7 +51,7 @@ data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: St
 data class YouTubeDiscoveryState(
     val results: List<YouTubeVideo> = emptyList(),
     val loading: Boolean = false,
-    val message: String = "Search the YouTube music catalog (metadata only; no Kanade playback).",
+    val message: String = "Search by song or artist, or paste a YouTube link.",
 )
 
 class KanadeViewModel(app: Application) : AndroidViewModel(app) {
@@ -64,7 +64,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val youtube: StateFlow<YouTubeDiscoveryState> = _youtube
     private val _youtubeConfigured = MutableStateFlow(!youtubePreferences.getString("apiKey", null).isNullOrBlank())
     val youtubeConfigured: StateFlow<Boolean> = _youtubeConfigured
-    private val _youtubeConsent = MutableStateFlow(youtubePreferences.getBoolean("privacyConsent", false))
+    private val _youtubeConsent = MutableStateFlow(youtubePreferences.getBoolean("playerConsentV2", false))
     val youtubeConsent: StateFlow<Boolean> = _youtubeConsent
     private val store = MusicStore(KanadeDatabase.open(app).musicDao())
     private val lyricPrefs = app.getSharedPreferences("kanade_lyrics", Context.MODE_PRIVATE)
@@ -178,7 +178,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setYouTubePrivacyConsent(agreed: Boolean) {
-        youtubePreferences.edit().putBoolean("privacyConsent", agreed).apply()
+        youtubePreferences.edit().putBoolean("playerConsentV2", agreed).apply()
         _youtubeConsent.value = agreed
         if (!agreed) {
             youtubeSearchJob?.cancel()
@@ -188,7 +188,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearYouTubeConfiguration() {
         youtubeSearchJob?.cancel()
-        youtubePreferences.edit().remove("apiKey").putBoolean("privacyConsent", false).apply()
+        youtubePreferences.edit().remove("apiKey").putBoolean("playerConsentV2", false).apply()
         _youtubeConsent.value = false
         _youtubeConfigured.value = false
         _youtube.value = YouTubeDiscoveryState()
@@ -219,7 +219,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
                 val results = youtubeRepo.search(query, key)
                 _youtube.value = YouTubeDiscoveryState(results = results, message =
                     if (results.isEmpty()) "No matches in this search. Try another title or artist."
-                    else "YouTube results for Philippines. These are not playable in Kanade.")
+                    else "Choose a video to start watching.")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _youtube.value = YouTubeDiscoveryState(message = e.message ?: "YouTube search failed.")

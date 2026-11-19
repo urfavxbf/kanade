@@ -6,9 +6,9 @@ Kanade uses **YouTube Data API v3** for optional Philippine music discovery (not
 
 1. In [Google Cloud Console](https://console.cloud.google.com/apis/library/youtube.googleapis.com), create/select your own project and enable **YouTube Data API v3**.
 2. In [API Credentials](https://console.cloud.google.com/apis/credentials), create an API key. Apply **API restrictions: YouTube Data API v3**, and set **Android application restrictions** with the package `com.urfavxbf.kanade` and the installed APK's SHA-1 signing certificate.
-3. Install the Kanade APK. In Online > YouTube, review Kanade's privacy policy and YouTube Terms, explicitly agree, then paste the key into **API key settings** in Kanade (not in chat or GitHub).
+3. Install the Kanade APK. In Discover > YouTube settings, review Kanade's privacy policy and YouTube Terms, explicitly agree, then paste the key into **API key settings** in Kanade (not in chat or GitHub).
 4. Search OPM songs/artists. Results are sourced from `youtube/v3/search` with `regionCode=PH`, `videoCategoryId=10`, and `type=video`.
-5. Metadata results may be opened on YouTube in the official app or browser only by tapping an explicit action; they **cannot** be inserted into Kanade's native playback queue.
+5. Tap Play on a result to open a foreground YouTube mix. The remaining results follow in order. You can also paste a YouTube watch, short, live or share link into Discover after consent without a search key.
 
 ## Quota and security
 
