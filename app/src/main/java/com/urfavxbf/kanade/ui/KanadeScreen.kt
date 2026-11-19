@@ -1,6 +1,10 @@
 package com.urfavxbf.kanade.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -119,7 +123,9 @@ fun KanadeScreen(model: KanadeViewModel) {
     var query by rememberSaveable { mutableStateOf("") }
     var onlineQuery by rememberSaveable { mutableStateOf("") }
     var onlineProvider by rememberSaveable { mutableStateOf("YouTube") }
-    var youtubeKeyDialog by remember { mutableStateOf(false) }
+    var youtubeKeyDialog by rememberSaveable { mutableStateOf(false) }
+    var searchAfterKey by rememberSaveable { mutableStateOf(false) }
+    var keyError by remember { mutableStateOf(false) }
     var youtubeKeyInput by remember { mutableStateOf("") }
     var playlistName by rememberSaveable { mutableStateOf("") }
     var selectedPlaylistId by rememberSaveable { mutableStateOf(-1L) }
@@ -149,9 +155,16 @@ fun KanadeScreen(model: KanadeViewModel) {
         when {
             !youtubeConsent -> { pendingSearch = true; setup = true }
             id != null -> watch("YouTube video", listOf(id))
-            !youtubeConfigured -> youtubeKeyDialog = true
+            !youtubeConfigured -> { searchAfterKey = true; youtubeKeyDialog = true }
             else -> model.searchYouTube(onlineQuery)
         }
+    }
+    fun findMusicVideo(title: String, artist: String) {
+        overlay = Overlay.NONE
+        page = Page.ONLINE
+        onlineProvider = "YouTube"
+        onlineQuery = listOf(title, artist).filter { it.isNotBlank() }.joinToString(" ").take(120)
+        searchVideo()
     }
     BackHandler(page == Page.PLAYLISTS && selectedPlaylistId >= 0) { selectedPlaylistId = -1L }
     BackHandler(page == Page.LIBRARY && (album.isNotEmpty() || folder.isNotEmpty())) { album = ""; folder = "" }
@@ -221,14 +234,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                                 }
                             }
                         } else if (filter == "Albums" && album.isBlank()) {
-                            val albums = library.tracks.map { it.album.ifBlank { "Unknown album" } }.distinct().sorted()
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                                items(albums) { item ->
-                                    SimpleRow(item, "${library.tracks.count { it.album.ifBlank { "Unknown album" } == item }} tracks") {
-                                        album = item
-                                    }
-                                }
-                            }
+                            AlbumShelf(library.tracks, query) { album = it; query = "" }
                         } else if (filter == "Artists" && album.isBlank()) {
                             val artists = library.tracks.map { it.artist }.distinct().sorted()
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -276,6 +282,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                                     onPlay = { model.playListTracks(shown, it) },
                                     onFavorite = model::toggleFavorite,
                                     onQueue = model.playback::add,
+                                    onFindVideo = { findMusicVideo(it.title, it.artist) },
                                     onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                                     onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                             }
@@ -289,7 +296,11 @@ fun KanadeScreen(model: KanadeViewModel) {
                     }
                     Spacer(Modifier.height(13.dp))
                     if (onlineProvider == "YouTube") {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val listState = rememberLazyListState()
+                        LaunchedEffect(youtube.results) {
+                            if (youtube.results.isNotEmpty()) listState.scrollToItem(5)
+                        }
+                        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             item { RecordSleeve {
                                 if (youtubeConsent) playStarterMix() else { pendingMix = true; setup = true }
                             } }
@@ -331,6 +342,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                                 onPlay = model::playOnline,
                                 onFavorite = model::toggleFavorite,
                                 onQueue = model.playback::add,
+                                onFindVideo = { findMusicVideo(it.title, it.artist) },
                                 onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                                 onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                         }
@@ -378,6 +390,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                             onPlay = { model.playListTracks(selectedTracks, it) },
                             onFavorite = model::toggleFavorite,
                             onQueue = model.playback::add,
+                            onFindVideo = { findMusicVideo(it.title, it.artist) },
                             onPlaylist = { model.removeFromPlaylist(selectedPlaylistId, it.id) },
                             playlistAction = "−",
                             onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
@@ -406,6 +419,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                         onPlay = { model.playListTracks(tracks, it) },
                         onFavorite = model::toggleFavorite,
                         onQueue = model.playback::add,
+                        onFindVideo = { findMusicVideo(it.title, it.artist) },
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                 }
@@ -477,7 +491,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                 pendingSearch = false
                 val id = YouTubeLink.videoId(onlineQuery)
                 if (id != null) watch("YouTube video", listOf(id))
-                else if (!youtubeConfigured) youtubeKeyDialog = true
+                else if (!youtubeConfigured) { searchAfterKey = true; youtubeKeyDialog = true }
                 else model.searchYouTube(onlineQuery)
             }
         } else {
@@ -486,16 +500,24 @@ fun KanadeScreen(model: KanadeViewModel) {
             Chip("Clear key and consent") { watchIds = arrayListOf(); model.clearYouTubeConfiguration(); setup = false }
         }
     }
-    if (youtubeKeyDialog) FeatureDialog("YouTube Data API key", { youtubeKeyDialog = false; youtubeKeyInput = "" }) {
+    if (youtubeKeyDialog) FeatureDialog("YouTube Data API key", { youtubeKeyDialog = false; youtubeKeyInput = ""; searchAfterKey = false; keyError = false }) {
         Label("Create a YouTube Data API v3 key in Google Cloud Console. Restrict it to YouTube Data API and the Android app's signing certificate.",
             12.sp, Muted)
+        Spacer(Modifier.height(8.dp))
+        Label("Android app restriction", 13.sp, Accent, FontWeight.Bold)
+        SelectionContainer { Label(context.packageName, 14.sp, PrimaryText) }
+        val fingerprint = remember(model) { model.youtubeKeyFingerprint() }
+        if (fingerprint != null) {
+            Label("SHA-1 of this installation", 12.sp, Muted)
+            SelectionContainer { Label(fingerprint, 14.sp, PrimaryText) }
+        }
         Spacer(Modifier.height(8.dp))
         Chip("Google Cloud credentials ↗") {
             openSafeLink(context, "https://console.cloud.google.com/apis/credentials")
         }
         Spacer(Modifier.height(10.dp))
         BasicTextField(
-            value = youtubeKeyInput, onValueChange = { youtubeKeyInput = it.take(180) },
+            value = youtubeKeyInput, onValueChange = { youtubeKeyInput = it.take(180); keyError = false },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             textStyle = TextStyle(color = PrimaryText, fontSize = 14.sp),
@@ -510,10 +532,15 @@ fun KanadeScreen(model: KanadeViewModel) {
             }
         )
         Spacer(Modifier.height(12.dp))
+        if (keyError) Label("Enter the API key from Google Cloud Credentials.", 13.sp, Pink)
         AccentAction("Save key on this device") {
-            model.configureYouTubeKey(youtubeKeyInput)
-            youtubeKeyInput = ""
-            youtubeKeyDialog = false
+            if (model.configureYouTubeKey(youtubeKeyInput)) {
+                youtubeKeyInput = ""
+                youtubeKeyDialog = false
+                keyError = false
+                if (searchAfterKey) model.searchYouTube(onlineQuery)
+                searchAfterKey = false
+            } else keyError = true
         }
         Spacer(Modifier.height(9.dp))
         Label("No key is bundled with the APK. This setting is local to your device. YouTube searches consume your project's API quota.",
@@ -530,6 +557,8 @@ fun KanadeScreen(model: KanadeViewModel) {
             Label(playback.artist, 15.sp, Muted)
             Spacer(Modifier.height(12.dp))
             TransportControls(playback, model, { overlay = it })
+            Spacer(Modifier.height(12.dp))
+            SimpleRow("Find music video", "Search YouTube") { findMusicVideo(playback.title, playback.artist) }
         }
         Overlay.QUEUE -> FeatureDialog("Up next", { overlay = Overlay.NONE }) {
             if (playback.queue.isEmpty()) Label("Queue is empty", 14.sp, Muted)
@@ -708,10 +737,49 @@ private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun AlbumShelf(tracks: List<Track>, query: String, select: (String) -> Unit) {
+    val albums = remember(tracks) {
+        tracks.groupBy { it.album.ifBlank { "Unknown album" } }
+            .entries.sortedBy { it.key.lowercase() }
+    }
+    val matches = remember(albums, query) {
+        albums.filter { (name, songs) ->
+            name.contains(query, ignoreCase = true) || songs.any { song ->
+                listOf(song.artist, song.title, song.filename, song.folder).any { it.contains(query, ignoreCase = true) }
+            }
+        }
+    }
+    if (matches.isEmpty()) {
+        EmptyState("♪", "No albums found", if (query.isBlank()) "Scan local music to browse album covers." else "Try another artist, song or album.")
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(140.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        gridItems(matches, key = { it.key }) { (name, songs) ->
+            Column(Modifier.clip(RoundedCornerShape(16.dp)).background(Surface)
+                .clickable(role = Role.Button) { select(name) }.padding(9.dp)) {
+                AlbumImage(songs.firstNotNullOfOrNull { it.artworkUri }, Modifier.fillMaxWidth().aspectRatio(1f))
+                Column(Modifier.padding(start = 3.dp, top = 8.dp, bottom = 4.dp)) {
+                    Label(name, 15.sp, PrimaryText, FontWeight.Bold, lines = 2)
+                    val artist = songs.first().artist
+                    val credit = if (songs.all { it.artist == artist }) artist else "Various artists"
+                    Label(credit, 12.sp, Muted, lines = 1)
+                    Label(if (songs.size == 1) "1 track" else "${songs.size} tracks", 11.sp, Accent)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun TrackList(
     tracks: List<Track>, favoriteIds: Set<String>,
     onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit,
     onQueue: (Track, Boolean) -> Unit, onPlaylist: (Track) -> Unit,
+    onFindVideo: (Track) -> Unit,
     playlistAction: String = "+",
     onTags: (Track) -> Unit = {},
 ) {
@@ -734,6 +802,7 @@ private fun TrackList(
                 var menu by remember { mutableStateOf(false) }
                 TinyButton("⋯", "More actions for ${track.title}") { menu = true }
                 if (menu) FeatureDialog(track.title, { menu = false }) {
+                    SimpleRow("Find music video", "Search YouTube") { menu = false; onFindVideo(track) }
                     SimpleRow("Play next", track.artist) { menu = false; onQueue(track, true) }
                     SimpleRow("Add to end of queue", track.artist) { menu = false; onQueue(track, false) }
                     SimpleRow(if (playlistAction == "−") "Remove from playlist" else "Add to playlist", track.artist) { menu = false; onPlaylist(track) }

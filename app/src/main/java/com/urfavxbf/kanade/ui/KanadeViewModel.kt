@@ -161,20 +161,23 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun youtubeKeyFingerprint(): String? = youtubeRepo.signingCertificateSha1()?.chunked(2)?.joinToString(":")
+
     /**
      * The user enters a Google Cloud project API key in their own app instance.
      * Never bundle a shared key into a distributable APK.
      */
-    fun configureYouTubeKey(input: String) {
+    fun configureYouTubeKey(input: String): Boolean {
         val normalized = input.trim()
         if (normalized.length !in 20..180 || !normalized.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
             _youtube.value = YouTubeDiscoveryState(message = "Invalid key format. Paste the key from Google Cloud Console.")
-            return
+            return false
         }
         youtubeSearchJob?.cancel()
         youtubePreferences.edit().putString("apiKey", normalized).apply()
         _youtubeConfigured.value = true
         _youtube.value = YouTubeDiscoveryState(message = "API key saved on this device. Search YouTube to test it.")
+        return true
     }
 
     fun setYouTubePrivacyConsent(agreed: Boolean) {
