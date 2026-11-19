@@ -4,11 +4,12 @@ Kanade is a native Android music player for **offline local music** and **licens
 
 ## What works
 
+- Home opens on your music. Play a file from the Android picker, resume your queue, or browse recently played songs, favorites and new additions. Tap the mini-player for full-screen Now Playing.
 - Offline library: songs, folders, albums, artists, sorting, favorites, playlists, local display metadata, and listening history.
 - Browse album covers in Library → Albums. Choose **Find music video** from a track’s actions or Now Playing to search YouTube by title and artist. Selecting a video switches playback.
 - Native playback: background media session, editable queue, shuffle/repeat, seek, sleep timer, audio presets on supported devices, and full Now Playing UI.
 - Audius: independent music search and authorized streams **playing inside Kanade** when available.
-- **YouTube Listening room** uses the YouTube Data API v3 for Philippine music search and the official visible YouTube embed for playback. Open a watch link without a search key, play a search result, or build a session queue from videos and links. Reorder it and press Play queue for continuous foreground playback with Previous, Next and Retry inside Kanade.
+- **Discover → Music videos** uses the YouTube Data API v3 for Philippine music search and the official visible YouTube embed for playback. Open a watch link without a search key, play a search result, or build a session queue from videos and links. Reorder it and press Play queue for continuous foreground playback with Previous, Next and Retry inside Kanade.
 
 ## YouTube setup — no paid service required
 

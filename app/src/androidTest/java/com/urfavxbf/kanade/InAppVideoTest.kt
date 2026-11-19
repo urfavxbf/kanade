@@ -21,6 +21,11 @@ class InAppVideoTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     @Test fun starterMixOpensEmbeddedPlayerAndKeepsNavigationInKanade() {
+        compose.onNodeWithText("Your music").assertExists()
+        compose.onNodeWithText("YouTube settings").assertDoesNotExist()
+        compose.onNodeWithText("Discover").performClick()
+        compose.onNodeWithText("Discover songs").assertExists()
+        compose.onNodeWithText("Music videos").performClick()
         compose.onNodeWithText("Play mix", substring = true).performClick()
         compose.onNodeWithText("Agree and continue").performClick()
         compose.onNodeWithText("YouTube player").assertExists()

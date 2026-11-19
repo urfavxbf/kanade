@@ -135,7 +135,16 @@ class PlaybackConnection(context: Context) {
     }
 
     fun pause() { pendingQueue = null; controller?.pause() }
-    fun toggle() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
+    fun toggle() {
+        controller?.let { player ->
+            if (player.isPlaying) player.pause()
+            else {
+                if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                if (player.playbackState == Player.STATE_ENDED) player.seekToDefaultPosition()
+                player.play()
+            }
+        }
+    }
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPreviousMediaItem() }
     fun seek(positionMs: Long) { controller?.seekTo(positionMs.coerceAtLeast(0)) }

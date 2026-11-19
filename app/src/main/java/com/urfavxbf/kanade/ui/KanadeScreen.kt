@@ -83,12 +83,12 @@ import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackState
 
 private val Background = Color(0xFF141513)
-private val Surface = Color(0xFF20211F)
+internal val Surface = Color(0xFF20211F)
 private val SurfaceLight = Color(0xFF323430)
-private val Accent = Color(0xFFFFAB7D)
+internal val Accent = Color(0xFFFFAB7D)
 private val Pink = Color(0xFFFFC8A7)
-private val PrimaryText = Color(0xFFFAF4E8)
-private val Muted = Color(0xFFBCBDB2)
+internal val PrimaryText = Color(0xFFFAF4E8)
+internal val Muted = Color(0xFFBCBDB2)
 
 private fun openSafeLink(context: android.content.Context, url: String) {
     if (url.startsWith("https://")) runCatching {
@@ -96,7 +96,7 @@ private fun openSafeLink(context: android.content.Context, url: String) {
     }
 }
 
-private enum class Page { ONLINE, LIBRARY, PLAYLISTS, INSIGHTS }
+private enum class Page { HOME, LIBRARY, ONLINE, PLAYLISTS, INSIGHTS }
 private enum class Overlay { NONE, PLAYER, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
@@ -118,11 +118,12 @@ fun KanadeScreen(model: KanadeViewModel) {
     val totalListenMs by model.totalListenMs.collectAsState()
     val lyrics by model.lyrics.collectAsState()
 
-    var page by rememberSaveable { mutableStateOf(Page.ONLINE) }
+    var page by rememberSaveable { mutableStateOf(Page.HOME) }
     var overlay by remember { mutableStateOf(Overlay.NONE) }
     var query by rememberSaveable { mutableStateOf("") }
     var onlineQuery by rememberSaveable { mutableStateOf("") }
-    var onlineProvider by rememberSaveable { mutableStateOf("YouTube") }
+    var onlineProvider by rememberSaveable { mutableStateOf("Audius") }
+    var audioQuery by rememberSaveable { mutableStateOf("") }
     var youtubeKeyDialog by rememberSaveable { mutableStateOf(false) }
     var searchAfterKey by rememberSaveable { mutableStateOf(false) }
     var keyError by remember { mutableStateOf(false) }
@@ -171,6 +172,10 @@ fun KanadeScreen(model: KanadeViewModel) {
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) model.loadLocal()
     }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(model::openAudio)
+    }
+    BackHandler(page == Page.INSIGHTS) { page = Page.HOME }
     val lyricsPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) model.loadLyrics(uri)
     }
@@ -189,10 +194,27 @@ fun KanadeScreen(model: KanadeViewModel) {
     ) {
         Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Label("kanade", 27.sp, PrimaryText, FontWeight.Black, Modifier.weight(1f))
-            Chip("YouTube settings") { setup = true }
+            if (page == Page.ONLINE && onlineProvider == "YouTube") Chip("YouTube settings") { setup = true }
+            else if (page == Page.HOME) Chip("Listening history") { page = Page.INSIGHTS }
         }
         Box(Modifier.weight(1f)) {
             when (page) {
+                Page.HOME -> {
+                    val openError by model.audioOpenError.collectAsState()
+                    MusicHome(
+                        playback = playback,
+                        recent = recent,
+                        favorites = favorites,
+                        songs = library.tracks,
+                        openError = openError,
+                        pickFile = { audioPicker.launch(arrayOf("audio/*")) },
+                        showLibrary = { page = Page.LIBRARY },
+                        discover = { onlineProvider = "Audius"; page = Page.ONLINE },
+                        openPlayer = { overlay = Overlay.PLAYER },
+                        toggle = model.playback::toggle,
+                        play = model::playListTracks,
+                    )
+                }
                 Page.LIBRARY -> Column {
                     Header("Record collection", "Songs, artists and albums on your device.")
                     Spacer(Modifier.height(12.dp))
@@ -291,12 +313,12 @@ fun KanadeScreen(model: KanadeViewModel) {
                 }
                 Page.ONLINE -> Column {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Chip("YouTube", onlineProvider == "YouTube") { onlineProvider = "YouTube" }
+                        Chip("Songs", onlineProvider == "Audius") { onlineProvider = "Audius" }
+                        Chip("Music videos", onlineProvider == "YouTube") { onlineProvider = "YouTube" }
                         if (onlineProvider == "YouTube") Chip("Video queue · ${queuedVideos.size}") {
                             showVideoQueue = true
                             if (!youtubeConsent) setup = true
                         }
-                        Chip("Audius", onlineProvider == "Audius") { onlineProvider = "Audius" }
                     }
                     Spacer(Modifier.height(13.dp))
                     if (onlineProvider == "YouTube") {
@@ -327,13 +349,13 @@ fun KanadeScreen(model: KanadeViewModel) {
                             }
                         }
                     } else {
-                        Header("Stream inside Kanade", "Authorized independent music from Audius")
+                        Header("Discover songs", "Search artists and tracks on Audius.")
                         Spacer(Modifier.height(10.dp))
-                        SearchField(onlineQuery, "Search Audius music…", { onlineQuery = it },
-                            { model.search(onlineQuery) })
+                        SearchField(audioQuery, "Search for a song or artist…", { audioQuery = it },
+                            { model.search(audioQuery) })
                         Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            AccentAction("Search Audius") { model.search(onlineQuery) }
+                            AccentAction("Search songs") { model.search(audioQuery) }
                             Spacer(Modifier.width(10.dp))
                             Label(discover.message, 11.sp, Muted, modifier = Modifier.weight(1f))
                         }
@@ -441,9 +463,10 @@ fun KanadeScreen(model: KanadeViewModel) {
             }
         }
         Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-            Page.entries.forEach { tab ->
-                val active = tab == page
+            listOf(Page.HOME, Page.LIBRARY, Page.ONLINE, Page.PLAYLISTS).forEach { tab ->
+                val active = tab == page || (tab == Page.HOME && page == Page.INSIGHTS)
                 val title = when (tab) {
+                    Page.HOME -> "Home"
                     Page.ONLINE -> "Discover"
                     Page.LIBRARY -> "Library"
                     Page.PLAYLISTS -> "Playlists"
@@ -589,16 +612,25 @@ fun KanadeScreen(model: KanadeViewModel) {
 
     when (overlay) {
         Overlay.NONE -> Unit
-        Overlay.PLAYER -> FeatureDialog("Now playing", { overlay = Overlay.NONE }) {
-            AlbumImage(playback.artworkUri, Modifier.fillMaxWidth().height(240.dp))
-            Spacer(Modifier.height(16.dp))
-            Label(playback.title, 22.sp, PrimaryText, FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Label(playback.artist, 15.sp, Muted)
-            Spacer(Modifier.height(12.dp))
-            TransportControls(playback, model, { overlay = it })
-            Spacer(Modifier.height(12.dp))
-            SimpleRow("Find music video", "Search YouTube") { findMusicVideo(playback.title, playback.artist) }
+        Overlay.PLAYER -> Dialog(onDismissRequest = { overlay = Overlay.NONE },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Column(Modifier.fillMaxSize().background(Background).safeDrawingPadding().verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Label("Now playing", 20.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f))
+                    Chip("Close") { overlay = Overlay.NONE }
+                }
+                Spacer(Modifier.height(16.dp))
+                AlbumImage(playback.artworkUri, Modifier.widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f))
+                Spacer(Modifier.height(16.dp))
+                Label(playback.title, 22.sp, PrimaryText, FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Label(playback.artist, 15.sp, Muted)
+                Spacer(Modifier.height(12.dp))
+                TransportControls(playback, model, { overlay = it })
+                Spacer(Modifier.height(12.dp))
+                SimpleRow("Find music video", "Search YouTube") { findMusicVideo(playback.title, playback.artist) }
+            }
         }
         Overlay.QUEUE -> FeatureDialog("Up next", { overlay = Overlay.NONE }) {
             if (playback.queue.isEmpty()) Label("Queue is empty", 14.sp, Muted)
@@ -713,7 +745,7 @@ fun KanadeScreen(model: KanadeViewModel) {
 }
 
 @Composable
-private fun Label(
+internal fun Label(
     text: String, size: TextUnit, color: Color = PrimaryText,
     weight: FontWeight = FontWeight.Normal, modifier: Modifier = Modifier,
     lines: Int = Int.MAX_VALUE,
@@ -722,7 +754,7 @@ private fun Label(
         style = TextStyle(color = color, fontSize = size, fontWeight = weight))
 }
 
-@Composable private fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
+@Composable internal fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
     Box(Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(13.dp))
         .background(if (selected) Accent else SurfaceLight)
         .clickable(onClick = onClick)
@@ -758,7 +790,7 @@ private fun SearchField(value: String, hint: String, change: (String) -> Unit, s
 }
 
 @Composable
-private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
+internal fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
     Box(modifier.clip(RoundedCornerShape(15.dp))
         .background(Brush.linearGradient(listOf(Color(0xFF735243), Color(0xFF392E26)))),
         contentAlignment = Alignment.Center) {
@@ -860,7 +892,7 @@ private fun TinyButton(symbol: String, description: String, onClick: () -> Unit)
         contentAlignment = Alignment.Center) { Label(symbol, 18.sp, Accent) }
 }
 
-@Composable private fun SimpleRow(title: String, subtitle: String, click: () -> Unit) {
+@Composable internal fun SimpleRow(title: String, subtitle: String, click: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
         .background(Surface).clickable(onClick = click).padding(15.dp),
         verticalAlignment = Alignment.CenterVertically) {

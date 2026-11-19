@@ -163,6 +163,24 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _audioOpenError = MutableStateFlow<String?>(null)
+    val audioOpenError: StateFlow<String?> = _audioOpenError
+    private var openAudioJob: Job? = null
+
+    fun openAudio(uri: Uri) {
+        openAudioJob?.cancel()
+        openAudioJob = viewModelScope.launch {
+            _audioOpenError.value = null
+            try {
+                val track = local.readDocument(uri)
+                playListTracks(listOf(track), track)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _audioOpenError.value = "Could not open this song. Choose another audio file."
+            }
+        }
+    }
+
     fun youtubeKeyFingerprint(): String? = youtubeRepo.signingCertificateSha1()?.chunked(2)?.joinToString(":")
 
     /**
