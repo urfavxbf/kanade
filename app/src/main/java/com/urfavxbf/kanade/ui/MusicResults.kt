@@ -17,7 +17,7 @@ import com.urfavxbf.kanade.model.Track
 @Composable
 internal fun MusicResults(
     input: String, type: String, library: List<Track>, online: List<Track>, playlists: List<Playlist>,
-    play: (List<Track>, Track) -> Unit, openArtist: (String) -> Unit, openAlbum: (String) -> Unit,
+    play: (List<Track>, Track) -> Unit, openArtist: (String, Boolean) -> Unit, openAlbum: (String) -> Unit,
     openPlaylist: (Long) -> Unit,
 ) {
     val query = input.trim()
@@ -29,7 +29,10 @@ internal fun MusicResults(
         }
         (local + online).distinctBy { it.id }
     }
-    val artists = remember(library, query) { library.map { it.artist }.filter { it.contains(query, true) }.distinct().sorted() }
+    val localArtists = remember(library) { library.mapTo(mutableSetOf()) { it.artist } }
+    val artists = remember(localArtists, online, query) {
+        (localArtists + online.map { it.artist }).filter { it.contains(query, true) }.sortedBy { it.lowercase() }
+    }
     val albums = remember(library, query) { library.map { it.album }.filter { it.isNotBlank() && it.contains(query, true) }.distinct().sorted() }
     val lists = playlists.filter { it.name.contains(query, true) }
     val all = type == "All"
@@ -46,7 +49,7 @@ internal fun MusicResults(
                     AlbumImage(song.artworkUri, Modifier.size(52.dp))
                     Column(Modifier.weight(1f).padding(start = 10.dp)) {
                         Label(song.title, 15.sp, PrimaryText, FontWeight.Bold, lines = 1)
-                        Label(song.artist, 12.sp, Muted, lines = 1)
+                        Label("${song.artist} · ${song.source.label}", 12.sp, Muted, lines = 1)
                     }
                     Label(DurationFormatter.format(song.durationMs), 11.sp, Muted)
                 }
@@ -54,7 +57,10 @@ internal fun MusicResults(
         }
         if (displayArtists.isNotEmpty()) {
             item { Label("Artists", 18.sp, PrimaryText, FontWeight.Bold) }
-            items(displayArtists) { SimpleRow(it, "Library artist") { openArtist(it) } }
+            items(displayArtists) { artist ->
+                val local = artist in localArtists
+                SimpleRow(artist, if (local) "Library artist" else online.firstOrNull { it.artist == artist }?.source?.label.orEmpty()) { openArtist(artist, local) }
+            }
         }
         if (displayAlbums.isNotEmpty()) {
             item { Label("Albums", 18.sp, PrimaryText, FontWeight.Bold) }

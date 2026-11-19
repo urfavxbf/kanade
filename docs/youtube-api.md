@@ -8,7 +8,7 @@ Kanade uses **YouTube Data API v3** for optional Philippine music discovery (not
 2. In [API Credentials](https://console.cloud.google.com/apis/credentials), create an API key. Apply **API restrictions: YouTube Data API v3**, and set **Android application restrictions** with the package `com.urfavxbf.kanade` and the installed APK's SHA-1 signing certificate.
 3. Install the Kanade APK. In Search > Catalog > YouTube settings, review Kanade's privacy policy and YouTube Terms, explicitly agree, then paste the key into **API key settings** in Kanade (not in chat or GitHub).
 4. Search OPM songs/artists. Results are sourced from `youtube/v3/search` with `regionCode=PH`, `videoCategoryId=10`, and `type=video`.
-5. Choose Find recording to search your library and Audius. Tap an available song to start native audio playback.
+5. Choose Find recording to search your library and selected online music source. Tap an available song to start native audio playback.
 
 ## Quota and security
 
@@ -16,6 +16,6 @@ Google's currently documented default Search Queries quota is **100 `search.list
 
 GitHub Actions debug builds may use different temporary signing certificates, so each APK's SHA-1 may need an allowed entry. A stable production keystore is recommended.
 
-No YouTube API key is included with Kanade; **live searches do not work until a project key is configured.** Paid music licensing or YouTube audio access is not implied.
+No YouTube API key is included with Kanade; **Data API catalog searches require a configured project key.** Search YouTube Music uses the separate InnerTube provider and requires no project key. Paid music licensing or YouTube audio access is not implied.
 
 Read [Privacy Policy](privacy-policy.md) and [Terms](terms.md).

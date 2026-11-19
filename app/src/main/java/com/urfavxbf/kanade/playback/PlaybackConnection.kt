@@ -59,7 +59,9 @@ class PlaybackConnection(context: Context) {
         override fun onEvents(player: Player, events: Player.Events) = sync()
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             _state.value = _state.value.copy(
-                error = "Could not play this track. Try another song or check your connection."
+                error = if (controller?.currentMediaItem?.mediaId?.startsWith("ytmusic:") == true)
+                    "YouTube Music could not play this recording. Try another result."
+                else "Could not play this track. Try another song or check your connection."
             )
         }
     }

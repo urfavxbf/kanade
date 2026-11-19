@@ -5,6 +5,11 @@ import android.content.Intent
 import android.media.audiofx.Equalizer
 import android.os.Handler
 import android.os.Looper
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.urfavxbf.kanade.data.YouTubeMusicRepository
+import android.net.Uri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -44,7 +49,14 @@ class KanadePlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        val audioSource = ResolvingDataSource.Factory(DefaultDataSource.Factory(this)) { spec ->
+            if (spec.uri.scheme == "ytmusic") {
+                val url = YouTubeMusicRepository.resolve(spec.uri.lastPathSegment.orEmpty())
+                spec.withUri(Uri.parse(url))
+            } else spec
+        }
         val instance = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(audioSource))
             .setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)

@@ -9,7 +9,8 @@ Kanade is a native Android music player for **offline local music** and **licens
 - Search across songs, artists, albums and playlists. Home includes playable trending music from Audius while online.
 - Native playback: background media session, editable queue, shuffle/repeat, seek, sleep timer, audio presets on supported devices, and full Now Playing UI.
 - Audius: independent music search and authorized streams **playing inside Kanade** when available.
-- **Search → Catalog** uses YouTube Data API v3 to discover music titles. Find recording searches local music and Audius. Tap an available recording to play it in the native player.
+- **Search YouTube Music** searches the signed-out InnerTube music catalog, using the song filter also used by SMusic. Kanade stores song IDs in queues and resolves available audio on play through Media3. No Google Cloud key is needed for this source. The internal API and availability can change.
+- **Search → Catalog** uses YouTube Data API v3 to discover music titles. Find recording searches local music and the selected online source. Tap an available recording to play it in the native player.
 
 ## YouTube setup — no paid service required
 
@@ -20,7 +21,7 @@ The feature requires active acceptance of **[Kanade Privacy Policy](docs/privacy
 ## Product principles
 
 - No separate external music player is required for local or authorized Audius songs.
-- No YouTube ripping, extracting audio, hidden/background video player, unauthorized download or caching, or embedded credentials in source.
+- YouTube Music playback uses transient audio URLs supplied by the player response. No audiovisual downloads or bundled credentials.
 - All playable songs use the same native audio session.
 - The playback queue has a single owner in the Android media service.
 - Local music continues offline.

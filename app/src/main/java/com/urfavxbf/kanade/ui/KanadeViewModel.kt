@@ -12,6 +12,7 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.urfavxbf.kanade.data.YouTubeMusicRepository
 import com.urfavxbf.kanade.data.YouTubeDiscoveryRepository
 import com.urfavxbf.kanade.data.YouTubeVideo
 import com.urfavxbf.kanade.data.DisplayTagOverrides
@@ -44,7 +45,7 @@ data class LibraryState(
 data class DiscoverState(
     val tracks: List<Track> = emptyList(),
     val searching: Boolean = false,
-    val message: String = "Search for songs or artists on Audius.",
+    val message: String = "Search songs and artists online.",
 )
 data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Select a local LRC lyrics file.")
 
@@ -265,7 +266,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun search(query: String) {
+    fun search(query: String, useAudius: Boolean) {
         searchJob?.cancel()
         val normalized = query.trim()
         if (normalized.isEmpty() || normalized.length > 120) {
@@ -276,16 +277,17 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             _discover.value = DiscoverState(message = "You're offline. Your local songs still work.")
             return
         }
+        val provider = if (useAudius) "Audius" else "YouTube Music"
         searchJob = viewModelScope.launch {
-            _discover.value = DiscoverState(searching = true, message = "Searching Audius…")
+            _discover.value = DiscoverState(searching = true, message = "Searching $provider…")
             try {
-                val tracks = audius.search(normalized)
+                val tracks = if (useAudius) audius.search(normalized) else YouTubeMusicRepository.search(normalized)
                 tracks.forEach { known[it.id] = it }
                 _discover.value = DiscoverState(tracks = tracks,
-                    message = if (tracks.isEmpty()) "No matches. Try another song." else "${tracks.size} results")
+                    message = if (tracks.isEmpty()) "No matching songs found on $provider." else "${tracks.size} results from $provider")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _discover.value = DiscoverState(message = "Couldn't reach Audius. Check your connection.")
+                _discover.value = DiscoverState(message = "Couldn't load $provider results. Try again.")
             }
         }
     }

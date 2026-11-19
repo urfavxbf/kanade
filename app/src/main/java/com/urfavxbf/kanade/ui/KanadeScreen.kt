@@ -122,6 +122,7 @@ fun KanadeScreen(model: KanadeViewModel) {
     var query by rememberSaveable { mutableStateOf("") }
     var searchType by rememberSaveable { mutableStateOf("All") }
     var catalogQuery by rememberSaveable { mutableStateOf("") }
+    var useAudius by rememberSaveable { mutableStateOf(false) }
     var submitted by rememberSaveable { mutableStateOf("") }
     var audioQuery by rememberSaveable { mutableStateOf("") }
     var youtubeKeyDialog by rememberSaveable { mutableStateOf(false) }
@@ -150,7 +151,7 @@ fun KanadeScreen(model: KanadeViewModel) {
             }
         } else {
             submitted = audioQuery.trim()
-            model.search(submitted)
+            model.search(submitted, useAudius)
         }
     }
     BackHandler(page == Page.PLAYLISTS && selectedPlaylistId >= 0) { selectedPlaylistId = -1L }
@@ -319,17 +320,31 @@ fun KanadeScreen(model: KanadeViewModel) {
                             }
                         }
                     } else {
-                        if (searchType in listOf("All", "Songs")) {
+                        if (searchType in listOf("All", "Songs", "Artists")) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Chip("Search online", onClick = ::submitSearch)
+                                Chip(if (useAudius) "Search Audius" else "Search YouTube Music", onClick = ::submitSearch)
                                 if (submitted.isNotBlank() && submitted == audioQuery.trim())
                                     Label(discover.message, 12.sp, Muted, modifier = Modifier.padding(start = 8.dp))
                             }
                         }
+                        if (searchType in listOf("All", "Songs", "Artists")) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Chip("YouTube Music", !useAudius) { if (useAudius) { useAudius = false; submitted = "" } }
+                                Chip("Audius", useAudius) { if (!useAudius) { useAudius = true; submitted = "" } }
+                            }
+                        }
                         MusicResults(audioQuery, searchType, library.tracks,
-                            if (submitted == audioQuery.trim()) discover.tracks else emptyList(),
+                            if (submitted.isNotBlank() && submitted == audioQuery.trim()) discover.tracks else emptyList(),
                             playlists, model::playListTracks,
-                            openArtist = { name -> page = Page.LIBRARY; filter = "Artists"; album = name; folder = ""; query = "" },
+                            openArtist = { name, local ->
+                                if (local) {
+                                    page = Page.LIBRARY; filter = "Artists"; album = name; folder = ""; query = ""
+                                } else {
+                                    audioQuery = name
+                                    searchType = "Songs"
+                                    submitSearch()
+                                }
+                            },
                             openAlbum = { name -> page = Page.LIBRARY; filter = "Albums"; album = name; folder = ""; query = "" },
                             openPlaylist = { id -> selectedPlaylistId = id; model.selectPlaylist(id); page = Page.PLAYLISTS })
                     }
@@ -784,7 +799,7 @@ private fun TrackList(
                 Column(Modifier.weight(1f).clickable { onPlay(track) }) {
                     Label(track.title, 13.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
                     Label(track.artist, 11.sp, Muted, lines = 1)
-                    Label(if (track.source == TrackSource.LOCAL) "ON DEVICE" else "AUDIUS STREAM",
+                    Label(track.source.label,
                         9.sp, Accent)
                 }
                 TinyButton(if (track.id in favoriteIds) "♥" else "♡", "Favorite") { onFavorite(track) }

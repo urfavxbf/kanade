@@ -18,7 +18,8 @@ class AudiusRepository {
     suspend fun search(input: String): List<Track> {
         val query = input.trim()
         require(query.isNotEmpty() && query.length <= 120) { "Invalid search query" }
-        return fetch("https://api.audius.co/v1/tracks/search?query=${Uri.encode(query)}&limit=25")
+        val tracks = fetch("https://api.audius.co/v1/tracks/search?query=${Uri.encode(query)}&limit=25")
+        return AudioSearchMatches.rank(query, tracks)
     }
 
     suspend fun trending(): List<Track> = fetch("https://api.audius.co/v1/tracks/trending?limit=12")
