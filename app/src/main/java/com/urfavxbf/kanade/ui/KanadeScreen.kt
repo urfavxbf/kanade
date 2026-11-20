@@ -41,6 +41,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -304,15 +305,18 @@ private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
                         Label(discover.message, 11.sp, Muted, modifier = Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(13.dp))
-                    if (discover.tracks.isEmpty()) {
-                        EmptyState(KanadeIcon.SEARCH, "Find music", "Search for a song or artist to start listening.")
+                    if (discover.tracks.isEmpty() && !discover.hasMore) {
+                        EmptyState(KanadeIcon.SEARCH,
+                            if (discover.searching) "Searching…" else "Find music",
+                            if (discover.searching) "Loading results from YouTube." else "Search for a song or artist to start listening.")
                     } else {
                         TrackList(discover.tracks, favoriteIds,
                             onPlay = model::playOnline,
                             onFavorite = model::toggleFavorite,
                             onQueue = { model.playback.add(it, true) },
                             onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
-                            onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
+                            onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS },
+                            pagination = discover, onLoadMore = model::loadMoreSearchResults)
                     }
                 }
                 Page.PLAYLISTS -> Column {
@@ -626,9 +630,22 @@ private fun TrackList(
     onQueue: (Track) -> Unit, onPlaylist: (Track) -> Unit,
     removeFromPlaylist: Boolean = false,
     onTags: (Track) -> Unit = {},
+    pagination: DiscoverState? = null,
+    onLoadMore: (() -> Unit)? = null,
 ) {
     var actionsTrack by remember { mutableStateOf<Track?>(null) }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    val listState = rememberLazyListState()
+    val nearEnd by remember(listState, tracks.size) {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            last >= (tracks.size - 4).coerceAtLeast(0)
+        }
+    }
+    LaunchedEffect(nearEnd, pagination?.hasMore, pagination?.loadingMore, pagination?.loadMoreError, tracks.size) {
+        if (nearEnd && pagination?.hasMore == true && !pagination.searching &&
+            !pagination.loadingMore && pagination.loadMoreError == null) onLoadMore?.invoke()
+    }
+    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(5.dp)) {
         items(tracks, key = { it.id }) { track ->
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
@@ -645,6 +662,21 @@ private fun TrackList(
                 }
                 TinyButton(KanadeIcon.FAVORITE, if (track.id in favoriteIds) "Remove from favorites" else "Add to favorites", selected = track.id in favoriteIds) { onFavorite(track) }
                 TinyButton(KanadeIcon.QUEUE, "Track actions for ${track.title}") { actionsTrack = track }
+            }
+        }
+        if (pagination != null) item(key = "online-pagination-footer") {
+            Column(Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                when {
+                    pagination.loadingMore -> Label("Loading more songs…", 12.sp, Muted)
+                    pagination.loadMoreError != null -> {
+                        Label(pagination.loadMoreError, 12.sp, Muted)
+                        Spacer(Modifier.height(8.dp))
+                        AccentAction("Try again") { onLoadMore?.invoke() }
+                    }
+                    !pagination.hasMore && tracks.isNotEmpty() -> Label("End of results", 12.sp, Muted)
+                    pagination.hasMore -> Label("Loading next results…", 12.sp, Muted)
+                }
             }
         }
     }

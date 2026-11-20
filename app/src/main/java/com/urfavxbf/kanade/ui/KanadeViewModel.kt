@@ -14,6 +14,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.urfavxbf.kanade.data.DisplayTagOverrides
 import com.urfavxbf.kanade.data.YouTubeMusicRepository
+import com.urfavxbf.kanade.data.SearchPagination
+import org.schabi.newpipe.extractor.Page
 import com.urfavxbf.kanade.data.KanadeDatabase
 import com.urfavxbf.kanade.data.LocalMusicRepository
 import com.urfavxbf.kanade.data.MusicStore
@@ -42,6 +44,9 @@ data class LibraryState(
 data class DiscoverState(
     val tracks: List<Track> = emptyList(),
     val searching: Boolean = false,
+    val loadingMore: Boolean = false,
+    val hasMore: Boolean = false,
+    val loadMoreError: String? = null,
     val message: String = "Search for songs or artists on YouTube.",
 )
 data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Select a local LRC lyrics file.")
@@ -81,6 +86,10 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val lyrics: StateFlow<LyricsState> = _lyrics
 
     private var searchJob: Job? = null
+    private var loadMoreJob: Job? = null
+    private var searchGeneration = 0L
+    private var activeSearch = ""
+    private var nextSearchPage: Page? = null
     private var playlistJob: Job? = null
     private var lyricJob: Job? = null
     private var lastLyricTrack = ""
@@ -154,6 +163,10 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun search(query: String) {
         searchJob?.cancel()
+        loadMoreJob?.cancel()
+        searchGeneration++
+        nextSearchPage = null
+        activeSearch = ""
         val normalized = query.trim()
         if (normalized.isEmpty() || normalized.length > 120) {
             _discover.value = DiscoverState(message = "Enter a song or artist (up to 120 characters).")
@@ -163,16 +176,58 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             _discover.value = DiscoverState(message = "You're offline. Your local songs still work.")
             return
         }
+        activeSearch = normalized
+        val generation = searchGeneration
+        _discover.value = DiscoverState(searching = true, message = "Searching YouTube…")
         searchJob = viewModelScope.launch {
-            _discover.value = DiscoverState(searching = true, message = "Searching YouTube…")
             try {
-                val tracks = YouTubeMusicRepository.search(normalized)
-                tracks.forEach { known[it.id] = it }
-                _discover.value = DiscoverState(tracks = tracks,
-                    message = if (tracks.isEmpty()) "No matches. Try another song." else "${tracks.size} results")
+                val page = YouTubeMusicRepository.search(normalized)
+                if (generation != searchGeneration) return@launch
+                nextSearchPage = page.nextPage
+                page.tracks.forEach { known[it.id] = it }
+                _discover.value = DiscoverState(tracks = page.tracks, hasMore = page.nextPage != null,
+                    message = if (page.tracks.isEmpty() && page.nextPage == null) "No matches. Try another song."
+                        else "${page.tracks.size} results")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _discover.value = DiscoverState(message = "Couldn't load YouTube results. Check your connection and try again.")
+                if (generation == searchGeneration) {
+                    _discover.value = DiscoverState(message = "Couldn't load YouTube results. Check your connection and try again.")
+                }
+            }
+        }
+    }
+
+    fun loadMoreSearchResults() {
+        val page = nextSearchPage ?: return
+        val state = _discover.value
+        if (state.searching || state.loadingMore || activeSearch.isBlank()) return
+        if (!hasNetwork()) {
+            _discover.value = state.copy(loadMoreError = "You're offline. Connect and try again.")
+            return
+        }
+        val query = activeSearch
+        val generation = searchGeneration
+        _discover.value = state.copy(loadingMore = true, loadMoreError = null)
+        loadMoreJob = viewModelScope.launch {
+            try {
+                val result = YouTubeMusicRepository.searchNext(query, page)
+                if (generation != searchGeneration) return@launch
+                result.tracks.forEach { known[it.id] = it }
+                val combined = SearchPagination.merge(_discover.value.tracks, result.tracks)
+                val next = result.nextPage?.takeUnless { SearchPagination.sameCursor(page, it) }
+                nextSearchPage = next
+                val noNewTracks = combined.size == _discover.value.tracks.size
+                _discover.value = _discover.value.copy(
+                    tracks = combined, loadingMore = false, hasMore = next != null,
+                    loadMoreError = if (noNewTracks && next != null) "No new songs on this page. Tap to keep searching." else null,
+                    message = "${combined.size} results",
+                )
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                if (generation == searchGeneration) {
+                    _discover.value = _discover.value.copy(loadingMore = false,
+                        loadMoreError = "Couldn't load more results. Check your connection and try again.")
+                }
             }
         }
     }
@@ -285,6 +340,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         searchJob?.cancel()
+        loadMoreJob?.cancel()
         playlistJob?.cancel()
         lyricJob?.cancel()
         playback.close()

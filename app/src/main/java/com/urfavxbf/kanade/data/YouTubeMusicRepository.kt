@@ -5,6 +5,9 @@ import com.urfavxbf.kanade.model.TrackSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.Page
+import org.schabi.newpipe.extractor.InfoItem
+import org.schabi.newpipe.extractor.ListExtractor
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
@@ -44,15 +47,27 @@ object YouTubeMusicRepository {
         })
     }
 
-    suspend fun search(query: String): List<Track> = withContext(Dispatchers.IO) {
+    data class SearchPage(val tracks: List<Track>, val nextPage: Page?)
+
+    suspend fun search(query: String): SearchPage = withContext(Dispatchers.IO) {
         val extractor = ServiceList.YouTube.getSearchExtractor(query)
         extractor.fetchPage()
-        extractor.initialPage.items.filterIsInstance<StreamInfoItem>().mapNotNull { item ->
+        parsePage(extractor.initialPage)
+    }
+
+    suspend fun searchNext(query: String, page: Page): SearchPage = withContext(Dispatchers.IO) {
+        val extractor = ServiceList.YouTube.getSearchExtractor(query)
+        parsePage(extractor.getPage(page))
+    }
+
+    private fun parsePage(page: ListExtractor.InfoItemsPage<InfoItem>): SearchPage {
+        val tracks = page.items.filterIsInstance<StreamInfoItem>().mapNotNull { item ->
             val id = YouTubeTrackId.fromUrl(item.url) ?: return@mapNotNull null
             Track(id = "youtube:$id", title = item.name, artist = item.uploaderName ?: "Unknown artist",
                 uri = "kanadeyt://track/$id", artworkUri = item.thumbnails.lastOrNull()?.url,
                 durationMs = item.duration.coerceAtLeast(0) * 1_000, source = TrackSource.YOUTUBE)
         }.distinctBy { it.id }
+        return SearchPage(tracks, page.nextPage?.takeIf { Page.isValid(it) })
     }
 
     @Throws(IOException::class)
