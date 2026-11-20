@@ -278,11 +278,58 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
+    private var radioJob: Job? = null
+    private val _radioMessage = MutableStateFlow("")
+    val radioMessage: StateFlow<String> = _radioMessage
+
+    fun dismissRadioMessage() { _radioMessage.value = "" }
+
+    fun startRadio(seed: Track) {
+        radioJob?.cancel()
+        val online = hasNetwork()
+        if (!online && seed.source != TrackSource.LOCAL) {
+            _radioMessage.value = "Choose an on-device song to start radio offline."
+            return
+        }
+        _radioMessage.value = "Finding songs for radio…"
+        val before = playback.state.value
+        radioJob = viewModelScope.launch {
+            val discovered = if (online && seed.artist.isNotBlank()) {
+                try {
+                    YouTubeMusicRepository.search(seed.artist.removeSuffix(" - Topic") + " songs").tracks
+                        .filter { it.durationMs in 30_000L..900_000L }
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { emptyList() }
+            } else emptyList()
+            val pool = discovered + favorites.value + recent.value + library.value.tracks
+            val queue = withContext(Dispatchers.Default) { radioQueue(seed, pool, online) }
+            val now = playback.state.value
+            if (now.mediaId != before.mediaId || now.queue != before.queue) {
+                dismissRadioMessage()
+                return@launch
+            }
+            if (queue.size < 2) {
+                _radioMessage.value = "No other songs available for this station yet."
+                return@launch
+            }
+            queue.forEach { known[it.id] = it }
+            playback.play(queue, 0)
+            _radioMessage.value = "Radio started · ${queue.size} songs"
+        }
+    }
+
+    private fun cancelRadioRequest() {
+        radioJob?.cancel()
+        dismissRadioMessage()
+    }
+
     fun playLocal(track: Track) {
+        cancelRadioRequest()
         val tracks = library.value.tracks
         playback.play(tracks, tracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0))
     }
     fun playOnline(track: Track) {
+        cancelRadioRequest()
         if (!hasNetwork()) {
             _discover.value = discover.value.copy(message = "Online playback needs a connection.")
             return
@@ -290,6 +337,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         playback.play(listOf(track), 0)
     }
     fun playListTracks(tracks: List<Track>, track: Track) {
+        cancelRadioRequest()
         tracks.forEach { known[it.id] = it }
         playback.play(tracks, tracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0))
     }

@@ -290,6 +290,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
     val favorites by model.favorites.collectAsState()
     val favoriteIds by model.favoriteIds.collectAsState()
     val playlists by model.playlists.collectAsState()
+    val radioMessage by model.radioMessage.collectAsState()
     val recent by model.recent.collectAsState()
     val topTracks by model.topTracks.collectAsState()
     val selectedTracks by model.selectedPlaylistTracks.collectAsState()
@@ -361,28 +362,59 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                                     style = TextStyle(color = PrimaryText, fontSize = 26.sp))
                             }
                         }
-                        if (playback.hasItem) item {
-                            SimpleRow("Continue listening", playback.title + " · " + playback.artist) {
-                                if (!playback.playing) model.playback.toggle()
-                                showNowPlaying = true
+                        val resume = recent.firstOrNull()
+                        if (playback.hasItem || resume != null) item {
+                            Row(Modifier.fillMaxWidth().glassSurface(18.dp).clickable(role = Role.Button) {
+                                if (playback.hasItem) {
+                                    if (!playback.playing) model.playback.toggle()
+                                    showNowPlaying = true
+                                } else resume?.let { model.playListTracks(recent, it) }
+                            }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AlbumImage(if (playback.hasItem) playback.artworkUri else resume?.artworkUri, Modifier.size(86.dp))
+                                Spacer(Modifier.width(14.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Label("Continue listening", 12.sp, Accent, FontWeight.Bold)
+                                    Label(if (playback.hasItem) playback.title else resume?.title.orEmpty(), 21.sp, PrimaryText, FontWeight.Bold, lines = 2)
+                                    Label(if (playback.hasItem) playback.artist else resume?.artist.orEmpty(), 13.sp, Muted, lines = 1)
+                                }
                             }
-                        } else if (recent.isNotEmpty()) item {
-                            SimpleRow("Continue listening", recent.first().title) {
-                                model.playListTracks(recent, recent.first())
-                            }
-                        } else item {
+                        }
+                        val quick = (favorites + topTracks + recent + library.tracks.take(6)).distinctBy { it.id }.take(6)
+                        if (quick.isEmpty()) item {
                             SimpleRow("Open local music", "Browse this device") { page = Page.LIBRARY }
                             SimpleRow("Find music online", "Search songs and artists") { scope = "Online"; page = Page.ONLINE }
-                        }
-                        val pinned = playlists.filter { it.id.toString() in pins }
-                        if (pinned.isNotEmpty()) item { Label("Pinned playlists", 18.sp, PrimaryText, FontWeight.Bold) }
-                        items(pinned) { playlist ->
-                            SimpleRow(playlist.name, "Open playlist") {
-                                selectedPlaylistId = playlist.id; model.selectPlaylist(playlist.id); page = Page.PLAYLISTS
+                        } else {
+                            item { Label("Quick picks", 20.sp, PrimaryText, FontWeight.Bold) }
+                            items(quick.chunked(2)) { pair ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    for (track in pair) Row(Modifier.weight(1f).glassSurface(12.dp)
+                                        .clickable { model.playListTracks(quick, track) },
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        AlbumImage(track.artworkUri, Modifier.size(48.dp))
+                                        Label(track.title, 13.sp, PrimaryText, FontWeight.Bold, Modifier.padding(6.dp), lines = 2)
+                                    }
+                                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                                }
                             }
                         }
-                        if (recent.isNotEmpty()) item { Label("Recently played", 18.sp, PrimaryText, FontWeight.Bold) }
-                        items(recent.take(10)) { track -> SimpleRow(track.title, track.artist) { model.playListTracks(recent, track) } }
+                        val pinned = playlists.filter { it.id.toString() in pins }
+                        if (pinned.isNotEmpty()) item {
+                            Label("Pinned playlists", 20.sp, PrimaryText, FontWeight.Bold)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(pinned, key = { it.id }) { playlist ->
+                                    Chip(playlist.name) {
+                                        selectedPlaylistId = playlist.id; model.selectPlaylist(playlist.id); page = Page.PLAYLISTS
+                                    }
+                                }
+                            }
+                        }
+                        if (recent.isNotEmpty()) item {
+                            DashboardShelf("Recently played", recent.take(12)) { model.playListTracks(recent, it) }
+                        }
+                        val stations = (recent + quick).distinctBy { it.artist.lowercase() }.take(8)
+                        if (stations.isNotEmpty()) item {
+                            DashboardShelf("Start radio", stations, onSelect = model::startRadio)
+                        }
                         item { SimpleRow("Listening insights", "History and smart collections") { page = Page.INSIGHTS } }
                     }
                 }
@@ -483,7 +515,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                             } else {
                                 TrackList(shown, favoriteIds,
                                     onPlay = { model.playListTracks(shown, it) },
-                                    onFavorite = model::toggleFavorite,
+                                    onFavorite = model::toggleFavorite, onRadio = model::startRadio,
                                     onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
                                     onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                                     onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
@@ -522,7 +554,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                     if (matches.isEmpty()) Label(if (needle.isEmpty()) "Enter a title or artist." else "No results shown.", 14.sp, Muted)
                     else TrackList(matches, favoriteIds,
                         onPlay = { model.playListTracks(matches, it) },
-                        onFavorite = model::toggleFavorite,
+                        onFavorite = model::toggleFavorite, onRadio = model::startRadio,
                         onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS },
@@ -574,7 +606,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                             "Open a song’s menu to add music.")
                         else TrackList(selectedTracks, favoriteIds,
                             onPlay = { model.playListTracks(selectedTracks, it) },
-                            onFavorite = model::toggleFavorite,
+                            onFavorite = model::toggleFavorite, onRadio = model::startRadio,
                             onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
                             onPlaylist = { model.removeFromPlaylist(selectedPlaylistId, it.id) },
                             removeFromPlaylist = true,
@@ -603,7 +635,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                     if (tracks.isEmpty()) EmptyState(KanadeIcon.INSIGHTS, "Make some memories", "Play some tracks to build your personal history.")
                     else TrackList(tracks, favoriteIds,
                         onPlay = { model.playListTracks(tracks, it) },
-                        onFavorite = model::toggleFavorite,
+                        onFavorite = model::toggleFavorite, onRadio = model::startRadio,
                         onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
@@ -619,6 +651,12 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
             Spacer(Modifier.height(7.dp))
             MiniPlayer(playback, onToggle = model.playback::toggle,
                 onNext = model.playback::next, onExpand = { showNowPlaying = true })
+        }
+        if (radioMessage.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Label(radioMessage, 13.sp, PrimaryText, modifier = Modifier.weight(1f))
+                TinyButton(KanadeIcon.CLOSE, "Dismiss radio status", onClick = model::dismissRadioMessage)
+            }
         }
         playback.error?.let { message ->
             Row(Modifier.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -997,6 +1035,24 @@ private fun SearchField(value: String, hint: String, change: (String) -> Unit, s
 }
 
 @Composable
+private fun DashboardShelf(title: String, tracks: List<Track>, onSelect: (Track) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Label(title, 20.sp, PrimaryText, FontWeight.Bold)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(tracks, key = { it.id }) { track ->
+                Column(Modifier.width(128.dp).clickable(role = Role.Button) { onSelect(track) }) {
+                    AlbumImage(track.artworkUri, Modifier.size(128.dp))
+                    Spacer(Modifier.height(5.dp))
+                    Label(if (track.source == TrackSource.YOUTUBE) songTitle(track.title, track.artist) else track.title,
+                        14.sp, PrimaryText, FontWeight.Bold, lines = 2)
+                    Label(track.artist, 12.sp, Muted, lines = 1)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
     Box(modifier.clip(RoundedCornerShape(15.dp))
         .background(Brush.linearGradient(listOf(LocalKanadePalette.current.artworkStart, LocalKanadePalette.current.artworkEnd))),
@@ -1012,7 +1068,7 @@ private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
 @Composable
 private fun TrackList(
     tracks: List<Track>, favoriteIds: Set<String>,
-    onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit,
+    onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit, onRadio: (Track) -> Unit,
     onQueue: (Track) -> Unit, onPlaylist: (Track) -> Unit,
     onAppend: (Track) -> Unit, removeFromPlaylist: Boolean = false,
     onTags: (Track) -> Unit = {},
@@ -1071,6 +1127,7 @@ private fun TrackList(
     }
     actionsTrack?.let { track ->
         FeatureDialog(track.title, { actionsTrack = null }) {
+            SimpleRow("Start radio", "Build a mix from this song") { actionsTrack = null; onRadio(track) }
             SimpleRow(if (track.id in favoriteIds) "Remove favorite" else "Favorite", track.artist) { actionsTrack = null; onFavorite(track) }
             SimpleRow("Add to queue", "After the last song") { actionsTrack = null; onAppend(track) }
             SimpleRow("Play next", "Add this song to the queue") { actionsTrack = null; onQueue(track) }
