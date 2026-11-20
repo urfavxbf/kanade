@@ -62,6 +62,8 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         if (appearancePrefs.contains("dark_theme")) appearancePrefs.getBoolean("dark_theme", true) else null,
     ))
     val themeMode: StateFlow<ThemeMode> = _themeMode
+    private val _colorTheme = MutableStateFlow(appearancePrefs.getString("color_theme", "Kanade Green") ?: "Kanade Green")
+    val colorTheme: StateFlow<String> = _colorTheme
     val playback = PlaybackConnection(app)
     private val known = mutableMapOf<String, Track>()
 
@@ -136,6 +138,11 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     fun setThemeMode(mode: ThemeMode) {
         _themeMode.value = mode
         appearancePrefs.edit().putString("theme_mode", mode.name).apply()
+    }
+
+    fun setColorTheme(name: String) {
+        _colorTheme.value = name
+        appearancePrefs.edit().putString("color_theme", name).apply()
     }
 
     fun permission(): String = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO

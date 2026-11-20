@@ -52,9 +52,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
@@ -102,6 +104,61 @@ private val LightPalette = KanadePalette(
     tint = Color(0xFF144D2D), glass = Color(0xFFEAF7EC), glassBorder = Color(0xFF2C6D48),
     artworkStart = Color(0xFFB5DDC1), artworkEnd = Color(0xFF7EBA92),
 )
+// The references use different palettes; offer each as a separate choice while keeping text legible.
+private val colorThemes = linkedMapOf(
+    "Kanade Green" to Color(0xFF40B979),
+    "Moss" to Color(0xFF5F7A52),
+    "Forest" to Color(0xFFC8E64A),
+    "Pistachio" to Color(0xFFC5DE8E),
+    "Olive" to Color(0xFF5B6236),
+    "Aubergine" to Color(0xFF8B598C),
+    "Lilac" to Color(0xFFCDB8F0),
+    "Lavender" to Color(0xFFC9B8F0),
+    "Ink Blue" to Color(0xFF405A9C),
+    "Cobalt" to Color(0xFF354AC5),
+    "Neon Rose" to Color(0xFFFF3D6E),
+    "Cherry Cola" to Color(0xFF9C3540),
+    "Butter" to Color(0xFFF2E2A0),
+    "Espresso" to Color(0xFF795548),
+    "Glacier" to Color(0xFF2F6BFF),
+    "Solar Flare" to Color(0xFFFF8A00),
+    "Lime Soda" to Color(0xFF2BE0A0),
+    "Ultraviolet" to Color(0xFF8A2BFF),
+    "Fog" to Color(0xFFA9B4C6),
+    "Dusk" to Color(0xFF8D99AE),
+    "Apricot" to Color(0xFFEE7D52),
+    "Papaya" to Color(0xFFFF8000),
+    "Verde" to Color(0xFF4FB81C),
+    "French Blue" to Color(0xFF1560D4),
+    "Rosso" to Color(0xFFD40000),
+)
+
+private fun paletteFor(name: String, dark: Boolean): KanadePalette {
+    if (name == "Kanade Green" || name !in colorThemes) return if (dark) DarkPalette else LightPalette
+    val seed = colorThemes.getValue(name)
+    return if (dark) DarkPalette.copy(
+        background = lerp(Color(0xFF0C1110), seed, 0.08f),
+        backgroundTop = lerp(Color(0xFF151C19), seed, 0.23f),
+        backgroundBottom = lerp(Color(0xFF0B1110), seed, 0.10f),
+        surface = lerp(Color(0xFF202522), seed, 0.20f),
+        accent = lerp(seed, Color.White, 0.62f), accentSoft = lerp(seed, Color.White, 0.40f),
+        text = Color(0xFFF6F8F4), muted = Color(0xFFC5CEC7),
+        glass = lerp(Color(0xFF17201C), seed, 0.22f),
+        artworkStart = lerp(Color(0xFF38413C), seed, 0.42f),
+        artworkEnd = lerp(Color(0xFF151C18), seed, 0.20f),
+    ) else LightPalette.copy(
+        background = lerp(Color.White, seed, 0.035f),
+        backgroundTop = lerp(Color.White, seed, 0.14f),
+        backgroundBottom = lerp(Color.White, seed, 0.07f),
+        surface = lerp(Color.White, seed, 0.18f),
+        accent = lerp(seed, Color.Black, 0.66f), accentSoft = lerp(seed, Color.Black, 0.50f),
+        text = Color(0xFF18211B), muted = Color(0xFF4A5650),
+        tint = lerp(seed, Color.Black, 0.62f), glass = lerp(Color.White, seed, 0.10f),
+        glassBorder = lerp(seed, Color.Black, 0.48f),
+        artworkStart = lerp(Color.White, seed, 0.32f), artworkEnd = lerp(Color.White, seed, 0.54f),
+    )
+}
+
 private val LocalKanadePalette = staticCompositionLocalOf { DarkPalette }
 private val Background: Color @Composable get() = LocalKanadePalette.current.background
 private val SurfaceLight: Color @Composable get() = LocalKanadePalette.current.surface
@@ -115,7 +172,8 @@ private enum class Overlay { NONE, QUEUE, LYRICS, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
 fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMode) {
-    CompositionLocalProvider(LocalKanadePalette provides if (darkTheme) DarkPalette else LightPalette) {
+    val colorTheme by model.colorTheme.collectAsState()
+    CompositionLocalProvider(LocalKanadePalette provides paletteFor(colorTheme, darkTheme)) {
         KanadeContent(model, themeMode)
     }
 }
@@ -512,6 +570,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
 @Composable
 private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, themeMode: ThemeMode) {
     val onlineBoost by model.playback.onlineBoost.collectAsState()
+    val colorTheme by model.colorTheme.collectAsState()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Header("Settings", "Make Kanade feel like yours.")
         Spacer(Modifier.height(22.dp))
@@ -522,6 +581,24 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for ((mode, title) in listOf(ThemeMode.SYSTEM to "Follow system", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark")) {
                 ThemeChoice(title, themeMode == mode) { model.setThemeMode(mode) }
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        Label("Color palette", 15.sp, PrimaryText, FontWeight.SemiBold)
+        Spacer(Modifier.height(7.dp))
+        Label("Choose a look for light and dark mode.", 12.sp, Muted)
+        Spacer(Modifier.height(9.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((name, color) in colorThemes) {
+                Column(Modifier.width(102.dp).glassSurface(16.dp)
+                    .selectable(selected = colorTheme == name, role = Role.RadioButton, onClick = { model.setColorTheme(name) })
+                    .padding(9.dp)) {
+                    Box(Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(9.dp))
+                        .background(Brush.linearGradient(listOf(color, lerp(color, Color.Black, 0.52f)))))
+                    Spacer(Modifier.height(6.dp))
+                    Label(name, 11.sp, PrimaryText, if (colorTheme == name) FontWeight.Bold else FontWeight.Normal, lines = 1)
+                    if (colorTheme == name) Label("Selected", 10.sp, Accent, FontWeight.Bold)
+                }
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -577,7 +654,7 @@ private fun ThemeChoice(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable private fun Header(title: String, subtitle: String) {
-    Label(title, 25.sp, PrimaryText, FontWeight.Bold)
+    Label(title, 30.sp, PrimaryText, FontWeight.Bold)
     Spacer(Modifier.height(4.dp))
     Label(subtitle, 13.sp, Muted)
 }
@@ -743,7 +820,7 @@ private fun IconTextButton(icon: KanadeIcon, text: String, onClick: () -> Unit) 
 
 @Composable private fun SimpleRow(title: String, subtitle: String, click: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
-        .background(LocalKanadePalette.current.tint.copy(alpha = 0.07f)).clickable(onClick = click).padding(15.dp),
+        .glassSurface(15.dp).clickable(onClick = click).padding(15.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Label(title, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
@@ -779,10 +856,11 @@ private fun EmptyState(icon: KanadeIcon, title: String, detail: String, action: 
 private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp): Modifier {
     val shape = RoundedCornerShape(radius)
     val palette = LocalKanadePalette.current
-    return clip(shape).background(Brush.linearGradient(listOf(
-        palette.glass.copy(alpha = 0.94f), palette.glass.copy(alpha = 0.83f),
-        palette.glass.copy(alpha = 0.94f))))
-        .border(1.dp, palette.glassBorder.copy(alpha = 0.16f), shape)
+    return shadow(3.dp, shape, clip = false).clip(shape).background(Brush.linearGradient(listOf(
+        palette.glass.copy(alpha = 0.96f), palette.glass.copy(alpha = 0.78f),
+        palette.glass.copy(alpha = 0.92f))))
+        .border(1.dp, Brush.linearGradient(listOf(palette.glassBorder.copy(alpha = 0.28f),
+            palette.glassBorder.copy(alpha = 0.08f), palette.glassBorder.copy(alpha = 0.18f))), shape)
 }
 
 @Composable
@@ -833,7 +911,7 @@ private fun NowPlayingScreen(
                 TinyButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
             }
             Spacer(Modifier.height(20.dp))
-            AlbumImage(state.artworkUri, Modifier.size(artworkSize))
+            AlbumImage(state.artworkUri, Modifier.size(artworkSize).shadow(14.dp, RoundedCornerShape(20.dp)))
             Spacer(Modifier.height(24.dp))
             Column(Modifier.fillMaxWidth()) {
                 Label(state.title, 25.sp, PrimaryText, FontWeight.Bold, lines = 2)
