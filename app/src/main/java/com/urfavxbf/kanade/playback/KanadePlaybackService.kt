@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.AudioAttributes
@@ -26,6 +27,8 @@ class KanadePlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private var player: ExoPlayer? = null
     private var effect: Equalizer? = null
+    private var loudness: LoudnessEnhancer? = null
+    private var loudnessSessionId = -1
     private var effectSessionId: Int = -1
     private val handler = Handler(Looper.getMainLooper())
     private val prefs by lazy { getSharedPreferences("kanade_audio", Context.MODE_PRIVATE) }
@@ -42,6 +45,8 @@ class KanadePlaybackService : MediaSessionService() {
 
     companion object {
         const val ACTION_SLEEP = "com.urfavxbf.kanade.SLEEP"
+        const val ACTION_ONLINE_BOOST = "com.urfavxbf.kanade.ONLINE_BOOST"
+        const val EXTRA_BOOST = "boost"
         const val ACTION_EQUALIZER = "com.urfavxbf.kanade.EQUALIZER"
         const val EXTRA_MINUTES = "minutes"
         const val EXTRA_PRESET = "preset"
@@ -64,7 +69,10 @@ class KanadePlaybackService : MediaSessionService() {
             .build()
         instance.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) applyEqualizer()
+                if (playbackState == Player.STATE_READY) { applyEqualizer(); applyOnlineBoost() }
+            }
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                applyOnlineBoost()
             }
         })
         player = instance
@@ -82,6 +90,12 @@ class KanadePlaybackService : MediaSessionService() {
                 if (deadline > 0) handler.post(timer)
                 return START_STICKY
             }
+            ACTION_ONLINE_BOOST -> {
+                val gain = intent.getIntExtra(EXTRA_BOOST, 0).coerceIn(0, 600)
+                prefs.edit().putInt("online_boost", gain).apply()
+                applyOnlineBoost()
+                return START_STICKY
+            }
             ACTION_EQUALIZER -> {
                 val preset = intent.getStringExtra(EXTRA_PRESET).orEmpty()
                 if (preset in setOf("Off", "Bass", "Vocal")) {
@@ -92,6 +106,31 @@ class KanadePlaybackService : MediaSessionService() {
             }
         }
         return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun applyOnlineBoost() {
+        val current = player ?: return
+        val gain = onlineBoostGain(current.currentMediaItem?.mediaId, prefs.getInt("online_boost", 0))
+        val audioId = current.audioSessionId
+        try {
+            if (gain == 0 || audioId == C.AUDIO_SESSION_ID_UNSET || audioId == 0) {
+                loudness?.enabled = false
+                return
+            }
+            if (loudness == null || loudnessSessionId != audioId) {
+                loudness?.release()
+                loudness = null
+                loudnessSessionId = -1
+                loudness = LoudnessEnhancer(audioId)
+                loudnessSessionId = audioId
+            }
+            loudness?.setTargetGain(gain)
+            loudness?.enabled = true
+        } catch (_: RuntimeException) {
+            runCatching { loudness?.release() }
+            loudness = null
+            loudnessSessionId = -1
+        }
     }
 
     private fun applyEqualizer() {
@@ -134,6 +173,8 @@ class KanadePlaybackService : MediaSessionService() {
         handler.removeCallbacks(timer)
         effect?.release()
         effect = null
+        loudness?.release()
+        loudness = null
         session?.release()
         player?.release()
         session = null

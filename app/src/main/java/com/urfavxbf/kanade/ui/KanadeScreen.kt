@@ -511,6 +511,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
 
 @Composable
 private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, themeMode: ThemeMode) {
+    val onlineBoost by model.playback.onlineBoost.collectAsState()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Header("Settings", "Make Kanade feel like yours.")
         Spacer(Modifier.height(22.dp))
@@ -526,6 +527,16 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
         Spacer(Modifier.height(24.dp))
         Label("AUDIO", 12.sp, Accent, FontWeight.SemiBold)
         Spacer(Modifier.height(12.dp))
+        Label("ONLINE VOLUME BOOST", 12.sp, Accent, FontWeight.SemiBold)
+        Spacer(Modifier.height(7.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            for ((gain, title) in listOf(0 to "Off", 300 to "+3 dB", 600 to "+6 dB")) {
+                ThemeChoice(title, onlineBoost == gain) { model.playback.setOnlineBoost(gain) }
+            }
+        }
+        Spacer(Modifier.height(7.dp))
+        Label("For online songs. Higher levels may change sound quality.", 12.sp, Muted)
+        Spacer(Modifier.height(17.dp))
             Label("SLEEP TIMER", 12.sp, Accent, FontWeight.SemiBold)
             Spacer(Modifier.height(7.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

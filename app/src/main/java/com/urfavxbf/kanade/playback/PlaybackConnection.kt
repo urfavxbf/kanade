@@ -39,6 +39,9 @@ data class PlaybackState(
 class PlaybackConnection(context: Context) {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("kanade_queue", Context.MODE_PRIVATE)
+    private val audioPrefs = app.getSharedPreferences("kanade_audio", Context.MODE_PRIVATE)
+    private val _onlineBoost = MutableStateFlow(audioPrefs.getInt("online_boost", 0).coerceIn(0, 600))
+    val onlineBoost: StateFlow<Int> = _onlineBoost
     private val future: ListenableFuture<MediaController> =
         MediaController.Builder(
             app,
@@ -158,6 +161,16 @@ class PlaybackConnection(context: Context) {
         app.startService(Intent(app, KanadePlaybackService::class.java).apply {
             action = KanadePlaybackService.ACTION_SLEEP
             putExtra(KanadePlaybackService.EXTRA_MINUTES, minutes.coerceIn(0, 180))
+        })
+    }
+
+    fun setOnlineBoost(gain: Int) {
+        val value = gain.coerceIn(0, 600)
+        _onlineBoost.value = value
+        audioPrefs.edit().putInt("online_boost", value).apply()
+        app.startService(Intent(app, KanadePlaybackService::class.java).apply {
+            action = KanadePlaybackService.ACTION_ONLINE_BOOST
+            putExtra(KanadePlaybackService.EXTRA_BOOST, value)
         })
     }
 
