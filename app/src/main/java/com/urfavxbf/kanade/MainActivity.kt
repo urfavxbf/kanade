@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.core.view.WindowCompat
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -22,14 +23,15 @@ class MainActivity : ComponentActivity() {
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         setContent {
-            val darkTheme by model.darkTheme.collectAsState()
+            val themeMode by model.themeMode.collectAsState()
+            val darkTheme = themeMode.isDark(isSystemInDarkTheme())
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = !darkTheme
                     isAppearanceLightNavigationBars = !darkTheme
                 }
             }
-            KanadeScreen(model)
+            KanadeScreen(model, darkTheme, themeMode)
         }
     }
 }

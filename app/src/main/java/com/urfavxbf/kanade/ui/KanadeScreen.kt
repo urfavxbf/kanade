@@ -110,19 +110,18 @@ private val PrimaryText: Color @Composable get() = LocalKanadePalette.current.te
 private val Muted: Color @Composable get() = LocalKanadePalette.current.muted
 private val ErrorColor: Color @Composable get() = LocalKanadePalette.current.error
 
-private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS }
-private enum class Overlay { NONE, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST, EDIT_TAGS }
+private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS, SETTINGS }
+private enum class Overlay { NONE, QUEUE, LYRICS, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
-fun KanadeScreen(model: KanadeViewModel) {
-    val darkTheme by model.darkTheme.collectAsState()
+fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMode) {
     CompositionLocalProvider(LocalKanadePalette provides if (darkTheme) DarkPalette else LightPalette) {
-        KanadeContent(model, darkTheme)
+        KanadeContent(model, themeMode)
     }
 }
 
 @Composable
-private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
+private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
     val library by model.library.collectAsState()
     val discover by model.discover.collectAsState()
     val playback by model.playback.state.collectAsState()
@@ -164,6 +163,7 @@ private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
     }
 
     LaunchedEffect(Unit) { if (model.hasPermission()) model.loadLocal() }
+    BackHandler(enabled = page == Page.SETTINGS && !showNowPlaying && overlay == Overlay.NONE) { page = Page.LIBRARY }
     BackHandler(enabled = showNowPlaying && overlay == Overlay.NONE) { showNowPlaying = false }
     LaunchedEffect(playback.hasItem) { if (!playback.hasItem) showNowPlaying = false }
 
@@ -173,22 +173,6 @@ private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
         Modifier.fillMaxSize().safeDrawingPadding().imePadding()
             .padding(start = 16.dp, end = 16.dp, top = 8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
-                    .background(Brush.linearGradient(listOf(Accent, LocalKanadePalette.current.accentSoft))),
-                contentAlignment = Alignment.Center,
-            ) { KanadeGlyph(KanadeIcon.MUSIC, Background, selected = true, size = 24.dp) }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Label("KANADE", 21.sp, PrimaryText, FontWeight.Bold)
-                Label("Your sound. Your space.", 11.sp, Muted)
-            }
-            Chip(if (darkTheme) "Light mode" else "Dark mode") { model.toggleTheme() }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
         Box(Modifier.weight(1f)) {
             when (page) {
                 Page.LIBRARY -> Column {
@@ -369,6 +353,7 @@ private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
                             onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                     }
                 }
+                Page.SETTINGS -> SettingsScreen(model, playback, themeMode)
                 Page.INSIGHTS -> Column {
                     Header("Your listening", "Private listening history, stored on this device.")
                     Spacer(Modifier.height(16.dp))
@@ -417,6 +402,7 @@ private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
                     Page.ONLINE -> "Online" to KanadeIcon.ONLINE
                     Page.PLAYLISTS -> "Playlists" to KanadeIcon.PLAYLIST
                     Page.INSIGHTS -> "Insights" to KanadeIcon.INSIGHTS
+                    Page.SETTINGS -> "Settings" to KanadeIcon.AUDIO
                 }
                 val active = page == tab
                 Column(Modifier.weight(1f).clip(RoundedCornerShape(13.dp))
@@ -437,7 +423,7 @@ private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
             onNext = model.playback::next, onPrevious = model.playback::previous,
             onShuffle = model.playback::toggleShuffle, onRepeat = model.playback::cycleRepeat,
             onSeek = model.playback::seek, onQueue = { overlay = Overlay.QUEUE },
-            onLyrics = { overlay = Overlay.LYRICS }, onAudio = { overlay = Overlay.AUDIO })
+            onLyrics = { overlay = Overlay.LYRICS }, onAudio = { showNowPlaying = false; page = Page.SETTINGS })
     }
     }
 
@@ -491,32 +477,6 @@ private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
                 }
             }
         }
-        Overlay.AUDIO -> FeatureDialog("Audio controls", { overlay = Overlay.NONE }) {
-            Label("SLEEP TIMER", 12.sp, Accent, FontWeight.SemiBold)
-            Spacer(Modifier.height(7.dp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (minutes in listOf(0, 15, 30, 60, 90)) {
-                    Chip(if (minutes == 0) "Off" else "${minutes}m") { model.playback.sleep(minutes) }
-                }
-            }
-            Spacer(Modifier.height(17.dp))
-            Label("EQUALIZER", 12.sp, Accent, FontWeight.SemiBold)
-            Spacer(Modifier.height(7.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                for (preset in listOf("Off", "Bass", "Vocal")) Chip(preset) { model.playback.equalizer(preset) }
-            }
-            Spacer(Modifier.height(17.dp))
-            Label("PLAYBACK SPEED", 12.sp, Accent, FontWeight.SemiBold)
-            Spacer(Modifier.height(7.dp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                for (speed in listOf(0.75f, 1f, 1.25f, 1.5f, 2f)) {
-                    Chip("${speed}×", playback.speed == speed) { model.playback.setSpeed(speed) }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-            Label("Gapless playback uses Media3's supported codec path. Equalizer effects depend on device audio routing.",
-                12.sp, Muted)
-        }
         Overlay.EDIT_TAGS -> FeatureDialog("Edit display metadata", { overlay = Overlay.NONE }) {
             val track = selectedTrack
             if (track != null && track.source == TrackSource.LOCAL) {
@@ -546,6 +506,62 @@ private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, themeMode: ThemeMode) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Header("Settings", "Make Kanade feel like yours.")
+        Spacer(Modifier.height(22.dp))
+        Label("APPEARANCE", 12.sp, Accent, FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Label("Theme", 15.sp, PrimaryText, FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for ((mode, title) in listOf(ThemeMode.SYSTEM to "Follow system", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark")) {
+                ThemeChoice(title, themeMode == mode) { model.setThemeMode(mode) }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+        Label("AUDIO", 12.sp, Accent, FontWeight.SemiBold)
+        Spacer(Modifier.height(12.dp))
+            Label("SLEEP TIMER", 12.sp, Accent, FontWeight.SemiBold)
+            Spacer(Modifier.height(7.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (minutes in listOf(0, 15, 30, 60, 90)) {
+                    Chip(if (minutes == 0) "Off" else "${minutes}m") { model.playback.sleep(minutes) }
+                }
+            }
+            Spacer(Modifier.height(17.dp))
+            Label("EQUALIZER", 12.sp, Accent, FontWeight.SemiBold)
+            Spacer(Modifier.height(7.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                for (preset in listOf("Off", "Bass", "Vocal")) Chip(preset) { model.playback.equalizer(preset) }
+            }
+            Spacer(Modifier.height(17.dp))
+            Label("PLAYBACK SPEED", 12.sp, Accent, FontWeight.SemiBold)
+            Spacer(Modifier.height(7.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                for (speed in listOf(0.75f, 1f, 1.25f, 1.5f, 2f)) {
+                    Chip("${speed}×", playback.speed == speed) { model.playback.setSpeed(speed) }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Label("Gapless playback uses Media3's supported codec path. Equalizer effects depend on device audio routing.",
+                12.sp, Muted)
+    }
+}
+
+@Composable
+private fun ThemeChoice(text: String, selected: Boolean, onClick: () -> Unit) {
+    Box(Modifier.clip(RoundedCornerShape(13.dp))
+        .background(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f))
+        .border(1.dp, LocalKanadePalette.current.glassBorder.copy(alpha = if (selected) 0f else 0.14f), RoundedCornerShape(13.dp))
+        .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+        .padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+        Label(text, 12.sp, if (selected) Background else PrimaryText,
+            if (selected) FontWeight.Bold else FontWeight.Normal)
     }
 }
 

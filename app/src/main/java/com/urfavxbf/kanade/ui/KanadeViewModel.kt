@@ -57,8 +57,11 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val store = MusicStore(KanadeDatabase.open(app).musicDao())
     private val lyricPrefs = app.getSharedPreferences("kanade_lyrics", Context.MODE_PRIVATE)
     private val appearancePrefs = app.getSharedPreferences("kanade_appearance", Context.MODE_PRIVATE)
-    private val _darkTheme = MutableStateFlow(appearancePrefs.getBoolean("dark_theme", true))
-    val darkTheme: StateFlow<Boolean> = _darkTheme
+    private val _themeMode = MutableStateFlow(ThemeMode.fromStored(
+        appearancePrefs.getString("theme_mode", null),
+        if (appearancePrefs.contains("dark_theme")) appearancePrefs.getBoolean("dark_theme", true) else null,
+    ))
+    val themeMode: StateFlow<ThemeMode> = _themeMode
     val playback = PlaybackConnection(app)
     private val known = mutableMapOf<String, Track>()
 
@@ -130,10 +133,9 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun toggleTheme() {
-        val dark = !_darkTheme.value
-        _darkTheme.value = dark
-        appearancePrefs.edit().putBoolean("dark_theme", dark).apply()
+    fun setThemeMode(mode: ThemeMode) {
+        _themeMode.value = mode
+        appearancePrefs.edit().putString("theme_mode", mode.name).apply()
     }
 
     fun permission(): String = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
