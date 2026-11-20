@@ -85,6 +85,7 @@ class PlaybackConnection(context: Context) {
     fun play(tracks: List<Track>, position: Int) {
         if (tracks.isEmpty()) return
         _state.value = _state.value.copy(error = null)
+        station = ""
         val target = position.coerceIn(0, tracks.lastIndex)
         val player = controller
         if (player == null) {
@@ -129,6 +130,50 @@ class PlaybackConnection(context: Context) {
         } }
     }
 
+    private val sessions = app.getSharedPreferences("queue_sessions", Context.MODE_PRIVATE)
+    val sessionNames = MutableStateFlow(sessions.getStringSet("names", emptySet()).orEmpty().sorted())
+    private var activeSession = sessions.getString("active", "").orEmpty()
+    var station: String
+        get() = prefs.getString("station", "").orEmpty()
+        set(value) { prefs.edit().putString("station", value).apply() }
+
+    fun queueTracks(): List<Track> = state.value.queue.mapNotNull { knownTracks[it.id] }
+
+    fun saveSession(name: String) {
+        val key = name.trim().take(60)
+        if (key.isEmpty() || controller?.mediaItemCount == 0 || controller == null) return
+        persist(force = true)
+        val names = sessionNames.value.toSet() + key
+        val snapshot = JSONObject(prefs.all).toString()
+        sessions.edit().putString("queue:$key", snapshot).putStringSet("names", names)
+            .putString("active", key).apply()
+        activeSession = key
+        sessionNames.value = names.sorted()
+    }
+
+    fun openSession(name: String) {
+        val player = controller ?: return
+        if (activeSession.isNotEmpty()) saveSession(activeSession)
+        val snapshot = sessions.getString("queue:$name", null)?.let(::JSONObject) ?: return
+        val editor = prefs.edit().clear()
+        for (key in snapshot.keys()) {
+            when (val value = snapshot.get(key)) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Number -> if (key == "position") editor.putLong(key, value.toLong()) else editor.putInt(key, value.toInt())
+            }
+        }
+        player.pause()
+        player.clearMediaItems()
+        editor.apply()
+        restore(player)
+        player.prepare()
+        player.play()
+        activeSession = name
+        sessions.edit().putString("active", name).apply()
+        sync()
+    }
+
     fun clear() {
         controller?.clearMediaItems()
         knownTracks.clear()
@@ -156,6 +201,13 @@ class PlaybackConnection(context: Context) {
     }
 
     fun setSpeed(speed: Float) { controller?.setPlaybackSpeed(speed.coerceIn(0.5f, 2f)) }
+
+    fun setLoop(track: String, a: Long, b: Long) {
+        app.startService(Intent(app, KanadePlaybackService::class.java).apply {
+            action = KanadePlaybackService.ACTION_LOOP
+            putExtra("track", track); putExtra("a", a); putExtra("b", b)
+        })
+    }
 
     fun sleep(minutes: Int) {
         app.startService(Intent(app, KanadePlaybackService::class.java).apply {

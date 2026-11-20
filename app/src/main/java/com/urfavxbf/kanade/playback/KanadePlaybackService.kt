@@ -43,7 +43,19 @@ class KanadePlaybackService : MediaSessionService() {
         }
     }
 
+    private val loopTick = object : Runnable {
+        override fun run() {
+            val current = player ?: return
+            val region = loop.value ?: return
+            if (region.first != current.currentMediaItem?.mediaId) { loop.value = null; return }
+            if (current.isPlaying && current.currentPosition >= region.third) current.seekTo(region.second)
+            handler.postDelayed(this, if (current.isPlaying) (region.third - current.currentPosition).coerceIn(25, 200) else 250)
+        }
+    }
+
     companion object {
+        val loop = kotlinx.coroutines.flow.MutableStateFlow<Triple<String, Long, Long>?>(null)
+        const val ACTION_LOOP = "com.urfavxbf.kanade.LOOP"
         const val ACTION_SLEEP = "com.urfavxbf.kanade.SLEEP"
         const val ACTION_ONLINE_BOOST = "com.urfavxbf.kanade.ONLINE_BOOST"
         const val EXTRA_BOOST = "boost"
@@ -60,7 +72,15 @@ class KanadePlaybackService : MediaSessionService() {
                 spec.withUri(Uri.parse(YouTubeMusicRepository.streamUrl(id)))
             } else spec
         }
-        val instance = ExoPlayer.Builder(this)
+        val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
+                enableAudioOutputPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink =
+                androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+                    .setAudioProcessors(arrayOf(androidx.media3.exoplayer.audio.TeeAudioProcessor(LiveSpectrum)))
+                    .build()
+        }
+        val instance = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
             .setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
@@ -82,6 +102,16 @@ class KanadePlaybackService : MediaSessionService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_LOOP -> {
+                handler.removeCallbacks(loopTick)
+                val id = intent.getStringExtra("track").orEmpty()
+                val a = intent.getLongExtra("a", -1)
+                val b = intent.getLongExtra("b", -1)
+                loop.value = if (id == player?.currentMediaItem?.mediaId && a >= 0 && b >= a + 500)
+                    Triple(id, a, b) else null
+                if (loop.value != null) { player?.seekTo(a); handler.post(loopTick) }
+                return START_STICKY
+            }
             ACTION_SLEEP -> {
                 val minutes = intent.getIntExtra(EXTRA_MINUTES, 0).coerceIn(0, 180)
                 val deadline = if (minutes == 0) 0L else System.currentTimeMillis() + minutes * 60_000L
@@ -170,6 +200,8 @@ class KanadePlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onDestroy() {
+        handler.removeCallbacks(loopTick)
+        loop.value = null
         handler.removeCallbacks(timer)
         effect?.release()
         effect = null

@@ -34,6 +34,8 @@ class MusicStore(private val dao: MusicDao) {
         else dao.addFavorite(Favorite(track.id, System.currentTimeMillis()))
     }
 
+    suspend fun saveMix(name: String, tracks: List<Track>) = dao.saveMix(name, tracks.map { it.saved() })
+
     suspend fun newPlaylist(name: String) {
         val trimmed = name.trim()
         if (trimmed.isNotEmpty() && trimmed.length <= 80) dao.createPlaylist(Playlist(name = trimmed))

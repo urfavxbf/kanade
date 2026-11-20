@@ -176,6 +176,38 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         appearancePrefs.edit().putString("color_theme", name).apply()
     }
 
+    val options = getApplication<Application>().getSharedPreferences("listening_options", Context.MODE_PRIVATE)
+    val folders = MutableStateFlow<List<String>>(emptyList())
+    private var scanned = emptyList<Track>()
+
+    fun applyFolders() {
+        val include = options.getStringSet("include", emptySet()).orEmpty()
+        val exclude = options.getStringSet("exclude", emptySet()).orEmpty()
+        fun matches(folder: String, paths: Set<String>) = paths.any {
+            folder.trimEnd('/') == it.trimEnd('/') || folder.startsWith(it.trimEnd('/') + "/")
+        }
+        val visible = scanned.filter { (include.isEmpty() || matches(it.folder, include)) && !matches(it.folder, exclude) }
+        _library.value = LibraryState(tracks = visible)
+    }
+
+    fun saveRadioMix(name: String) {
+        val tracks = playback.queueTracks()
+        if (name.isBlank() || tracks.isEmpty() || tracks.size != playback.state.value.queue.size) return
+        viewModelScope.launch {
+            store.saveMix(name.trim().take(80), tracks)
+            _radioMessage.value = "Playlist saved"
+        }
+    }
+
+    fun hideStationSong() {
+        val station = playback.station
+        val current = playback.state.value
+        if (station.isEmpty() || current.mediaId == station || current.mediaId.isEmpty()) return
+        val key = "hidden:$station"
+        options.edit().putStringSet(key, options.getStringSet(key, emptySet()).orEmpty() + current.mediaId).apply()
+        playback.remove(current.index)
+    }
+
     fun permission(): String = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
         else Manifest.permission.READ_EXTERNAL_STORAGE
 
@@ -193,7 +225,9 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val tracks = local.load().map(tagOverrides::apply)
                 tracks.forEach { known[it.id] = it }
-                _library.value = LibraryState(tracks = tracks)
+                scanned = tracks
+                folders.value = tracks.map { it.folder }.distinct().sorted()
+                applyFolders()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _library.value = LibraryState(error = "Could not scan your music. Try again.")
@@ -306,7 +340,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             val localIds = local.mapTo(hashSetOf()) { it.id }
             val saved = (favorites.value + recent.value).filter { it.source != TrackSource.LOCAL || it.id in localIds }
             val pool = discovered + saved + local
-            val queue = withContext(Dispatchers.Default) { radioQueue(seed, pool, online) }
+            val queue = withContext(Dispatchers.Default) { radioQueue(seed, pool.filterNot { it.id in options.getStringSet("hidden:${seed.id}", emptySet()).orEmpty() }, online) }
             val now = playback.state.value
             if (now.mediaId != before.mediaId || now.queue != before.queue) {
                 dismissRadioMessage()
@@ -318,6 +352,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             }
             queue.forEach { known[it.id] = it }
             playback.play(queue, 0)
+            playback.station = seed.id
             _radioMessage.value = "Radio started · ${queue.size} songs"
         }
     }

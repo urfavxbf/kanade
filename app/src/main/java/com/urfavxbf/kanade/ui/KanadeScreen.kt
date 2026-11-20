@@ -3,6 +3,7 @@ package com.urfavxbf.kanade.ui
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import androidx.compose.foundation.combinedClickable
 import android.net.Uri
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -268,8 +269,10 @@ private fun underChrome(): Pair<Modifier, PaddingValues> {
     return modifier to padding
 }
 
+private val homeSections = listOf("Continue listening", "Quick picks", "Pinned playlists", "Recently played", "Start radio", "Listening insights")
+
 private enum class Page { HOME, LIBRARY, ONLINE, PLAYLISTS, INSIGHTS, SETTINGS }
-private enum class Overlay { NONE, QUEUE, LYRICS, SEARCH_LYRICS, PICK_PLAYLIST, EDIT_TAGS }
+private enum class Overlay { HOME_EDITOR, FOLDERS, TOOLS, SESSIONS, NONE, QUEUE, LYRICS, SEARCH_LYRICS, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
 fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMode) {
@@ -296,6 +299,20 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
     val selectedTracks by model.selectedPlaylistTracks.collectAsState()
     val totalPlays by model.totalPlays.collectAsState()
     val totalListenMs by model.totalListenMs.collectAsState()
+    val prefs = model.options
+    var revision by remember { mutableStateOf(0) }
+    DisposableEffect(prefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> revision++ }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    val homeOrder = remember(revision) {
+        val saved = prefs.getString("home_order", "").orEmpty().split("|")
+        (saved + homeSections).filter { it in homeSections }.distinct()
+    }
+    val hiddenSections = remember(revision) { prefs.getStringSet("home_hidden", emptySet()).orEmpty() }
+    val offsetKey = "offset:${playback.mediaId}"
+    val lyricDelay = remember(revision, offsetKey) { prefs.getLong(offsetKey, 0L) }
     val lyrics by model.lyrics.collectAsState()
 
     var page by rememberSaveable { mutableStateOf(Page.HOME) }
@@ -355,67 +372,86 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Label("Home", 30.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f))
+                                Label("Home", 30.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f).combinedClickable(
+                                    onClick = { overlay = Overlay.HOME_EDITOR }, onLongClick = { overlay = Overlay.HOME_EDITOR }))
+                                Chip("Edit Home") { overlay = Overlay.HOME_EDITOR }
                                 BasicText("⚙", Modifier.clickable(role = Role.Button) {
                                     settingsReturn = page; page = Page.SETTINGS
                                 }.semantics { contentDescription = "Settings" }.padding(10.dp),
                                     style = TextStyle(color = PrimaryText, fontSize = 26.sp))
                             }
                         }
-                        val resume = recent.firstOrNull()
-                        if (playback.hasItem || resume != null) item {
-                            Row(Modifier.fillMaxWidth().glassSurface(18.dp).clickable(role = Role.Button) {
-                                if (playback.hasItem) {
-                                    if (!playback.playing) model.playback.toggle()
-                                    showNowPlaying = true
-                                } else resume?.let { model.playListTracks(recent, it) }
-                            }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                AlbumImage(if (playback.hasItem) playback.artworkUri else resume?.artworkUri, Modifier.size(86.dp))
-                                Spacer(Modifier.width(14.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Label("Continue listening", 12.sp, Accent, FontWeight.Bold)
-                                    Label(if (playback.hasItem) playback.title else resume?.title.orEmpty(), 21.sp, PrimaryText, FontWeight.Bold, lines = 2)
-                                    Label(if (playback.hasItem) playback.artist else resume?.artist.orEmpty(), 13.sp, Muted, lines = 1)
-                                }
-                            }
-                        }
                         val quick = (favorites + topTracks + recent + library.tracks.take(6)).distinctBy { it.id }.take(6)
-                        if (quick.isEmpty()) item {
-                            SimpleRow("Open local music", "Browse this device") { page = Page.LIBRARY }
-                            SimpleRow("Find music online", "Search songs and artists") { scope = "Online"; page = Page.ONLINE }
-                        } else {
-                            item { Label("Quick picks", 20.sp, PrimaryText, FontWeight.Bold) }
-                            items(quick.chunked(2)) { pair ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    for (track in pair) Row(Modifier.weight(1f).glassSurface(12.dp)
-                                        .clickable { model.playListTracks(quick, track) },
-                                        verticalAlignment = Alignment.CenterVertically) {
-                                        AlbumImage(track.artworkUri, Modifier.size(48.dp))
-                                        Label(track.title, 13.sp, PrimaryText, FontWeight.Bold, Modifier.padding(6.dp), lines = 2)
+                        for (section in homeOrder) {
+                            if (section in hiddenSections) continue
+                            when (section) {
+                                "Continue listening" -> {
+                                    val resume = recent.firstOrNull()
+                                    if (playback.hasItem || resume != null) item {
+                                        Row(Modifier.fillMaxWidth().glassSurface(18.dp).clickable(role = Role.Button) {
+                                            if (playback.hasItem) {
+                                                if (!playback.playing) model.playback.toggle()
+                                                showNowPlaying = true
+                                            } else resume?.let { model.playListTracks(recent, it) }
+                                        }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            AlbumImage(if (playback.hasItem) playback.artworkUri else resume?.artworkUri, Modifier.size(86.dp))
+                                            Spacer(Modifier.width(14.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Label("Continue listening", 12.sp, Accent, FontWeight.Bold)
+                                                Label(if (playback.hasItem) playback.title else resume?.title.orEmpty(), 21.sp, PrimaryText, FontWeight.Bold, lines = 2)
+                                                Label(if (playback.hasItem) playback.artist else resume?.artist.orEmpty(), 13.sp, Muted, lines = 1)
+                                            }
+                                        }
                                     }
-                                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                                }
+                                "Quick picks" -> {
+                                    if (quick.isEmpty()) item {
+                                        SimpleRow("Open local music", "Browse this device") { page = Page.LIBRARY }
+                                        SimpleRow("Find music online", "Search songs and artists") { scope = "Online"; page = Page.ONLINE }
+                                    } else {
+                                        item { Label("Quick picks", 20.sp, PrimaryText, FontWeight.Bold) }
+                                        items(quick.chunked(2)) { pair ->
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                for (track in pair) Row(Modifier.weight(1f).glassSurface(12.dp)
+                                                    .clickable { model.playListTracks(quick, track) },
+                                                    verticalAlignment = Alignment.CenterVertically) {
+                                                    AlbumImage(track.artworkUri, Modifier.size(48.dp))
+                                                    Label(track.title, 13.sp, PrimaryText, FontWeight.Bold, Modifier.padding(6.dp), lines = 2)
+                                                }
+                                                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                }
+                                "Pinned playlists" -> {
+                                    val pinned = playlists.filter { it.id.toString() in pins }
+                                    if (pinned.isNotEmpty()) item {
+                                        Label("Pinned playlists", 20.sp, PrimaryText, FontWeight.Bold)
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            items(pinned, key = { it.id }) { playlist ->
+                                                Chip(playlist.name) {
+                                                    selectedPlaylistId = playlist.id; model.selectPlaylist(playlist.id); page = Page.PLAYLISTS
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                "Recently played" -> {
+                                    if (recent.isNotEmpty()) item {
+                                        DashboardShelf("Recently played", recent.take(12)) { model.playListTracks(recent, it) }
+                                    }
+                                }
+                                "Start radio" -> {
+                                    val stations = (recent + quick).distinctBy { it.artist.lowercase() }.take(8)
+                                    if (stations.isNotEmpty()) item {
+                                        DashboardShelf("Start radio", stations, onSelect = model::startRadio)
+                                    }
+                                }
+                                "Listening insights" -> {
+                                    item { SimpleRow("Listening insights", "History and smart collections") { page = Page.INSIGHTS } }
                                 }
                             }
                         }
-                        val pinned = playlists.filter { it.id.toString() in pins }
-                        if (pinned.isNotEmpty()) item {
-                            Label("Pinned playlists", 20.sp, PrimaryText, FontWeight.Bold)
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(pinned, key = { it.id }) { playlist ->
-                                    Chip(playlist.name) {
-                                        selectedPlaylistId = playlist.id; model.selectPlaylist(playlist.id); page = Page.PLAYLISTS
-                                    }
-                                }
-                            }
-                        }
-                        if (recent.isNotEmpty()) item {
-                            DashboardShelf("Recently played", recent.take(12)) { model.playListTracks(recent, it) }
-                        }
-                        val stations = (recent + quick).distinctBy { it.artist.lowercase() }.take(8)
-                        if (stations.isNotEmpty()) item {
-                            DashboardShelf("Start radio", stations, onSelect = model::startRadio)
-                        }
-                        item { SimpleRow("Listening insights", "History and smart collections") { page = Page.INSIGHTS } }
                     }
                 }
                 Page.LIBRARY -> Column {
@@ -426,6 +462,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                             permissions.launch(model.permission())
                         }
                     } else {
+                        Chip("MP3 folders") { overlay = Overlay.FOLDERS }
                         SearchField(query, "Search songs, albums, artists, folders…", { query = it }, {})
                         Spacer(Modifier.height(9.dp))
                         Row(Modifier.horizontalScroll(rememberScrollState()),
@@ -562,6 +599,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                         pagination = if (showOnline) discover else null, onLoadMore = model::loadMoreSearchResults)
                 }
                 Page.PLAYLISTS -> Column {
+                    Chip("Queue sessions") { overlay = Overlay.SESSIONS }
                     Header("My playlists", "Saved locally. No account required.")
                     Spacer(Modifier.height(12.dp))
                     if (selectedPlaylistId < 0) {
@@ -698,11 +736,116 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
             onNext = model.playback::next, onPrevious = model.playback::previous,
             onShuffle = model.playback::toggleShuffle, onRepeat = model.playback::cycleRepeat,
             onSeek = model.playback::seek, onPlayAt = model.playback::playAt,
-            onLyrics = { overlay = Overlay.LYRICS })
+            onLyrics = { overlay = Overlay.LYRICS }, lyricDelay = lyricDelay, onTools = { overlay = Overlay.TOOLS })
     }
     }
 
     when (overlay) {
+        Overlay.HOME_EDITOR -> FeatureDialog("Edit Home", { overlay = Overlay.NONE }) {
+            homeOrder.forEachIndexed { index, section ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        ThemeChoice(section, section !in hiddenSections) {
+                            val next = if (section in hiddenSections) hiddenSections - section else hiddenSections + section
+                            prefs.edit().putStringSet("home_hidden", next).apply()
+                        }
+                    }
+                    fun move(to: Int) {
+                        val order = homeOrder.toMutableList()
+                        order.add(to, order.removeAt(index))
+                        prefs.edit().putString("home_order", order.joinToString("|")).apply()
+                    }
+                    if (index > 0) TinyButton(KanadeIcon.UP, "Move $section up") { move(index - 1) }
+                    if (index < homeOrder.lastIndex) TinyButton(KanadeIcon.DOWN, "Move $section down") { move(index + 1) }
+                }
+            }
+            Chip("Restore defaults") { prefs.edit().remove("home_order").remove("home_hidden").apply() }
+        }
+        Overlay.FOLDERS -> FeatureDialog("MP3 folders", { overlay = Overlay.NONE }) {
+            val folders by model.folders.collectAsState()
+            val included = remember(revision) { prefs.getStringSet("include", emptySet()).orEmpty() }
+            val excluded = remember(revision) { prefs.getStringSet("exclude", emptySet()).orEmpty() }
+            Chip("All folders") {
+                prefs.edit().remove("include").remove("exclude").apply()
+                model.applyFolders()
+            }
+            for (folder in (folders + included + excluded).distinct().sorted()) {
+                Label(folder.ifBlank { "Storage root" }, 14.sp, PrimaryText)
+                Row {
+                    for (mode in listOf("Default", "Include", "Exclude")) {
+                        ThemeChoice(mode, mode == when (folder) { in included -> "Include"; in excluded -> "Exclude"; else -> "Default" }) {
+                            prefs.edit().putStringSet("include", if (mode == "Include") included + folder else included - folder)
+                                .putStringSet("exclude", if (mode == "Exclude") excluded + folder else excluded - folder).apply()
+                            model.applyFolders()
+                        }
+                    }
+                }
+            }
+        }
+        Overlay.SESSIONS -> FeatureDialog("Queue sessions", { overlay = Overlay.NONE }) {
+            val names by model.playback.sessionNames.collectAsState()
+            var name by rememberSaveable { mutableStateOf("") }
+            SearchField(name, "Session name", { name = it.take(60) }, {})
+            if (name.isNotBlank() && playback.hasItem) Chip(if (name.trim() in names) "Replace session" else "Save session") {
+                model.playback.saveSession(name); name = ""
+            }
+            for (saved in names) SimpleRow(saved, "Resume session") { model.playback.openSession(saved); overlay = Overlay.NONE }
+        }
+        Overlay.TOOLS -> androidx.compose.runtime.key(playback.mediaId) {
+            FeatureDialog("Player tools", { overlay = Overlay.NONE }) {
+                val id = playback.mediaId
+                val station = model.playback.station
+                if (station.isNotEmpty()) {
+                    var mix by rememberSaveable { mutableStateOf("Radio · " + (model.findTrack(station)?.title ?: playback.title)) }
+                    SearchField(mix, "Playlist name", { mix = it }, {})
+                    Chip("Save mix as playlist") { model.saveRadioMix(mix); overlay = Overlay.NONE }
+                    if (station != id) Chip("Hide from this station") { model.hideStationSong(); overlay = Overlay.NONE }
+                }
+                Chip("Queue sessions") { overlay = Overlay.SESSIONS }
+                val key = "marks:$id"
+                val marks = remember(revision, key) { org.json.JSONObject(prefs.getString(key, "{}") ?: "{}") }
+                var name by rememberSaveable { mutableStateOf("") }
+                SearchField(name, "Bookmark name", { name = it }, {})
+                Chip("Bookmark " + DurationFormatter.format(playback.positionMs)) {
+                    val time = playback.positionMs
+                    val copy = org.json.JSONObject(marks.toString()).put(time.toString(), name.trim().ifEmpty { DurationFormatter.format(time) })
+                    prefs.edit().putString(key, copy.toString()).apply()
+                    name = ""
+                }
+                for (time in marks.keys().asSequence().mapNotNull { it.toLongOrNull() }.sorted()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Chip(marks.getString(time.toString()) + " · " + DurationFormatter.format(time)) {
+                                model.playback.seek(time); overlay = Overlay.NONE
+                            }
+                        }
+                        TinyButton(KanadeIcon.REMOVE, "Delete bookmark") {
+                            val copy = org.json.JSONObject(marks.toString())
+                            copy.remove(time.toString())
+                            prefs.edit().putString(key, copy.toString()).apply()
+                        }
+                    }
+                }
+                var pointA by rememberSaveable(id) { mutableStateOf(prefs.getLong("loopA:$id", -1L)) }
+                val loop by com.urfavxbf.kanade.playback.KanadePlaybackService.loop.collectAsState()
+                Label(loop?.takeIf { it.first == id }?.let { "Loop " + DurationFormatter.format(it.second) + " – " + DurationFormatter.format(it.third) }
+                    ?: if (pointA >= 0) "A · " + DurationFormatter.format(pointA) else "A–B repeat", 14.sp, PrimaryText)
+                Row {
+                    Chip("Set A") {
+                        pointA = playback.positionMs
+                        prefs.edit().putLong("loopA:$id", pointA).apply()
+                        model.playback.setLoop(id, -1, -1)
+                    }
+                    if (pointA >= 0 && playback.positionMs >= pointA + 500) Chip("Set B") {
+                        model.playback.setLoop(id, pointA, playback.positionMs)
+                    }
+                    Chip("Clear") {
+                        pointA = -1; prefs.edit().remove("loopA:$id").apply()
+                        model.playback.setLoop(id, -1, -1)
+                    }
+                }
+            }
+        }
         Overlay.NONE -> Unit
         Overlay.QUEUE -> FeatureDialog("Up next", { overlay = Overlay.NONE }) {
             if (playback.queue.isEmpty()) Label("Queue is empty", 14.sp, Muted)
@@ -747,7 +890,13 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
             Spacer(Modifier.height(13.dp))
             if (lyrics.lines.isEmpty()) Label(lyrics.plain ?: lyrics.message, 14.sp, Muted)
             else {
-                val active = LrcParser.current(lyrics.lines, playback.positionMs)
+                Label("Lyrics timing · ${lyricDelay} ms", 14.sp, PrimaryText)
+                Row {
+                    Chip("Earlier") { prefs.edit().putLong(offsetKey, lyricDelay - 250).apply() }
+                    Chip("Later") { prefs.edit().putLong(offsetKey, lyricDelay + 250).apply() }
+                    Chip("Reset") { prefs.edit().remove(offsetKey).apply() }
+                }
+                val active = LrcParser.current(lyrics.lines, playback.positionMs - lyricDelay)
                 val listState = rememberLazyListState()
                 val dragged by listState.interactionSource.collectIsDraggedAsState()
                 var follow by remember(playback.mediaId) { mutableStateOf(true) }
@@ -766,7 +915,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                         Label(line.text, if (active == i) 19.sp else 15.sp,
                             if (active == i) PrimaryText else Muted,
                             if (active == i) FontWeight.Bold else FontWeight.Normal,
-                            Modifier.fillMaxWidth().clickable { model.playback.seek(line.timeMs) })
+                            Modifier.fillMaxWidth().clickable { model.playback.seek((line.timeMs + lyricDelay).coerceAtLeast(0)) })
                     }
                 }
             }
@@ -1403,7 +1552,7 @@ private fun QueueCoverStack(state: PlaybackState, coverSize: Dp, onPlayAt: (Int)
 private fun NowPlayingScreen(
     state: PlaybackState, lyrics: LyricsState, videoMode: String, onClose: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit,
     onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit, onSeek: (Long) -> Unit,
-    onPlayAt: (Int) -> Unit, onLyrics: () -> Unit,
+    onPlayAt: (Int) -> Unit, onLyrics: () -> Unit, lyricDelay: Long, onTools: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().background(Background)) {
         if (!state.artworkUri.isNullOrBlank()) {
@@ -1432,7 +1581,7 @@ private fun NowPlayingScreen(
                             overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = LocalAppFont.current,
                                 color = Color.White, fontWeight = FontWeight.Bold, fontSize = 28.sp,
                                 textAlign = TextAlign.Center, shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f)))
-                        Spacer(Modifier.width(48.dp))
+                        PlayerButton(KanadeIcon.MORE, "Player tools", onClick = onTools)
                     }
                     Spacer(Modifier.height(16.dp))
                     val cover: @Composable () -> Unit = {
@@ -1441,7 +1590,7 @@ private fun NowPlayingScreen(
                         }
                     }
                     val lyricStage: @Composable () -> Unit = {
-                        val index = LrcParser.current(lyrics.lines, state.positionMs)
+                        val index = LrcParser.current(lyrics.lines, state.positionMs - lyricDelay)
                         val line = lyrics.lines.getOrNull(index)
                         Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onLyrics)
                             .padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1469,6 +1618,8 @@ private fun NowPlayingScreen(
                     state.error?.let { Label(it, 12.sp, ErrorColor) }
                 }
                 Spacer(Modifier.height(4.dp))
+                PlaybackProgress(state, onSeek)
+                Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically) {
                     PlayerButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle, onClick = onShuffle)
@@ -1480,8 +1631,7 @@ private fun NowPlayingScreen(
                         if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
                         selected = state.repeatMode != Player.REPEAT_MODE_OFF, onClick = onRepeat)
                 }
-                Spacer(Modifier.height(12.dp))
-                PlaybackProgress(state, onSeek)
+
 
             }
         }
@@ -1520,8 +1670,7 @@ private fun PlaybackProgress(state: PlaybackState, onSeek: (Long) -> Unit) {
                 }
             } finally { preview = null }
         }, contentAlignment = Alignment.CenterStart) {
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.38f)))
-        Box(Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape).background(Color.White))
+        SpectrumBar(state.artworkUri, progress, state.playing, LocalReduceMotion.current, Accent)
         preview?.let {
             BoxWithConstraints(Modifier.fillMaxWidth().align(Alignment.TopStart)) {
                 val time = DurationFormatter.format((state.durationMs * it).toLong())

@@ -25,6 +25,7 @@ class LocalMusicRepository(private val resolver: ContentResolver) {
         )
         val columns = projection.toMutableList()
         if (Build.VERSION.SDK_INT >= 29) columns += MediaStore.Audio.Media.RELATIVE_PATH
+        else columns += MediaStore.Audio.Media.DATA
         val results = mutableListOf<Track>()
         resolver.query(
             collection,
@@ -43,6 +44,7 @@ class LocalMusicRepository(private val resolver: ContentResolver) {
             val mimeIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
             val addedIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val folderIndex = cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+            val pathIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
             while (cursor.moveToNext()) {
                 val filename = cursor.getString(filenameIndex).orEmpty()
                 if (!isMp3(filename, cursor.getString(mimeIndex))) continue
@@ -62,7 +64,7 @@ class LocalMusicRepository(private val resolver: ContentResolver) {
                     source = TrackSource.LOCAL,
                     album = cursor.getString(albumNameIndex).orEmpty(),
                     filename = filename,
-                    folder = if (folderIndex >= 0) cursor.getString(folderIndex).orEmpty() else "",
+                    folder = if (folderIndex >= 0) cursor.getString(folderIndex).orEmpty() else cursor.getString(pathIndex).orEmpty().substringBeforeLast('/', ""),
                     addedAtMs = cursor.getLong(addedIndex) * 1000L,
                 )
             }
