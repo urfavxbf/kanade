@@ -8,6 +8,7 @@ import java.nio.ByteOrder
 import kotlin.math.*
 
 /** Sample a short PCM window at most 20 times a second while the seek bar is visible. */
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 internal object LiveSpectrum : TeeAudioProcessor.AudioBufferSink {
     val bands = MutableStateFlow(FloatArray(12))
     @Volatile var visible = false
