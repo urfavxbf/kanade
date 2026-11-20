@@ -32,6 +32,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -574,8 +578,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
             onClose = { showNowPlaying = false }, onToggle = model.playback::toggle,
             onNext = model.playback::next, onPrevious = model.playback::previous,
             onShuffle = model.playback::toggleShuffle, onRepeat = model.playback::cycleRepeat,
-            onSeek = model.playback::seek, onQueue = { overlay = Overlay.QUEUE },
-            onLyrics = { overlay = Overlay.LYRICS }, onAudio = { showNowPlaying = false; page = Page.SETTINGS })
+            onSeek = model.playback::seek, onPlayAt = model.playback::playAt,
+            onLyrics = { overlay = Overlay.LYRICS })
     }
     }
 
@@ -982,16 +986,13 @@ private fun TinyButton(icon: KanadeIcon, description: String, selected: Boolean 
 }
 
 @Composable
-private fun IconTextButton(icon: KanadeIcon, text: String, playerAction: Boolean = false, onClick: () -> Unit) {
-    val style = if (playerAction) Modifier.heightIn(min = 48.dp)
-        else Modifier.clip(RoundedCornerShape(13.dp)).background(SurfaceLight)
-    val ink = if (playerAction) Color.White else PrimaryText
-    Row(style
+private fun IconTextButton(icon: KanadeIcon, text: String, onClick: () -> Unit) {
+    Row(Modifier.clip(RoundedCornerShape(13.dp)).background(SurfaceLight)
         .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        KanadeGlyph(icon, ink, size = if (playerAction) 21.dp else 17.dp, bold = playerAction)
+        KanadeGlyph(icon, PrimaryText, size = 17.dp)
         Spacer(Modifier.width(5.dp))
-        Label(text, 12.sp, ink)
+        Label(text, 12.sp, PrimaryText)
     }
 }
 
@@ -1139,10 +1140,67 @@ private fun PlayerButton(icon: KanadeIcon, description: String, large: Boolean =
 }
 
 @Composable
+private fun QueueCoverStack(state: PlaybackState, coverSize: Dp, onPlayAt: (Int) -> Unit) {
+    if (state.queue.isEmpty()) {
+        AlbumImage(state.artworkUri, Modifier.size(coverSize))
+        return
+    }
+    val current = state.index.coerceIn(state.queue.indices)
+    val list = rememberLazyListState(initialFirstVisibleItemIndex = current)
+    LaunchedEffect(state.mediaId, current) {
+        list.animateScrollToItem(current)
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val side = minOf(coverSize, maxWidth)
+        val overlap = side * 0.34f
+        LazyRow(
+            state = list,
+            modifier = Modifier.fillMaxWidth().height(side),
+            contentPadding = PaddingValues(horizontal = (maxWidth - side) / 2),
+            horizontalArrangement = Arrangement.spacedBy(-overlap),
+            flingBehavior = rememberSnapFlingBehavior(list),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items(state.queue.size) { index ->
+                val entry = state.queue[index]
+                val distance = remember(list, index) {
+                    derivedStateOf {
+                        val info = list.layoutInfo
+                        val item = info.visibleItemsInfo.firstOrNull { it.index == index }
+                        if (item == null || item.size == 0) 1f else {
+                            val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                            (kotlin.math.abs(item.offset + item.size / 2f - center) / item.size).coerceAtMost(1f)
+                        }
+                    }
+                }
+                Box(Modifier.size(side).zIndex(1f - distance.value)
+                    .graphicsLayer {
+                        val depth = distance.value
+                        scaleX = 1f - depth * 0.18f
+                        scaleY = scaleX
+                        alpha = 1f - depth * 0.26f
+                    }
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(role = Role.Button, onClickLabel = "Play song") {
+                        if (index != current || !state.playing) onPlayAt(index)
+                    }
+                    .semantics { contentDescription = "${entry.title}, ${entry.artist}" }) {
+                    AlbumImage(entry.artworkUri, Modifier.fillMaxSize())
+                    if (entry.artworkUri.isNullOrBlank()) {
+                        Label(entry.title, 12.sp, PrimaryText, FontWeight.Bold,
+                            Modifier.align(Alignment.BottomCenter).padding(8.dp), lines = 2)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun NowPlayingScreen(
     state: PlaybackState, lyrics: LyricsState, onClose: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit,
     onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit, onSeek: (Long) -> Unit,
-    onQueue: () -> Unit, onLyrics: () -> Unit, onAudio: () -> Unit,
+    onPlayAt: (Int) -> Unit, onLyrics: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().background(Background)) {
         if (!state.artworkUri.isNullOrBlank()) {
@@ -1171,13 +1229,12 @@ private fun NowPlayingScreen(
                             overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = LocalAppFont.current,
                                 color = Color.White, fontWeight = FontWeight.Bold, fontSize = 28.sp,
                                 textAlign = TextAlign.Center, shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f)))
-                        PlayerButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
+                        Spacer(Modifier.width(48.dp))
                     }
                     Spacer(Modifier.height(16.dp))
                     val cover: @Composable () -> Unit = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            AlbumImage(state.artworkUri, Modifier.size(coverSize)
-                                .shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)))
+                            QueueCoverStack(state, coverSize, onPlayAt)
                             Spacer(Modifier.height(8.dp))
                             Label(state.artist, 14.sp, Color.White.copy(alpha = 0.85f), lines = 1)
                         }
@@ -1224,13 +1281,6 @@ private fun NowPlayingScreen(
                 }
                 Spacer(Modifier.height(12.dp))
                 PlaybackProgress(state, onSeek)
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconTextButton(KanadeIcon.LYRICS, "Lyrics", playerAction = true, onClick = onLyrics)
-                    IconTextButton(KanadeIcon.AUDIO, "Audio", playerAction = true, onClick = onAudio)
-                    IconTextButton(KanadeIcon.QUEUE, "Queue", playerAction = true, onClick = onQueue)
-                }
 
             }
         }
