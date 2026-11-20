@@ -51,6 +51,9 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val tagOverrides = DisplayTagOverrides(app)
     private val store = MusicStore(KanadeDatabase.open(app).musicDao())
     private val lyricPrefs = app.getSharedPreferences("kanade_lyrics", Context.MODE_PRIVATE)
+    private val appearancePrefs = app.getSharedPreferences("kanade_appearance", Context.MODE_PRIVATE)
+    private val _darkTheme = MutableStateFlow(appearancePrefs.getBoolean("dark_theme", true))
+    val darkTheme: StateFlow<Boolean> = _darkTheme
     val playback = PlaybackConnection(app)
     private val known = mutableMapOf<String, Track>()
 
@@ -116,6 +119,12 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
                 delay(800)
             }
         }
+    }
+
+    fun toggleTheme() {
+        val dark = !_darkTheme.value
+        _darkTheme.value = dark
+        appearancePrefs.edit().putBoolean("dark_theme", dark).apply()
     }
 
     fun permission(): String = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO

@@ -37,6 +37,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -75,18 +77,51 @@ import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackState
 
-private val Background = Color(0xFF0B0D16)
-private val SurfaceLight = Color(0xFF292A3D)
-private val Accent = Color(0xFFBDA5FF)
-private val Pink = Color(0xFFF6A7D4)
-private val PrimaryText = Color(0xFFF6F3FF)
-private val Muted = Color(0xFFA7A6BB)
+private data class KanadePalette(
+    val background: Color, val backgroundTop: Color, val backgroundBottom: Color,
+    val surface: Color, val accent: Color, val accentSoft: Color,
+    val text: Color, val muted: Color, val error: Color,
+    val tint: Color, val glass: Color, val glassBorder: Color,
+    val artworkStart: Color, val artworkEnd: Color,
+)
+
+private val DarkPalette = KanadePalette(
+    background = Color(0xFF07140E), backgroundTop = Color(0xFF183D2B),
+    backgroundBottom = Color(0xFF091C13), surface = Color(0xFF243E30),
+    accent = Color(0xFF80EAB1), accentSoft = Color(0xFF40B979),
+    text = Color(0xFFF1FFF4), muted = Color(0xFFB1C9B9), error = Color(0xFFFFB4A6),
+    tint = Color.White, glass = Color(0xFF173A29), glassBorder = Color.White,
+    artworkStart = Color(0xFF386B4C), artworkEnd = Color(0xFF14291C),
+)
+private val LightPalette = KanadePalette(
+    background = Color(0xFFF2FAF3), backgroundTop = Color(0xFFD9F1DF),
+    backgroundBottom = Color(0xFFE9F6EB), surface = Color(0xFFD5EBDC),
+    accent = Color(0xFF11603A), accentSoft = Color(0xFF318B59),
+    text = Color(0xFF10281A), muted = Color(0xFF496455), error = Color(0xFF9F3027),
+    tint = Color(0xFF144D2D), glass = Color(0xFFEAF7EC), glassBorder = Color(0xFF2C6D48),
+    artworkStart = Color(0xFFB5DDC1), artworkEnd = Color(0xFF7EBA92),
+)
+private val LocalKanadePalette = staticCompositionLocalOf { DarkPalette }
+private val Background: Color @Composable get() = LocalKanadePalette.current.background
+private val SurfaceLight: Color @Composable get() = LocalKanadePalette.current.surface
+private val Accent: Color @Composable get() = LocalKanadePalette.current.accent
+private val PrimaryText: Color @Composable get() = LocalKanadePalette.current.text
+private val Muted: Color @Composable get() = LocalKanadePalette.current.muted
+private val ErrorColor: Color @Composable get() = LocalKanadePalette.current.error
 
 private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS }
 private enum class Overlay { NONE, QUEUE, LYRICS, AUDIO, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
 fun KanadeScreen(model: KanadeViewModel) {
+    val darkTheme by model.darkTheme.collectAsState()
+    CompositionLocalProvider(LocalKanadePalette provides if (darkTheme) DarkPalette else LightPalette) {
+        KanadeContent(model, darkTheme)
+    }
+}
+
+@Composable
+private fun KanadeContent(model: KanadeViewModel, darkTheme: Boolean) {
     val library by model.library.collectAsState()
     val discover by model.discover.collectAsState()
     val playback by model.playback.state.collectAsState()
@@ -132,7 +167,7 @@ fun KanadeScreen(model: KanadeViewModel) {
     LaunchedEffect(playback.hasItem) { if (!playback.hasItem) showNowPlaying = false }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
-        listOf(Color(0xFF242037), Background, Color(0xFF100F1D))))) {
+        listOf(LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom)))) {
     if (!showNowPlaying) Column(
         Modifier.fillMaxSize().safeDrawingPadding().imePadding()
             .padding(start = 16.dp, end = 16.dp, top = 8.dp),
@@ -140,7 +175,7 @@ fun KanadeScreen(model: KanadeViewModel) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
-                    .background(Brush.linearGradient(listOf(Accent, Pink))),
+                    .background(Brush.linearGradient(listOf(Accent, LocalKanadePalette.current.accentSoft))),
                 contentAlignment = Alignment.Center,
             ) { KanadeGlyph(KanadeIcon.MUSIC, Background, selected = true, size = 24.dp) }
             Spacer(Modifier.width(12.dp))
@@ -148,7 +183,7 @@ fun KanadeScreen(model: KanadeViewModel) {
                 Label("KANADE", 21.sp, PrimaryText, FontWeight.Bold)
                 Label("Your sound. Your space.", 11.sp, Muted)
             }
-            Label("YOUR MUSIC", 10.sp, Accent, FontWeight.SemiBold)
+            Chip(if (darkTheme) "Light mode" else "Dark mode") { model.toggleTheme() }
         }
 
         Spacer(Modifier.height(20.dp))
@@ -366,7 +401,7 @@ fun KanadeScreen(model: KanadeViewModel) {
         }
         playback.error?.let { message ->
             Row(Modifier.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                Label(message, 12.sp, Pink, modifier = Modifier.weight(1f))
+                Label(message, 12.sp, ErrorColor, modifier = Modifier.weight(1f))
                 Chip("Dismiss") { model.playback.clearError() }
             }
         }
@@ -528,8 +563,8 @@ private fun Label(
 
 @Composable private fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
     Box(Modifier.clip(RoundedCornerShape(13.dp))
-        .background(if (selected) Accent else Color.White.copy(alpha = 0.08f))
-        .border(1.dp, Color.White.copy(alpha = if (selected) 0.0f else 0.08f), RoundedCornerShape(13.dp))
+        .background(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f))
+        .border(1.dp, LocalKanadePalette.current.glassBorder.copy(alpha = if (selected) 0.0f else 0.14f), RoundedCornerShape(13.dp))
         .clickable(onClick = onClick)
         .padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
         Label(text, 12.sp, if (selected) Background else PrimaryText,
@@ -554,8 +589,8 @@ private fun SearchField(value: String, hint: String, change: (String) -> Unit, s
         keyboardActions = KeyboardActions(onSearch = { search() }),
         decorationBox = { inner ->
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                .background(Color.White.copy(alpha = 0.07f))
-                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
+                .background(LocalKanadePalette.current.tint.copy(alpha = 0.07f))
+                .border(1.dp, LocalKanadePalette.current.glassBorder.copy(alpha = 0.16f), RoundedCornerShape(16.dp))
                 .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (showSearchIcon) {
@@ -574,7 +609,7 @@ private fun SearchField(value: String, hint: String, change: (String) -> Unit, s
 @Composable
 private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
     Box(modifier.clip(RoundedCornerShape(15.dp))
-        .background(Brush.linearGradient(listOf(Color(0xFF4F3E70), Color(0xFF241E39)))),
+        .background(Brush.linearGradient(listOf(LocalKanadePalette.current.artworkStart, LocalKanadePalette.current.artworkEnd))),
         contentAlignment = Alignment.Center) {
         KanadeGlyph(KanadeIcon.MUSIC, Accent, selected = true, size = 28.dp)
         if (!artwork.isNullOrEmpty()) {
@@ -597,7 +632,7 @@ private fun TrackList(
         items(tracks, key = { it.id }) { track ->
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
-                    .background(Color.White.copy(alpha = 0.035f)).padding(8.dp),
+                    .background(LocalKanadePalette.current.tint.copy(alpha = 0.055f)).padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AlbumImage(track.artworkUri, Modifier.size(54.dp).clickable { onPlay(track) })
@@ -649,7 +684,7 @@ private fun IconTextButton(icon: KanadeIcon, text: String, onClick: () -> Unit) 
 
 @Composable private fun SimpleRow(title: String, subtitle: String, click: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
-        .background(Color.White.copy(alpha = 0.06f)).clickable(onClick = click).padding(15.dp),
+        .background(LocalKanadePalette.current.tint.copy(alpha = 0.07f)).clickable(onClick = click).padding(15.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Label(title, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
@@ -681,12 +716,14 @@ private fun EmptyState(icon: KanadeIcon, title: String, detail: String, action: 
     }
 }
 
+@Composable
 private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp): Modifier {
     val shape = RoundedCornerShape(radius)
+    val palette = LocalKanadePalette.current
     return clip(shape).background(Brush.linearGradient(listOf(
-        Color.White.copy(alpha = 0.12f), Color(0xFF282039).copy(alpha = 0.72f),
-        Color.White.copy(alpha = 0.045f))))
-        .border(1.dp, Color.White.copy(alpha = 0.12f), shape)
+        palette.glass.copy(alpha = 0.94f), palette.glass.copy(alpha = 0.83f),
+        palette.glass.copy(alpha = 0.94f))))
+        .border(1.dp, palette.glassBorder.copy(alpha = 0.16f), shape)
 }
 
 @Composable
@@ -706,7 +743,7 @@ private fun MiniPlayer(state: PlaybackState, onToggle: () -> Unit, onNext: () ->
                 if (state.playing) "Pause" else "Play", selected = true, onClick = onToggle)
             TinyButton(KanadeIcon.NEXT, "Next", onClick = onNext)
         }
-        Box(Modifier.fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.08f))) {
+        Box(Modifier.fillMaxWidth().height(3.dp).background(LocalKanadePalette.current.tint.copy(alpha = 0.08f))) {
             Box(Modifier.fillMaxWidth(if (state.durationMs > 0) {
                 (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
             } else 0f).height(3.dp).background(Accent))
@@ -773,7 +810,7 @@ private fun NowPlayingScreen(
             }
             state.error?.let {
                 Spacer(Modifier.height(12.dp))
-                Label(it, 12.sp, Pink)
+                Label(it, 12.sp, ErrorColor)
             }
             Spacer(Modifier.height(16.dp))
         }
@@ -800,7 +837,7 @@ private fun PlaybackProgress(state: PlaybackState, onSeek: (Long) -> Unit) {
                 }
             }
         }, contentAlignment = Alignment.CenterStart) {
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.20f)))
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(LocalKanadePalette.current.tint.copy(alpha = 0.25f)))
         Box(Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape).background(Accent))
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
