@@ -15,12 +15,16 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.draw.clipToBounds
@@ -624,23 +628,24 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
         }
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().glassSurface(20.dp).padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            for (tab in listOf(Page.HOME, Page.LIBRARY, Page.ONLINE, Page.PLAYLISTS)) {
-                val (label, icon) = when (tab) {
-                    Page.LIBRARY -> "Library" to KanadeIcon.LIBRARY
-                    Page.HOME -> "Home" to KanadeIcon.HOME
-                    Page.ONLINE -> "Search" to KanadeIcon.SEARCH
-                    Page.PLAYLISTS -> "Playlists" to KanadeIcon.PLAYLIST
-                    Page.INSIGHTS -> "Insights" to KanadeIcon.INSIGHTS
-                    Page.SETTINGS -> "Settings" to KanadeIcon.AUDIO
-                }
+            for ((tab, label, icon) in listOf(
+                Triple(Page.HOME, "Home", KanadeIcon.NAV_HOME),
+                Triple(Page.LIBRARY, "Library", KanadeIcon.NAV_LIBRARY),
+                Triple(Page.ONLINE, "Search", KanadeIcon.NAV_SEARCH),
+                Triple(Page.PLAYLISTS, "Playlists", KanadeIcon.NAV_PLAYLISTS),
+            )) {
                 val active = page == tab
-                Column(Modifier.weight(1f).clip(RoundedCornerShape(13.dp))
+                val duration = if (LocalReduceMotion.current) 0 else 150
+                Column(Modifier.weight(1f).heightIn(min = 58.dp)
                     .selectable(selected = active, role = Role.Tab, onClick = { page = tab })
-                    .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    KanadeGlyph(icon, if (active) Accent else Muted, selected = active)
-                    Spacer(Modifier.height(4.dp))
-                    Label(label, 11.sp, if (active) Accent else Muted,
-                        if (active) FontWeight.Bold else FontWeight.Normal)
+                    .semantics { contentDescription = label },
+                    verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                    KanadeGlyph(icon, if (active) Accent else Muted, size = 24.dp)
+                    AnimatedVisibility(visible = active,
+                        enter = fadeIn(tween(duration)) + expandVertically(tween(duration)),
+                        exit = fadeOut(tween(duration)) + shrinkVertically(tween(duration))) {
+                        Label(label, 11.sp, Accent, FontWeight.Bold, Modifier.padding(top = 2.dp), lines = 1)
+                    }
                 }
             }
         }
@@ -813,7 +818,7 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
                             })
                             .padding(9.dp)) {
                             Box(Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(9.dp))
-                                .then(if (plain) Modifier.background(color).border(1.dp, Muted, RoundedCornerShape(9.dp))
+                                .then(if (plain) Modifier.background(color)
                                     else Modifier.background(Brush.linearGradient(listOf(color, lerp(color, Color.Black, 0.52f))))))
                             Spacer(Modifier.height(6.dp))
                             Label(name, 11.sp, PrimaryText, if (selectedPalette == name) FontWeight.Bold else FontWeight.Normal, lines = 1)
@@ -875,7 +880,7 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
 private fun ThemeChoice(text: String, selected: Boolean, onClick: () -> Unit) {
     Box(Modifier.clip(RoundedCornerShape(13.dp))
         .background(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f))
-        .border(1.dp, LocalKanadePalette.current.glassBorder.copy(alpha = if (selected) 0f else 0.14f), RoundedCornerShape(13.dp))
+
         .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
         .padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
         Label(text, 12.sp, if (selected) Background else PrimaryText,
@@ -904,7 +909,7 @@ private fun Label(
 @Composable private fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
     Box(Modifier.clip(RoundedCornerShape(13.dp))
         .background(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f))
-        .border(1.dp, LocalKanadePalette.current.glassBorder.copy(alpha = if (selected) 0.0f else 0.14f), RoundedCornerShape(13.dp))
+
         .clickable(onClick = onClick)
         .padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
         Label(text, 12.sp, if (selected) Background else PrimaryText,
@@ -974,8 +979,8 @@ private fun SearchField(value: String, hint: String, change: (String) -> Unit, s
         keyboardActions = KeyboardActions(onSearch = { search() }),
         decorationBox = { inner ->
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                .background(LocalKanadePalette.current.tint.copy(alpha = 0.07f))
-                .border(1.dp, LocalKanadePalette.current.glassBorder.copy(alpha = 0.16f), RoundedCornerShape(16.dp))
+                .background(LocalKanadePalette.current.tint.copy(alpha = 0.16f))
+
                 .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (showSearchIcon) {
@@ -1139,12 +1144,10 @@ private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp): Modifier
     val shape = RoundedCornerShape(radius)
     val palette = LocalKanadePalette.current
     if (palette.flat) return clip(shape).background(palette.surface)
-        .border(1.dp, palette.glassBorder.copy(alpha = 0.34f), shape)
+
     return shadow(3.dp, shape, clip = false).clip(shape).background(Brush.linearGradient(listOf(
         palette.glass.copy(alpha = 0.82f), palette.glass.copy(alpha = 0.68f),
         palette.glass.copy(alpha = 0.80f))))
-        .border(1.dp, Brush.linearGradient(listOf(palette.glassBorder.copy(alpha = 0.28f),
-            palette.glassBorder.copy(alpha = 0.08f), palette.glassBorder.copy(alpha = 0.18f))), shape)
 }
 
 @Composable

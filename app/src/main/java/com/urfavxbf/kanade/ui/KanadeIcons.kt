@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 
 /** Consistent 24-unit icons; active states use the same silhouette with a heavier stroke. */
 internal enum class KanadeIcon {
+    NAV_HOME, NAV_LIBRARY, NAV_SEARCH, NAV_PLAYLISTS,
     HOME, MORE, LIBRARY, ONLINE, PLAYLIST, INSIGHTS, MUSIC, SEARCH, REFRESH, BACK, FORWARD,
     FAVORITE, PLAY_NEXT, ADD, REMOVE, EDIT, PREVIOUS, PLAY, PAUSE, NEXT,
     SHUFFLE, REPEAT, REPEAT_ONE, QUEUE, LYRICS, AUDIO, CLOSE, UP, DOWN
@@ -44,6 +45,37 @@ internal fun KanadeGlyph(icon: KanadeIcon, color: Color, selected: Boolean = fal
                 }, color)
             }
             when (icon) {
+                KanadeIcon.NAV_HOME -> {
+                    fun tile(x: Float, y: Float, height: Float) =
+                        drawRoundRect(color, Offset(x, y), Size(8f, height), CornerRadius(2f))
+                    tile(2.5f, 3f, 10f)
+                    tile(13f, 3f, 6f)
+                    tile(2.5f, 15f, 6f)
+                    tile(13f, 11f, 10f)
+                }
+                KanadeIcon.NAV_LIBRARY -> {
+                    line(4f, 5f, 4f, 20f)
+                    drawRoundRect(color, Offset(7f, 4f), Size(5f, 17f), CornerRadius(1.5f))
+                    path { moveTo(15f, 6f); lineTo(18f, 5f); lineTo(22f, 19f); lineTo(19f, 20f); close() }
+                }
+                KanadeIcon.NAV_SEARCH -> {
+                    circle(10f, 10f, 7f)
+                    line(7f, 10f, 7f, 11f)
+                    line(10f, 8f, 10f, 12f)
+                    line(13f, 9f, 13f, 11f)
+                    line(15.5f, 15.5f, 21f, 21f)
+                }
+                KanadeIcon.NAV_PLAYLISTS -> {
+                    line(3f, 5f, 16f, 5f)
+                    line(3f, 10f, 13f, 10f)
+                    line(3f, 15f, 9f, 15f)
+                    drawPath(Path().apply {
+                        moveTo(14f, 11f)
+                        lineTo(22f, 16f)
+                        lineTo(14f, 21f)
+                        close()
+                    }, color)
+                }
                 KanadeIcon.HOME -> path { moveTo(3f, 11f); lineTo(12f, 3f); lineTo(21f, 11f); lineTo(20f, 11f); lineTo(20f, 21f); lineTo(4f, 21f); lineTo(4f, 11f); close() }
                 KanadeIcon.MORE -> for (y in listOf(5f, 12f, 19f)) drawCircle(color, 1.7f, Offset(12f, y))
                 KanadeIcon.LIBRARY -> {
