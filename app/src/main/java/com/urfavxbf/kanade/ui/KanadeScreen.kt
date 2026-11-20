@@ -108,6 +108,7 @@ private data class KanadePalette(
     val text: Color, val muted: Color, val error: Color,
     val tint: Color, val glass: Color, val glassBorder: Color,
     val artworkStart: Color, val artworkEnd: Color,
+    val flat: Boolean = false,
 )
 
 private val DarkPalette = KanadePalette(
@@ -126,9 +127,29 @@ private val LightPalette = KanadePalette(
     tint = Color(0xFF144D2D), glass = Color(0xFFEAF7EC), glassBorder = Color(0xFF2C6D48),
     artworkStart = Color(0xFFB5DDC1), artworkEnd = Color(0xFF7EBA92),
 )
+private const val PLAIN = "Plain"
+private const val PLAIN_DARK = "Plain Dark"
+private const val PLAIN_LIGHT = "Plain Light"
+
+private fun plainPalette(dark: Boolean): KanadePalette {
+    val background = if (dark) Color(0xFF141414) else Color(0xFFFAFAFA)
+    val surface = if (dark) Color(0xFF262626) else Color.White
+    val text = if (dark) Color(0xFFF5F5F5) else Color(0xFF202020)
+    val secondary = if (dark) Color(0xFFBBBBBB) else Color(0xFF555555)
+    return KanadePalette(
+        background = background, backgroundTop = background, backgroundBottom = background,
+        surface = surface, accent = text, accentSoft = secondary, text = text, muted = secondary,
+        error = if (dark) DarkPalette.error else LightPalette.error, tint = text,
+        glass = surface, glassBorder = secondary, artworkStart = surface, artworkEnd = surface,
+        flat = true,
+    )
+}
+
 // The references use different palettes; offer each as a separate choice while keeping text legible.
 private val colorThemes = linkedMapOf(
     "Kanade Green" to Color(0xFF40B979),
+    PLAIN_DARK to Color(0xFF141414),
+    PLAIN_LIGHT to Color(0xFFFAFAFA),
     "Moss" to Color(0xFF5F7A52),
     "Forest" to Color(0xFFC8E64A),
     "Pistachio" to Color(0xFFC5DE8E),
@@ -156,6 +177,7 @@ private val colorThemes = linkedMapOf(
 )
 
 private fun paletteFor(name: String, dark: Boolean): KanadePalette {
+    if (name == PLAIN) return plainPalette(dark)
     if (name == "Kanade Green" || name !in colorThemes) return if (dark) DarkPalette else LightPalette
     val seed = colorThemes.getValue(name)
     return if (dark) DarkPalette.copy(
@@ -648,15 +670,23 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
         Label("Choose a look for light and dark mode.", 12.sp, Muted)
         Spacer(Modifier.height(9.dp))
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val selectedPalette = if (colorTheme == PLAIN) {
+                if (themeMode.isDark(androidx.compose.foundation.isSystemInDarkTheme())) PLAIN_DARK else PLAIN_LIGHT
+            } else colorTheme
             for ((name, color) in colorThemes) {
+                val plain = name == PLAIN_DARK || name == PLAIN_LIGHT
                 Column(Modifier.width(102.dp).glassSurface(16.dp)
-                    .selectable(selected = colorTheme == name, role = Role.RadioButton, onClick = { model.setColorTheme(name) })
+                    .selectable(selected = selectedPalette == name, role = Role.RadioButton, onClick = {
+                        if (plain) model.setThemeMode(if (name == PLAIN_DARK) ThemeMode.DARK else ThemeMode.LIGHT)
+                        model.setColorTheme(if (plain) PLAIN else name)
+                    })
                     .padding(9.dp)) {
                     Box(Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(9.dp))
-                        .background(Brush.linearGradient(listOf(color, lerp(color, Color.Black, 0.52f)))))
+                        .then(if (plain) Modifier.background(color).border(1.dp, Muted, RoundedCornerShape(9.dp))
+                            else Modifier.background(Brush.linearGradient(listOf(color, lerp(color, Color.Black, 0.52f))))))
                     Spacer(Modifier.height(6.dp))
-                    Label(name, 11.sp, PrimaryText, if (colorTheme == name) FontWeight.Bold else FontWeight.Normal, lines = 1)
-                    if (colorTheme == name) Label("Selected", 10.sp, Accent, FontWeight.Bold)
+                    Label(name, 11.sp, PrimaryText, if (selectedPalette == name) FontWeight.Bold else FontWeight.Normal, lines = 1)
+                    if (selectedPalette == name) Label("Selected", 10.sp, Accent, FontWeight.Bold)
                 }
             }
         }
@@ -920,6 +950,8 @@ private fun EmptyState(icon: KanadeIcon, title: String, detail: String, action: 
 private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp): Modifier {
     val shape = RoundedCornerShape(radius)
     val palette = LocalKanadePalette.current
+    if (palette.flat) return clip(shape).background(palette.surface)
+        .border(1.dp, palette.glassBorder.copy(alpha = 0.34f), shape)
     return shadow(3.dp, shape, clip = false).clip(shape).background(Brush.linearGradient(listOf(
         palette.glass.copy(alpha = 0.82f), palette.glass.copy(alpha = 0.68f),
         palette.glass.copy(alpha = 0.80f))))
@@ -1044,7 +1076,9 @@ private fun NowPlayingScreen(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     GlassPlayerButton(KanadeIcon.BACK, "Back", onClick = onClose)
                     Spacer(Modifier.weight(1f))
-                    Label("NOW PLAYING", 11.sp, PrimaryText, FontWeight.Bold)
+                    Label("NOW PLAYING", 11.sp, PrimaryText, FontWeight.Bold,
+                        if (LocalKanadePalette.current.flat) Modifier.glassSurface(12.dp)
+                            .padding(horizontal = 12.dp, vertical = 5.dp) else Modifier)
                     Spacer(Modifier.weight(1f))
                     GlassPlayerButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
                 }
@@ -1097,7 +1131,10 @@ private fun NowPlayingScreen(
                         selected = state.repeatMode != Player.REPEAT_MODE_OFF, onClick = onRepeat)
                 }
                 Spacer(Modifier.height(12.dp))
-                PlaybackProgress(state, onSeek)
+                Column(if (LocalKanadePalette.current.flat) Modifier.fillMaxWidth().glassSurface(16.dp)
+                    .padding(horizontal = 12.dp, vertical = 4.dp) else Modifier.fillMaxWidth()) {
+                    PlaybackProgress(state, onSeek)
+                }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth().glassSurface(18.dp).padding(8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
