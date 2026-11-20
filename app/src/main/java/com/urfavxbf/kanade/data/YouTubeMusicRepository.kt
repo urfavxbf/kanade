@@ -71,6 +71,24 @@ object YouTubeMusicRepository {
     }
 
     @Throws(IOException::class)
+    fun videoUrl(id: String): String {
+        if (!YouTubeTrackId.isValid(id)) throw IOException("Invalid YouTube track")
+        try {
+            val extractor = ServiceList.YouTube.getStreamExtractor("https://www.youtube.com/watch?v=$id")
+            extractor.fetchPage()
+            val videos = (extractor.videoOnlyStreams + extractor.videoStreams).filter {
+                it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP && it.content.startsWith("https://")
+            }
+            return videos.firstOrNull { it.resolution == "360p" }?.content
+                ?: videos.firstOrNull { it.resolution == "480p" }?.content
+                ?: videos.firstOrNull()?.content ?: throw IOException("No video stream available")
+        } catch (e: Exception) {
+            if (e is IOException) throw e
+            throw IOException("Unable to load video", e)
+        }
+    }
+
+    @Throws(IOException::class)
     fun streamUrl(id: String): String {
         if (!YouTubeTrackId.isValid(id)) throw IOException("Invalid YouTube track")
         try {

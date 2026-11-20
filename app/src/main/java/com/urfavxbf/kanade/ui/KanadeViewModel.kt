@@ -22,6 +22,7 @@ import com.urfavxbf.kanade.data.MusicStore
 import com.urfavxbf.kanade.data.Playlist
 import com.urfavxbf.kanade.data.PlaylistExchange
 import com.urfavxbf.kanade.data.toTrack
+import com.urfavxbf.kanade.lyrics.OnlineLyrics
 import com.urfavxbf.kanade.lyrics.LrcParser
 import com.urfavxbf.kanade.lyrics.LyricLine
 import com.urfavxbf.kanade.model.Track
@@ -49,7 +50,7 @@ data class DiscoverState(
     val loadMoreError: String? = null,
     val message: String = "Search for songs or artists on YouTube.",
 )
-data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Select a local LRC lyrics file.")
+data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Lyrics unavailable", val plain: String? = null)
 
 class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val local = LocalMusicRepository(app.contentResolver)
@@ -329,8 +330,27 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadSavedLyrics(id: String) {
         lyricJob?.cancel()
-        _lyrics.value = LyricsState()
-        val uri = lyricPrefs.getString(id, null) ?: return
+        _lyrics.value = LyricsState(message = "Loading lyrics…")
+        val uri = lyricPrefs.getString(id, null)
+        if (uri == null) {
+            val state = playback.state.value
+            if (id.isBlank()) { _lyrics.value = LyricsState(); return }
+            lyricJob = viewModelScope.launch {
+                try {
+                    val result = OnlineLyrics.get(state.title, state.artist, state.durationMs)
+                    _lyrics.value = when {
+                        result == null -> LyricsState(message = "Lyrics unavailable for this song.")
+                        result.synced.isNotEmpty() -> LyricsState(lines = result.synced, message = "")
+                        !result.plain.isNullOrBlank() -> LyricsState(message = "", plain = result.plain)
+                        else -> LyricsState(message = "Lyrics unavailable for this song.")
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    _lyrics.value = LyricsState(message = "Could not load online lyrics.")
+                }
+            }
+            return
+        }
         lyricJob = viewModelScope.launch {
             try {
                 val contents = withContext(Dispatchers.IO) {

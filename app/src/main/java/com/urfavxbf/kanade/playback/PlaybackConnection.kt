@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class QueueEntry(val id: String, val title: String, val artist: String)
+data class QueueEntry(val id: String, val title: String, val artist: String, val artworkUri: String? = null)
 
 data class PlaybackState(
     val mediaId: String = "",
@@ -200,7 +200,7 @@ class PlaybackConnection(context: Context) {
             queue = (0 until player.mediaItemCount).map { i ->
                 val item = player.getMediaItemAt(i)
                 QueueEntry(item.mediaId, item.mediaMetadata.title?.toString().orEmpty(),
-                    item.mediaMetadata.artist?.toString().orEmpty())
+                    item.mediaMetadata.artist?.toString().orEmpty(), item.mediaMetadata.artworkUri?.toString())
             },
             error = _state.value.error,
         )

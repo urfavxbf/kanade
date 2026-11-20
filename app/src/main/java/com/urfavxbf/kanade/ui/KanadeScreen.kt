@@ -1,6 +1,7 @@
 package com.urfavxbf.kanade.ui
 
 import android.net.Uri
+import android.view.TextureView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +39,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -64,6 +67,11 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -80,6 +88,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.media3.common.Player
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import com.urfavxbf.kanade.data.YouTubeMusicRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import coil3.compose.AsyncImage
 import com.urfavxbf.kanade.lyrics.LrcParser
 import com.urfavxbf.kanade.model.Track
@@ -517,12 +530,13 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
         Spacer(Modifier.height(8.dp))
         }
     } else {
-        NowPlayingScreen(playback,
+        NowPlayingScreen(playback, lyrics,
             onClose = { showNowPlaying = false }, onToggle = model.playback::toggle,
             onNext = model.playback::next, onPrevious = model.playback::previous,
             onShuffle = model.playback::toggleShuffle, onRepeat = model.playback::cycleRepeat,
             onSeek = model.playback::seek, onQueue = { overlay = Overlay.QUEUE },
-            onLyrics = { overlay = Overlay.LYRICS }, onAudio = { showNowPlaying = false; page = Page.SETTINGS })
+            onLyrics = { overlay = Overlay.LYRICS }, onAudio = { showNowPlaying = false; page = Page.SETTINGS },
+            onPlayAt = model.playback::playAt)
     }
     }
 
@@ -559,7 +573,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
         Overlay.LYRICS -> FeatureDialog("Synchronized lyrics", { overlay = Overlay.NONE }) {
             AccentAction("Choose LRC file") { lyricsPicker.launch(arrayOf("text/*", "*/*")) }
             Spacer(Modifier.height(13.dp))
-            if (lyrics.lines.isEmpty()) Label(lyrics.message, 14.sp, Muted)
+            if (lyrics.lines.isEmpty()) Label(lyrics.plain ?: lyrics.message, 14.sp, Muted)
             else {
                 val active = LrcParser.current(lyrics.lines, playback.positionMs)
                 val listState = rememberLazyListState()
@@ -937,69 +951,148 @@ private fun MiniPlayer(state: PlaybackState, onToggle: () -> Unit, onNext: () ->
 }
 
 @Composable
+private fun VideoBackdrop(state: PlaybackState) {
+    val context = LocalContext.current
+    val owner = LocalLifecycleOwner.current
+    var foreground by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+    var videoReady by remember { mutableStateOf(false) }
+    val videoPlayer = remember { ExoPlayer.Builder(context).build().apply { volume = 0f } }
+    DisposableEffect(owner, videoPlayer) {
+        val observer = LifecycleEventObserver { _, _ ->
+            foreground = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            if (!foreground) videoPlayer.pause()
+        }
+        val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() { videoReady = true }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) { videoReady = false }
+        }
+        videoPlayer.addListener(listener)
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer); videoPlayer.removeListener(listener); videoPlayer.release() }
+    }
+    LaunchedEffect(state.mediaId, foreground) {
+        videoReady = false
+        videoPlayer.stop()
+        videoPlayer.clearMediaItems()
+        if (foreground && state.mediaId.startsWith("youtube:")) {
+            val id = state.mediaId.removePrefix("youtube:")
+            val url = try { withContext(Dispatchers.IO) { YouTubeMusicRepository.videoUrl(id) } }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) { null }
+            if (url != null) {
+                videoPlayer.setMediaItem(MediaItem.fromUri(url))
+                videoPlayer.prepare()
+                videoPlayer.seekTo(state.positionMs)
+                videoPlayer.playWhenReady = state.playing
+            }
+        }
+    }
+    LaunchedEffect(state.positionMs, state.playing, state.speed, foreground) {
+        if (foreground && videoPlayer.mediaItemCount > 0) {
+            if (kotlin.math.abs(videoPlayer.currentPosition - state.positionMs) > 1800) videoPlayer.seekTo(state.positionMs)
+            videoPlayer.setPlaybackSpeed(state.speed)
+            videoPlayer.playWhenReady = state.playing
+        }
+    }
+    AndroidView(factory = { TextureView(it).apply { isOpaque = false; videoPlayer.setVideoTextureView(this) } },
+        modifier = Modifier.fillMaxSize().alpha(if (videoReady) 0.40f else 0f))
+}
+
+@Composable
+private fun GlassPlayerButton(icon: KanadeIcon, description: String, large: Boolean = false,
+    selected: Boolean = false, onClick: () -> Unit) {
+    val size = if (large) 64.dp else 46.dp
+    Box(Modifier.size(size).glassSurface(if (large) 32.dp else 23.dp)
+        .clickable(role = Role.Button, onClick = onClick)
+        .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
+        KanadeGlyph(icon, if (selected || large) Accent else PrimaryText,
+            selected = selected || large, size = if (large) 29.dp else 20.dp)
+    }
+}
+
+@Composable
 private fun NowPlayingScreen(
-    state: PlaybackState, onClose: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit,
+    state: PlaybackState, lyrics: LyricsState, onClose: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit,
     onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit, onSeek: (Long) -> Unit,
-    onQueue: () -> Unit, onLyrics: () -> Unit, onAudio: () -> Unit,
+    onQueue: () -> Unit, onLyrics: () -> Unit, onAudio: () -> Unit, onPlayAt: (Int) -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
         if (!state.artworkUri.isNullOrBlank()) {
             AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().blur(55.dp).alpha(0.16f))
+                modifier = Modifier.fillMaxSize().blur(45.dp).alpha(0.28f))
         }
-    BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
-        val artworkSize = minOf((maxWidth - 48.dp).coerceAtLeast(0.dp), maxHeight * 0.40f, 360.dp)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TinyButton(KanadeIcon.BACK, "Back to library", onClick = onClose)
-                Spacer(Modifier.weight(1f))
-                Label("NOW PLAYING", 11.sp, Muted, FontWeight.SemiBold)
-                Spacer(Modifier.weight(1f))
-                TinyButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
-            }
-            Spacer(Modifier.height(20.dp))
-            AlbumImage(state.artworkUri, Modifier.size(artworkSize).shadow(14.dp, RoundedCornerShape(20.dp)))
-            Spacer(Modifier.height(24.dp))
-            Column(Modifier.fillMaxWidth()) {
-                Label(state.title, 25.sp, PrimaryText, FontWeight.Bold, lines = 2)
-                Spacer(Modifier.height(5.dp))
-                Label(state.artist, 15.sp, Muted, lines = 1)
-            }
-            Spacer(Modifier.height(18.dp))
-            PlaybackProgress(state, onSeek)
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically) {
-                TinyButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off",
-                    selected = state.shuffle, onClick = onShuffle)
-                TinyButton(KanadeIcon.PREVIOUS, "Previous", onClick = onPrevious)
-                Box(Modifier.size(62.dp).clip(CircleShape).background(Accent)
-                    .clickable(role = Role.Button, onClick = onToggle)
-                    .semantics { contentDescription = if (state.playing) "Pause" else "Play" },
-                    contentAlignment = Alignment.Center) {
-                    KanadeGlyph(if (state.playing) KanadeIcon.PAUSE else KanadeIcon.PLAY,
-                        Background, selected = true, size = 27.dp)
+        if (state.mediaId.startsWith("youtube:")) VideoBackdrop(state)
+        Box(Modifier.fillMaxSize().background(Background.copy(alpha = 0.58f)))
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+            val coverSize = minOf((maxWidth - 150.dp).coerceAtLeast(110.dp), 175.dp)
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    GlassPlayerButton(KanadeIcon.BACK, "Back", onClick = onClose)
+                    Spacer(Modifier.weight(1f))
+                    Label("NOW PLAYING", 11.sp, PrimaryText, FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    GlassPlayerButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
                 }
-                TinyButton(KanadeIcon.NEXT, "Next", onClick = onNext)
-                TinyButton(if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
-                    when (state.repeatMode) { Player.REPEAT_MODE_ONE -> "Repeat one"; Player.REPEAT_MODE_ALL -> "Repeat all"; else -> "Repeat off" },
-                    selected = state.repeatMode != Player.REPEAT_MODE_OFF, onClick = onRepeat)
-            }
-            Spacer(Modifier.height(20.dp))
-            Row(Modifier.fillMaxWidth().glassSurface(18.dp).padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                IconTextButton(KanadeIcon.LYRICS, "Lyrics", onLyrics)
-                IconTextButton(KanadeIcon.AUDIO, "Audio", onAudio)
-                IconTextButton(KanadeIcon.QUEUE, "Queue", onQueue)
-            }
-            state.error?.let {
+                Spacer(Modifier.height(16.dp))
+                Column(Modifier.fillMaxWidth().heightIn(min = 145.dp).glassSurface(22.dp)
+                    .clickable(role = Role.Button, onClick = onLyrics).padding(16.dp),
+                    verticalArrangement = Arrangement.Center) {
+                    Label("LYRICS", 11.sp, Accent, FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    if (lyrics.lines.isNotEmpty()) {
+                        val active = LrcParser.current(lyrics.lines, state.positionMs).coerceAtLeast(0)
+                        for (index in (active - 1).coerceAtLeast(0)..(active + 1).coerceAtMost(lyrics.lines.lastIndex)) {
+                            Label(lyrics.lines[index].text, if (index == active) 18.sp else 13.sp,
+                                if (index == active) PrimaryText else Muted,
+                                if (index == active) FontWeight.Bold else FontWeight.Normal, lines = 2)
+                            Spacer(Modifier.height(5.dp))
+                        }
+                    } else Label(lyrics.plain ?: lyrics.message, 14.sp, PrimaryText, lines = 5)
+                }
+                Spacer(Modifier.height(16.dp))
+                Column(Modifier.fillMaxWidth()) {
+                    Label(state.title, 24.sp, PrimaryText, FontWeight.Bold, lines = 2)
+                    Spacer(Modifier.height(4.dp))
+                    Label(state.artist, 14.sp, Muted, lines = 1)
+                }
+                Spacer(Modifier.height(15.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    GlassPlayerButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle, onClick = onShuffle)
+                    GlassPlayerButton(KanadeIcon.PREVIOUS, "Previous", onClick = onPrevious)
+                    GlassPlayerButton(if (state.playing) KanadeIcon.PAUSE else KanadeIcon.PLAY,
+                        if (state.playing) "Pause" else "Play", large = true, onClick = onToggle)
+                    GlassPlayerButton(KanadeIcon.NEXT, "Next", onClick = onNext)
+                    GlassPlayerButton(if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
+                        if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
+                        selected = state.repeatMode != Player.REPEAT_MODE_OFF, onClick = onRepeat)
+                }
                 Spacer(Modifier.height(12.dp))
-                Label(it, 12.sp, ErrorColor)
+                PlaybackProgress(state, onSeek)
+                Spacer(Modifier.height(12.dp))
+                Box(Modifier.fillMaxWidth().height(coverSize + 26.dp), contentAlignment = Alignment.CenterStart) {
+                    val entries = state.queue.drop(state.index).take(4)
+                    for (offset in entries.indices.reversed()) {
+                        val entry = entries[offset]
+                        AlbumImage(entry.artworkUri, Modifier.offset(x = (offset * 48).dp, y = (offset * 7).dp)
+                            .size(coverSize).shadow(10.dp, RoundedCornerShape(15.dp))
+                            .clickable(role = Role.Button) { onPlayAt(state.index + offset) }
+                            .semantics { contentDescription = "Play ${entry.title}" })
+                    }
+                    if (entries.isEmpty()) AlbumImage(state.artworkUri, Modifier.size(coverSize))
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth().glassSurface(18.dp).padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    IconTextButton(KanadeIcon.LYRICS, "Lyrics", onLyrics)
+                    IconTextButton(KanadeIcon.AUDIO, "Audio", onAudio)
+                    IconTextButton(KanadeIcon.QUEUE, "Queue", onQueue)
+                }
+                state.error?.let { Spacer(Modifier.height(12.dp)); Label(it, 12.sp, ErrorColor) }
+                Spacer(Modifier.height(16.dp))
             }
-            Spacer(Modifier.height(16.dp))
         }
-    }
     }
 }
 
