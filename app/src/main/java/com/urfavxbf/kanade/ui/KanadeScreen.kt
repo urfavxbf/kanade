@@ -12,7 +12,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.draw.clipToBounds
+import androidx.media3.common.VideoSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -535,8 +538,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
             onNext = model.playback::next, onPrevious = model.playback::previous,
             onShuffle = model.playback::toggleShuffle, onRepeat = model.playback::cycleRepeat,
             onSeek = model.playback::seek, onQueue = { overlay = Overlay.QUEUE },
-            onLyrics = { overlay = Overlay.LYRICS }, onAudio = { showNowPlaying = false; page = Page.SETTINGS },
-            onPlayAt = model.playback::playAt)
+            onLyrics = { overlay = Overlay.LYRICS }, onAudio = { showNowPlaying = false; page = Page.SETTINGS })
     }
     }
 
@@ -956,6 +958,7 @@ private fun VideoBackdrop(state: PlaybackState) {
     val owner = LocalLifecycleOwner.current
     var foreground by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
     var videoReady by remember { mutableStateOf(false) }
+    var aspect by remember { mutableStateOf(1f) }
     val videoPlayer = remember { ExoPlayer.Builder(context).build().apply { volume = 0f } }
     DisposableEffect(owner, videoPlayer) {
         val observer = LifecycleEventObserver { _, _ ->
@@ -963,6 +966,11 @@ private fun VideoBackdrop(state: PlaybackState) {
             if (!foreground) videoPlayer.pause()
         }
         val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    aspect = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                }
+            }
             override fun onRenderedFirstFrame() { videoReady = true }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) { videoReady = false }
         }
@@ -994,14 +1002,17 @@ private fun VideoBackdrop(state: PlaybackState) {
             videoPlayer.playWhenReady = state.playing
         }
     }
-    AndroidView(factory = { TextureView(it).apply { isOpaque = false; videoPlayer.setVideoTextureView(this) } },
-        modifier = Modifier.fillMaxSize().alpha(if (videoReady) 0.40f else 0f))
+    BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
+        val width = maxOf(maxWidth, maxHeight * aspect)
+        AndroidView(factory = { TextureView(it).apply { isOpaque = false; videoPlayer.setVideoTextureView(this) } },
+            modifier = Modifier.requiredSize(width, width / aspect).alpha(if (videoReady) 1f else 0f))
+    }
 }
 
 @Composable
 private fun GlassPlayerButton(icon: KanadeIcon, description: String, large: Boolean = false,
     selected: Boolean = false, onClick: () -> Unit) {
-    val size = if (large) 64.dp else 46.dp
+    val size = if (large) 60.dp else 48.dp
     Box(Modifier.size(size).glassSurface(if (large) 32.dp else 23.dp)
         .clickable(role = Role.Button, onClick = onClick)
         .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
@@ -1014,17 +1025,20 @@ private fun GlassPlayerButton(icon: KanadeIcon, description: String, large: Bool
 private fun NowPlayingScreen(
     state: PlaybackState, lyrics: LyricsState, onClose: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit,
     onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit, onSeek: (Long) -> Unit,
-    onQueue: () -> Unit, onLyrics: () -> Unit, onAudio: () -> Unit, onPlayAt: (Int) -> Unit,
+    onQueue: () -> Unit, onLyrics: () -> Unit, onAudio: () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().background(Background)) {
         if (!state.artworkUri.isNullOrBlank()) {
             AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().blur(45.dp).alpha(0.28f))
         }
         if (state.mediaId.startsWith("youtube:")) VideoBackdrop(state)
-        Box(Modifier.fillMaxSize().background(Background.copy(alpha = 0.58f)))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
+            Color.Black.copy(alpha = 0.28f), Color.Black.copy(alpha = 0.40f), Color.Black.copy(alpha = 0.85f)
+        ))))
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
-            val coverSize = minOf((maxWidth - 150.dp).coerceAtLeast(110.dp), 175.dp)
+            val wide = maxWidth > maxHeight && maxWidth >= 520.dp
+            val coverSize = if (wide) 100.dp else (maxHeight * 0.18f).coerceIn(80.dp, 154.dp)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1035,29 +1049,43 @@ private fun NowPlayingScreen(
                     GlassPlayerButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
                 }
                 Spacer(Modifier.height(16.dp))
-                Column(Modifier.fillMaxWidth().heightIn(min = 145.dp).glassSurface(22.dp)
-                    .clickable(role = Role.Button, onClick = onLyrics).padding(16.dp),
-                    verticalArrangement = Arrangement.Center) {
-                    Label("LYRICS", 11.sp, Accent, FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    if (lyrics.lines.isNotEmpty()) {
-                        val active = LrcParser.current(lyrics.lines, state.positionMs).coerceAtLeast(0)
-                        for (index in (active - 1).coerceAtLeast(0)..(active + 1).coerceAtMost(lyrics.lines.lastIndex)) {
-                            Label(lyrics.lines[index].text, if (index == active) 18.sp else 13.sp,
-                                if (index == active) PrimaryText else Muted,
-                                if (index == active) FontWeight.Bold else FontWeight.Normal, lines = 2)
-                            Spacer(Modifier.height(5.dp))
-                        }
-                    } else Label(lyrics.plain ?: lyrics.message, 14.sp, PrimaryText, lines = 5)
+                val cover: @Composable () -> Unit = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        AlbumImage(state.artworkUri, Modifier.size(coverSize)
+                            .shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)))
+                        Spacer(Modifier.height(8.dp))
+                        Label(state.title, 20.sp, Color.White, FontWeight.Bold, lines = 2)
+                        Label(state.artist, 14.sp, Color.White.copy(alpha = 0.85f), lines = 1)
+                    }
                 }
-                Spacer(Modifier.height(16.dp))
-                Column(Modifier.fillMaxWidth()) {
-                    Label(state.title, 24.sp, PrimaryText, FontWeight.Bold, lines = 2)
-                    Spacer(Modifier.height(4.dp))
-                    Label(state.artist, 14.sp, Muted, lines = 1)
+                val lyricStage: @Composable () -> Unit = {
+                    val index = LrcParser.current(lyrics.lines, state.positionMs)
+                    val line = lyrics.lines.getOrNull(index)
+                    Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onLyrics)
+                        .padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (line != null) {
+                            Crossfade(targetState = line.text, label = "Current lyric") { text ->
+                                Label(text, 30.sp, Color.White, FontWeight.Bold)
+                            }
+                        } else if (lyrics.lines.isNotEmpty()) {
+                            Label("♪", 30.sp, Color.White, FontWeight.Bold)
+                        } else {
+                            Label(lyrics.plain ?: lyrics.message, 16.sp, Color.White, lines = 3)
+                        }
+                    }
+                }
+                if (wide) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { cover() }
+                        Box(Modifier.weight(2f)) { lyricStage() }
+                    }
+                } else {
+                    cover()
+                    Spacer(Modifier.height(10.dp))
+                    lyricStage()
                 }
                 Spacer(Modifier.height(15.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                Row(Modifier.fillMaxWidth().glassSurface(32.dp).padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically) {
                     GlassPlayerButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle, onClick = onShuffle)
                     GlassPlayerButton(KanadeIcon.PREVIOUS, "Previous", onClick = onPrevious)
@@ -1070,18 +1098,6 @@ private fun NowPlayingScreen(
                 }
                 Spacer(Modifier.height(12.dp))
                 PlaybackProgress(state, onSeek)
-                Spacer(Modifier.height(12.dp))
-                Box(Modifier.fillMaxWidth().height(coverSize + 26.dp), contentAlignment = Alignment.CenterStart) {
-                    val entries = state.queue.drop(state.index).take(4)
-                    for (offset in entries.indices.reversed()) {
-                        val entry = entries[offset]
-                        AlbumImage(entry.artworkUri, Modifier.offset(x = (offset * 48).dp, y = (offset * 7).dp)
-                            .size(coverSize).shadow(10.dp, RoundedCornerShape(15.dp))
-                            .clickable(role = Role.Button) { onPlayAt(state.index + offset) }
-                            .semantics { contentDescription = "Play ${entry.title}" })
-                    }
-                    if (entries.isEmpty()) AlbumImage(state.artworkUri, Modifier.size(coverSize))
-                }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth().glassSurface(18.dp).padding(8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
