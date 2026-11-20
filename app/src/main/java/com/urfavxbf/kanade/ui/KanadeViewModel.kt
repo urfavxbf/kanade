@@ -324,13 +324,27 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         try { app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         catch (_: SecurityException) { }
-        lyricPrefs.edit().putString(id, uri.toString()).apply()
+        lyricPrefs.edit().remove("match:$id").putString(id, uri.toString()).apply()
         loadSavedLyrics(id)
+    }
+
+    fun chooseLyrics(id: String, match: OnlineLyrics.Match) {
+        if (id.isBlank() || id != playback.state.value.mediaId) return
+        lyricJob?.cancel()
+        lyricPrefs.edit().remove(id).putString("match:$id", match.raw).apply()
+        _lyrics.value = LyricsState(match.lyrics.synced, "", match.lyrics.plain)
     }
 
     private fun loadSavedLyrics(id: String) {
         lyricJob?.cancel()
         _lyrics.value = LyricsState(message = "Loading lyrics…")
+        lyricPrefs.getString("match:$id", null)?.let { raw ->
+            val saved = runCatching { OnlineLyrics.decode(org.json.JSONObject(raw)) }.getOrNull()
+            if (saved != null) {
+                _lyrics.value = LyricsState(saved.synced, "", saved.plain)
+                return
+            }
+        }
         val uri = lyricPrefs.getString(id, null)
         if (uri == null) {
             val state = playback.state.value

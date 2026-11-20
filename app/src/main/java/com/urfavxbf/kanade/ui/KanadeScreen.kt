@@ -97,6 +97,7 @@ import com.urfavxbf.kanade.data.YouTubeMusicRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import coil3.compose.AsyncImage
+import com.urfavxbf.kanade.lyrics.OnlineLyrics
 import com.urfavxbf.kanade.lyrics.LrcParser
 import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
@@ -238,7 +239,7 @@ private fun underChrome(): Pair<Modifier, PaddingValues> {
 }
 
 private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS, SETTINGS }
-private enum class Overlay { NONE, QUEUE, LYRICS, PICK_PLAYLIST, EDIT_TAGS }
+private enum class Overlay { NONE, QUEUE, LYRICS, SEARCH_LYRICS, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
 fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMode) {
@@ -594,7 +595,17 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                 }
             }
         }
+        Overlay.SEARCH_LYRICS -> androidx.compose.runtime.key(playback.mediaId) {
+            LyricsSearchDialog(playback.title, playback.artist, { overlay = Overlay.LYRICS }) { match ->
+                model.chooseLyrics(playback.mediaId, match)
+                overlay = Overlay.LYRICS
+            }
+        }
         Overlay.LYRICS -> FeatureDialog("Synchronized lyrics", { overlay = Overlay.NONE }) {
+            if (playback.mediaId.isNotBlank()) {
+                AccentAction("Search lyrics") { overlay = Overlay.SEARCH_LYRICS }
+                Spacer(Modifier.height(8.dp))
+            }
             AccentAction("Choose LRC file") { lyricsPicker.launch(arrayOf("text/*", "*/*")) }
             Spacer(Modifier.height(13.dp))
             if (lyrics.lines.isEmpty()) Label(lyrics.plain ?: lyrics.message, 14.sp, Muted)
@@ -776,6 +787,51 @@ private fun Label(
     Box(Modifier.clip(RoundedCornerShape(13.dp)).background(Accent)
         .clickable(onClick = onClick).padding(horizontal = 17.dp, vertical = 14.dp)) {
         Label(text, 12.sp, Background, FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun LyricsSearchDialog(title: String, artist: String, close: () -> Unit, choose: (OnlineLyrics.Match) -> Unit) {
+    var query by rememberSaveable { mutableStateOf(listOf(title, artist).joinToString(" ").trim()) }
+    var submitted by rememberSaveable { mutableStateOf("") }
+    var attempt by remember { mutableStateOf(0) }
+    var matches by remember { mutableStateOf(emptyList<OnlineLyrics.Match>()) }
+    var message by remember { mutableStateOf("") }
+    val submit = {
+        submitted = query.trim()
+        matches = emptyList()
+        attempt++
+    }
+    LaunchedEffect(submitted, attempt) {
+        if (submitted.isBlank()) return@LaunchedEffect
+        message = "Searching LRCLIB…"
+        try {
+            matches = OnlineLyrics.search(submitted)
+            message = if (matches.isEmpty()) "No lyrics found. Try a shorter title or artist name." else ""
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            message = "Could not reach LRCLIB. Check your connection and try again."
+        }
+    }
+    FeatureDialog("Search lyrics", close) {
+        SearchField(query, "Song title or artist", {
+            query = it
+            submitted = ""
+            matches = emptyList()
+            message = ""
+        }, { if (query.isNotBlank()) submit() })
+        Spacer(Modifier.height(8.dp))
+        AccentAction("Search LRCLIB") { if (query.isNotBlank()) submit() }
+        if (message.isNotEmpty()) Label(message, 14.sp, Muted)
+        for (match in matches) {
+            Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { choose(match) }.padding(vertical = 10.dp)) {
+                Label(match.title, 16.sp, PrimaryText, FontWeight.Bold)
+                Label(listOf(match.artist, match.album).filter { it.isNotBlank() }.joinToString(" · "), 13.sp, Muted)
+                val type = if (match.lyrics.synced.isEmpty()) "Plain lyrics" else "Synced lyrics"
+                Label("$type · ${DurationFormatter.format(match.duration * 1000)}", 12.sp, Accent)
+            }
+        }
     }
 }
 
