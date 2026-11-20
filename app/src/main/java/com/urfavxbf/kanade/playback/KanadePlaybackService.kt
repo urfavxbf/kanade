@@ -92,6 +92,10 @@ class KanadePlaybackService : MediaSessionService() {
                 if (playbackState == Player.STATE_READY) { applyEqualizer(); applyOnlineBoost() }
             }
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                if (loop.value?.first != mediaItem?.mediaId) {
+                    handler.removeCallbacks(loopTick)
+                    loop.value = null
+                }
                 applyOnlineBoost()
             }
         })

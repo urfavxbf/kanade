@@ -793,12 +793,13 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
         }
         Overlay.TOOLS -> androidx.compose.runtime.key(playback.mediaId) {
             FeatureDialog("Player tools", { overlay = Overlay.NONE }) {
+                if (radioMessage.isNotBlank()) Label(radioMessage, 13.sp, PrimaryText)
                 val id = playback.mediaId
                 val station = model.playback.station
                 if (station.isNotEmpty()) {
                     var mix by rememberSaveable { mutableStateOf("Radio · " + (model.findTrack(station)?.title ?: playback.title)) }
                     SearchField(mix, "Playlist name", { mix = it }, {})
-                    Chip("Save mix as playlist") { model.saveRadioMix(mix); overlay = Overlay.NONE }
+                    Chip("Save mix as playlist") { model.saveRadioMix(mix) }
                     if (station != id) Chip("Hide from this station") { model.hideStationSong(); overlay = Overlay.NONE }
                 }
                 Chip("Queue sessions") { overlay = Overlay.SESSIONS }
@@ -896,7 +897,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                     Chip("Later") { prefs.edit().putLong(offsetKey, lyricDelay + 250).apply() }
                     Chip("Reset") { prefs.edit().remove(offsetKey).apply() }
                 }
-                val active = LrcParser.current(lyrics.lines, playback.positionMs - lyricDelay)
+                val active = LrcParser.current(lyrics.lines, lyricClock(playback.positionMs, lyricDelay))
                 val listState = rememberLazyListState()
                 val dragged by listState.interactionSource.collectIsDraggedAsState()
                 var follow by remember(playback.mediaId) { mutableStateOf(true) }
@@ -915,7 +916,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                         Label(line.text, if (active == i) 19.sp else 15.sp,
                             if (active == i) PrimaryText else Muted,
                             if (active == i) FontWeight.Bold else FontWeight.Normal,
-                            Modifier.fillMaxWidth().clickable { model.playback.seek((line.timeMs + lyricDelay).coerceAtLeast(0)) })
+                            Modifier.fillMaxWidth().clickable { model.playback.seek(lyricSeek(line.timeMs, lyricDelay)) })
                     }
                 }
             }
@@ -1590,7 +1591,7 @@ private fun NowPlayingScreen(
                         }
                     }
                     val lyricStage: @Composable () -> Unit = {
-                        val index = LrcParser.current(lyrics.lines, state.positionMs - lyricDelay)
+                        val index = LrcParser.current(lyrics.lines, lyricClock(state.positionMs, lyricDelay))
                         val line = lyrics.lines.getOrNull(index)
                         Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onLyrics)
                             .padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {

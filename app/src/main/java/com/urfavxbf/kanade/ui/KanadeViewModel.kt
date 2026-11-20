@@ -183,19 +183,23 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     fun applyFolders() {
         val include = options.getStringSet("include", emptySet()).orEmpty()
         val exclude = options.getStringSet("exclude", emptySet()).orEmpty()
-        fun matches(folder: String, paths: Set<String>) = paths.any {
-            folder.trimEnd('/') == it.trimEnd('/') || folder.startsWith(it.trimEnd('/') + "/")
-        }
-        val visible = scanned.filter { (include.isEmpty() || matches(it.folder, include)) && !matches(it.folder, exclude) }
+        val visible = scanned.filter { folderVisible(it.folder, include, exclude) }
         _library.value = LibraryState(tracks = visible)
     }
 
     fun saveRadioMix(name: String) {
         val tracks = playback.queueTracks()
-        if (name.isBlank() || tracks.isEmpty() || tracks.size != playback.state.value.queue.size) return
+        if (name.isBlank() || tracks.isEmpty() || tracks.size != playback.state.value.queue.size) {
+            _radioMessage.value = "Could not save this mix. Check the playlist name and queue."
+            return
+        }
         viewModelScope.launch {
-            store.saveMix(name.trim().take(80), tracks)
-            _radioMessage.value = "Playlist saved"
+            try {
+                store.saveMix(name.trim().take(80), tracks)
+                _radioMessage.value = "Playlist saved"
+            } catch (e: android.database.SQLException) {
+                _radioMessage.value = "Could not save the playlist. Try another name."
+            }
         }
     }
 

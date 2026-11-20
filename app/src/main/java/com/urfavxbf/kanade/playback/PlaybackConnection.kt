@@ -85,6 +85,11 @@ class PlaybackConnection(context: Context) {
     fun play(tracks: List<Track>, position: Int) {
         if (tracks.isEmpty()) return
         _state.value = _state.value.copy(error = null)
+        if (activeSession.isNotEmpty()) {
+            saveSession(activeSession)
+            activeSession = ""
+            sessions.edit().remove("active").apply()
+        }
         station = ""
         val target = position.coerceIn(0, tracks.lastIndex)
         val player = controller
@@ -137,7 +142,12 @@ class PlaybackConnection(context: Context) {
         get() = prefs.getString("station", "").orEmpty()
         set(value) { prefs.edit().putString("station", value).apply() }
 
-    fun queueTracks(): List<Track> = state.value.queue.mapNotNull { knownTracks[it.id] }
+    fun queueTracks(): List<Track> {
+        val player = controller ?: return emptyList()
+        return (0 until player.mediaItemCount).mapNotNull { index ->
+            knownTracks[player.getMediaItemAt(index).mediaId]
+        }
+    }
 
     fun saveSession(name: String) {
         val key = name.trim().take(60)
@@ -153,6 +163,7 @@ class PlaybackConnection(context: Context) {
 
     fun openSession(name: String) {
         val player = controller ?: return
+        if (name == activeSession && player.mediaItemCount > 0) return
         if (activeSession.isNotEmpty()) saveSession(activeSession)
         val snapshot = sessions.getString("queue:$name", null)?.let(::JSONObject) ?: return
         val editor = prefs.edit().clear()
