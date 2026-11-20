@@ -83,6 +83,10 @@ import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
+import com.urfavxbf.kanade.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,6 +106,14 @@ import com.urfavxbf.kanade.lyrics.LrcParser
 import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackState
+
+private val appFonts = linkedMapOf(
+    "Open Sans" to FontFamily(Font(R.font.open_sans)),
+    "System" to FontFamily.Default,
+    "Serif" to FontFamily.Serif,
+    "Monospace" to FontFamily.Monospace,
+)
+private val LocalAppFont = staticCompositionLocalOf { appFonts.getValue("Open Sans") }
 
 private data class KanadePalette(
     val background: Color, val backgroundTop: Color, val backgroundBottom: Color,
@@ -244,7 +256,9 @@ private enum class Overlay { NONE, QUEUE, LYRICS, SEARCH_LYRICS, PICK_PLAYLIST, 
 @Composable
 fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMode) {
     val colorTheme by model.colorTheme.collectAsState()
-    CompositionLocalProvider(LocalKanadePalette provides paletteFor(colorTheme, darkTheme)) {
+    val font by model.appFont.collectAsState()
+    CompositionLocalProvider(LocalAppFont provides (appFonts[font] ?: appFonts.getValue("Open Sans")),
+        LocalKanadePalette provides paletteFor(colorTheme, darkTheme)) {
         KanadeContent(model, themeMode)
     }
 }
@@ -676,6 +690,16 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
             }
         }
         Spacer(Modifier.height(20.dp))
+        Label("App font", 15.sp, PrimaryText, FontWeight.SemiBold)
+        val selectedFont by model.appFont.collectAsState()
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for ((name, family) in appFonts) {
+                CompositionLocalProvider(LocalAppFont provides family) {
+                    ThemeChoice(name, name == selectedFont) { model.setAppFont(name) }
+                }
+            }
+        }
+        Spacer(Modifier.height(20.dp))
         Label("Color palette", 15.sp, PrimaryText, FontWeight.SemiBold)
         Spacer(Modifier.height(7.dp))
         Label("Choose a look for light and dark mode.", 12.sp, Muted)
@@ -769,7 +793,7 @@ private fun Label(
     lines: Int = Int.MAX_VALUE,
 ) {
     BasicText(text, modifier = modifier, maxLines = lines, overflow = TextOverflow.Ellipsis,
-        style = TextStyle(color = color, fontSize = size, fontWeight = weight))
+        style = TextStyle(fontFamily = LocalAppFont.current, color = color, fontSize = size, fontWeight = weight))
 }
 
 @Composable private fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
@@ -839,7 +863,7 @@ private fun LyricsSearchDialog(title: String, artist: String, close: () -> Unit,
 private fun SearchField(value: String, hint: String, change: (String) -> Unit, search: () -> Unit, showSearchIcon: Boolean = true) {
     BasicTextField(
         value = value, onValueChange = change, singleLine = true,
-        textStyle = TextStyle(color = PrimaryText, fontSize = 14.sp),
+        textStyle = TextStyle(fontFamily = LocalAppFont.current, color = PrimaryText, fontSize = 14.sp),
         cursorBrush = SolidColor(Accent),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { search() }),
@@ -1127,54 +1151,61 @@ private fun NowPlayingScreen(
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
             val wide = maxWidth > maxHeight && maxWidth >= 520.dp
             val coverSize = if (wide) 100.dp else (maxHeight * 0.18f).coerceIn(80.dp, 154.dp)
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    GlassPlayerButton(KanadeIcon.BACK, "Back", onClick = onClose)
-                    Spacer(Modifier.weight(1f))
-                    Label("NOW PLAYING", 11.sp, PrimaryText, FontWeight.Bold,
-                        if (LocalKanadePalette.current.flat) Modifier.glassSurface(12.dp)
-                            .padding(horizontal = 12.dp, vertical = 5.dp) else Modifier)
-                    Spacer(Modifier.weight(1f))
-                    GlassPlayerButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
-                }
-                Spacer(Modifier.height(16.dp))
-                val cover: @Composable () -> Unit = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        AlbumImage(state.artworkUri, Modifier.size(coverSize)
-                            .shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)))
-                        Spacer(Modifier.height(8.dp))
-                        Label(state.title, 20.sp, Color.White, FontWeight.Bold, lines = 2)
-                        Label(state.artist, 14.sp, Color.White.copy(alpha = 0.85f), lines = 1)
+            val shortWindow = maxHeight < 320.dp
+            Column(Modifier.fillMaxSize()
+                .then(if (shortWindow) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .padding(horizontal = 16.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                val upper = if (shortWindow) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState())
+                Column(upper.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        GlassPlayerButton(KanadeIcon.BACK, "Back", onClick = onClose)
+                        val title = remember(state.mediaId, state.title, state.artist) {
+                            if (state.mediaId.startsWith("youtube:")) songTitle(state.title, state.artist) else state.title
+                        }
+                        BasicText(title, Modifier.weight(1f).padding(horizontal = 8.dp), maxLines = 3,
+                            overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = LocalAppFont.current,
+                                color = Color.White, fontWeight = FontWeight.Bold, fontSize = 28.sp,
+                                textAlign = TextAlign.Center, shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f)))
+                        GlassPlayerButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
                     }
-                }
-                val lyricStage: @Composable () -> Unit = {
-                    val index = LrcParser.current(lyrics.lines, state.positionMs)
-                    val line = lyrics.lines.getOrNull(index)
-                    Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onLyrics)
-                        .padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (line != null) {
-                            Crossfade(targetState = line.text, label = "Current lyric") { text ->
-                                Label(text, 30.sp, Color.White, FontWeight.Bold)
-                            }
-                        } else if (lyrics.lines.isNotEmpty()) {
-                            Label("♪", 30.sp, Color.White, FontWeight.Bold)
-                        } else {
-                            Label(lyrics.plain ?: lyrics.message, 16.sp, Color.White, lines = 3)
+                    Spacer(Modifier.height(16.dp))
+                    val cover: @Composable () -> Unit = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            AlbumImage(state.artworkUri, Modifier.size(coverSize)
+                                .shadow(12.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)))
+                            Spacer(Modifier.height(8.dp))
+                            Label(state.artist, 14.sp, Color.White.copy(alpha = 0.85f), lines = 1)
                         }
                     }
-                }
-                if (wide) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { cover() }
-                        Box(Modifier.weight(2f)) { lyricStage() }
+                    val lyricStage: @Composable () -> Unit = {
+                        val index = LrcParser.current(lyrics.lines, state.positionMs)
+                        val line = lyrics.lines.getOrNull(index)
+                        Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onLyrics)
+                            .padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (line != null) {
+                                Crossfade(targetState = line.text, label = "Current lyric") { text ->
+                                    Label(text, 30.sp, Color.White, FontWeight.Bold)
+                                }
+                            } else if (lyrics.lines.isNotEmpty()) {
+                                Label("♪", 30.sp, Color.White, FontWeight.Bold)
+                            } else {
+                                Label(lyrics.plain ?: lyrics.message, 16.sp, Color.White, lines = 3)
+                            }
+                        }
                     }
-                } else {
-                    cover()
-                    Spacer(Modifier.height(10.dp))
-                    lyricStage()
+                    if (wide) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { cover() }
+                            Box(Modifier.weight(2f)) { lyricStage() }
+                        }
+                    } else {
+                        cover()
+                        Spacer(Modifier.height(10.dp))
+                        lyricStage()
+                    }
+                    state.error?.let { Label(it, 12.sp, ErrorColor) }
                 }
-                Spacer(Modifier.height(15.dp))
+                Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth().glassSurface(32.dp).padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically) {
                     GlassPlayerButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle, onClick = onShuffle)
@@ -1198,8 +1229,7 @@ private fun NowPlayingScreen(
                     IconTextButton(KanadeIcon.AUDIO, "Audio", onAudio)
                     IconTextButton(KanadeIcon.QUEUE, "Queue", onQueue)
                 }
-                state.error?.let { Spacer(Modifier.height(12.dp)); Label(it, 12.sp, ErrorColor) }
-                Spacer(Modifier.height(16.dp))
+
             }
         }
     }

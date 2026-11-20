@@ -65,6 +65,14 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val themeMode: StateFlow<ThemeMode> = _themeMode
     private val _colorTheme = MutableStateFlow(appearancePrefs.getString("color_theme", "Kanade Green") ?: "Kanade Green")
     val colorTheme: StateFlow<String> = _colorTheme
+    private val _appFont = MutableStateFlow(appearancePrefs.getString("app_font", "Open Sans") ?: "Open Sans")
+    val appFont: StateFlow<String> = _appFont
+
+    fun setAppFont(name: String) {
+        appearancePrefs.edit().putString("app_font", name).apply()
+        _appFont.value = name
+    }
+
     val playback = PlaybackConnection(app)
     private val known = mutableMapOf<String, Track>()
 
