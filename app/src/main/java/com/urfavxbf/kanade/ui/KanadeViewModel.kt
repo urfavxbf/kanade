@@ -73,6 +73,27 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         _appFont.value = name
     }
 
+    val reduceMotion = MutableStateFlow(appearancePrefs.getBoolean("reduce_motion", false))
+    val videoMode = MutableStateFlow(appearancePrefs.getString("video_mode", "Always") ?: "Always")
+    val pins = MutableStateFlow(appearancePrefs.getStringSet("pinned_playlists", emptySet()).orEmpty().toSet())
+
+    fun changeMotion(reduce: Boolean) {
+        reduceMotion.value = reduce
+        appearancePrefs.edit().putBoolean("reduce_motion", reduce).apply()
+    }
+
+    fun changeVideoMode(mode: String) {
+        videoMode.value = mode
+        appearancePrefs.edit().putString("video_mode", mode).apply()
+    }
+
+    fun togglePin(id: Long) {
+        val key = id.toString()
+        val next = if (key in pins.value) pins.value - key else pins.value + key
+        pins.value = next
+        appearancePrefs.edit().putStringSet("pinned_playlists", next).apply()
+    }
+
     val playback = PlaybackConnection(app)
     private val known = mutableMapOf<String, Track>()
 
@@ -292,7 +313,15 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleFavorite(track: Track) = viewModelScope.launch { store.toggleFavorite(track) }
     fun createPlaylist(name: String) = viewModelScope.launch { store.newPlaylist(name) }
     fun addToPlaylist(id: Long, track: Track) = viewModelScope.launch { store.addToPlaylist(id, track) }
-    fun removeFromPlaylist(id: Long, trackId: String) = viewModelScope.launch { store.removeFromPlaylist(id, trackId) }
+    val removedSong = MutableStateFlow<com.urfavxbf.kanade.data.PlaylistItem?>(null)
+    fun removeFromPlaylist(id: Long, trackId: String) = viewModelScope.launch {
+        removedSong.value = store.removeFromPlaylist(id, trackId)
+    }
+    fun undoRemoval() = viewModelScope.launch {
+        val item = removedSong.value ?: return@launch
+        removedSong.value = null
+        store.restore(item)
+    }
     fun deletePlaylist(id: Long) = viewModelScope.launch { store.removePlaylist(id) }
     fun selectPlaylist(id: Long) {
         playlistJob?.cancel()

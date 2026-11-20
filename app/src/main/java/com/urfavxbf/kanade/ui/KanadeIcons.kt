@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 
 /** Consistent 24-unit icons; active states use the same silhouette with a heavier stroke. */
 internal enum class KanadeIcon {
-    LIBRARY, ONLINE, PLAYLIST, INSIGHTS, MUSIC, SEARCH, REFRESH, BACK, FORWARD,
+    HOME, MORE, LIBRARY, ONLINE, PLAYLIST, INSIGHTS, MUSIC, SEARCH, REFRESH, BACK, FORWARD,
     FAVORITE, PLAY_NEXT, ADD, REMOVE, EDIT, PREVIOUS, PLAY, PAUSE, NEXT,
     SHUFFLE, REPEAT, REPEAT_ONE, QUEUE, LYRICS, AUDIO, CLOSE, UP, DOWN
 }
@@ -44,6 +44,8 @@ internal fun KanadeGlyph(icon: KanadeIcon, color: Color, selected: Boolean = fal
                 }, color)
             }
             when (icon) {
+                KanadeIcon.HOME -> path { moveTo(3f, 11f); lineTo(12f, 3f); lineTo(21f, 11f); lineTo(20f, 11f); lineTo(20f, 21f); lineTo(4f, 21f); lineTo(4f, 11f); close() }
+                KanadeIcon.MORE -> for (y in listOf(5f, 12f, 19f)) drawCircle(color, 1.7f, Offset(12f, y))
                 KanadeIcon.LIBRARY -> {
                     path { moveTo(14f, 3f); lineTo(6f, 3f); quadraticTo(3f, 3f, 3f, 6f); lineTo(3f, 16f); quadraticTo(3f, 19f, 6f, 19f) }
                     box(7f, 7f, 14f, 14f)

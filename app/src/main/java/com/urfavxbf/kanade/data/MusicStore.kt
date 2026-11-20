@@ -44,7 +44,8 @@ class MusicStore(private val dao: MusicDao) {
         dao.addItem(PlaylistItem(id, track.id, dao.nextPosition(id)))
     }
 
-    suspend fun removeFromPlaylist(id: Long, trackId: String) = dao.removeItem(id, trackId)
+    suspend fun removeFromPlaylist(id: Long, trackId: String) = dao.takeItem(id, trackId)
+    suspend fun restore(item: PlaylistItem) = dao.addItem(item)
     suspend fun removePlaylist(id: Long) {
         dao.clearPlaylistItems(id)
         dao.deletePlaylist(id)
