@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -59,6 +60,11 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -167,6 +173,32 @@ private val PrimaryText: Color @Composable get() = LocalKanadePalette.current.te
 private val Muted: Color @Composable get() = LocalKanadePalette.current.muted
 private val ErrorColor: Color @Composable get() = LocalKanadePalette.current.error
 
+private class ChromeMetrics {
+    var pageTop by mutableStateOf(0)
+    var bottomHeight by mutableStateOf(0)
+}
+private val LocalChromeMetrics = staticCompositionLocalOf { ChromeMetrics() }
+
+// Keep the scrollable content behind the page controls, while retaining reachable endpoints.
+@Composable
+private fun underChrome(): Pair<Modifier, PaddingValues> {
+    val chrome = LocalChromeMetrics.current
+    val density = LocalDensity.current
+    var listTop by remember { mutableStateOf(0) }
+    val overlap = (listTop - chrome.pageTop).coerceAtLeast(0)
+    val padding = with(density) {
+        PaddingValues(top = overlap.toDp(), bottom = chrome.bottomHeight.toDp() + 12.dp)
+    }
+    val modifier = Modifier.zIndex(-1f)
+        .onGloballyPositioned { listTop = it.positionInRoot().y.toInt() }
+        .layout { measurable, constraints ->
+            val extra = overlap.coerceAtMost(4096)
+            val placeable = measurable.measure(constraints.copy(maxHeight = constraints.maxHeight + extra))
+            layout(placeable.width, constraints.maxHeight) { placeable.placeRelative(0, -extra) }
+        }
+    return modifier to padding
+}
+
 private enum class Page { LIBRARY, ONLINE, PLAYLISTS, INSIGHTS, SETTINGS }
 private enum class Overlay { NONE, QUEUE, LYRICS, PICK_PLAYLIST, EDIT_TAGS }
 
@@ -225,13 +257,15 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
     BackHandler(enabled = showNowPlaying && overlay == Overlay.NONE) { showNowPlaying = false }
     LaunchedEffect(playback.hasItem) { if (!playback.hasItem) showNowPlaying = false }
 
+    val chrome = remember { ChromeMetrics() }
+    CompositionLocalProvider(LocalChromeMetrics provides chrome) {
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
         listOf(LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom)))) {
-    if (!showNowPlaying) Column(
+    if (!showNowPlaying) Box(
         Modifier.fillMaxSize().safeDrawingPadding().imePadding()
             .padding(start = 16.dp, end = 16.dp, top = 8.dp),
     ) {
-        Box(Modifier.weight(1f)) {
+        Box(Modifier.fillMaxSize().onGloballyPositioned { chrome.pageTop = it.positionInRoot().y.toInt() }) {
             when (page) {
                 Page.LIBRARY -> Column {
                     Header("Your library", "Your music stays yours, even offline.")
@@ -266,7 +300,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                         Spacer(Modifier.height(10.dp))
                         if (filter == "Folders" && folder.isBlank()) {
                             val folders = library.tracks.map { it.folder.ifBlank { "Unknown folder" } }.distinct().sorted()
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            val (underlay, insets) = underChrome()
+                            LazyColumn(modifier = underlay, contentPadding = insets, verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                 items(folders) { item ->
                                     SimpleRow(item, "${library.tracks.count { it.folder.ifBlank { "Unknown folder" } == item }} tracks") {
                                         folder = item
@@ -275,7 +310,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                             }
                         } else if (filter == "Albums" && album.isBlank()) {
                             val albums = library.tracks.map { it.album.ifBlank { "Unknown album" } }.distinct().sorted()
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            val (underlay, insets) = underChrome()
+                            LazyColumn(modifier = underlay, contentPadding = insets, verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                 items(albums) { item ->
                                     SimpleRow(item, "${library.tracks.count { it.album.ifBlank { "Unknown album" } == item }} tracks") {
                                         album = item
@@ -284,7 +320,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                             }
                         } else if (filter == "Artists" && album.isBlank()) {
                             val artists = library.tracks.map { it.artist }.distinct().sorted()
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            val (underlay, insets) = underChrome()
+                            LazyColumn(modifier = underlay, contentPadding = insets, verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                 items(artists) { item ->
                                     SimpleRow(item, "${library.tracks.count { it.artist == item }} tracks") {
                                         album = item
@@ -376,7 +413,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                             }
                         }
                         Spacer(Modifier.height(14.dp))
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        val (underlay, insets) = underChrome()
+                        LazyColumn(modifier = underlay, contentPadding = insets, verticalArrangement = Arrangement.spacedBy(9.dp)) {
                             items(playlists, key = { it.id }) { playlist ->
                                 SimpleRow(playlist.name, "Tap to open") {
                                     selectedPlaylistId = playlist.id
@@ -441,6 +479,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
             }
         }
 
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+            .onGloballyPositioned { chrome.bottomHeight = it.size.height }) {
         if (playback.hasItem) {
             Spacer(Modifier.height(7.dp))
             MiniPlayer(playback, onToggle = model.playback::toggle,
@@ -475,6 +515,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
         }
 
         Spacer(Modifier.height(8.dp))
+        }
     } else {
         NowPlayingScreen(playback,
             onClose = { showNowPlaying = false }, onToggle = model.playback::toggle,
@@ -566,11 +607,13 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
         }
     }
 }
+}
 
 @Composable
 private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, themeMode: ThemeMode) {
     val onlineBoost by model.playback.onlineBoost.collectAsState()
     val colorTheme by model.colorTheme.collectAsState()
+    val bottomInset = with(LocalDensity.current) { LocalChromeMetrics.current.bottomHeight.toDp() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Header("Settings", "Make Kanade feel like yours.")
         Spacer(Modifier.height(22.dp))
@@ -638,6 +681,7 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
             Spacer(Modifier.height(16.dp))
             Label("Gapless playback uses Media3's supported codec path. Equalizer effects depend on device audio routing.",
                 12.sp, Muted)
+        Spacer(Modifier.height(bottomInset + 12.dp))
     }
 }
 
@@ -654,9 +698,11 @@ private fun ThemeChoice(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable private fun Header(title: String, subtitle: String) {
-    Label(title, 30.sp, PrimaryText, FontWeight.Bold)
-    Spacer(Modifier.height(4.dp))
-    Label(subtitle, 13.sp, Muted)
+    Column(Modifier.fillMaxWidth().glassSurface(18.dp).padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Label(title, 30.sp, PrimaryText, FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Label(subtitle, 13.sp, Muted)
+    }
 }
 
 @Composable
@@ -749,7 +795,9 @@ private fun TrackList(
         if (nearEnd && pagination?.hasMore == true && !pagination.searching &&
             !pagination.loadingMore && pagination.loadMoreError == null) onLoadMore?.invoke()
     }
-    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    val (underlay, insets) = underChrome()
+    LazyColumn(state = listState, modifier = underlay, contentPadding = insets,
+        verticalArrangement = Arrangement.spacedBy(5.dp)) {
         items(tracks, key = { it.id }) { track ->
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
@@ -857,8 +905,8 @@ private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp): Modifier
     val shape = RoundedCornerShape(radius)
     val palette = LocalKanadePalette.current
     return shadow(3.dp, shape, clip = false).clip(shape).background(Brush.linearGradient(listOf(
-        palette.glass.copy(alpha = 0.96f), palette.glass.copy(alpha = 0.78f),
-        palette.glass.copy(alpha = 0.92f))))
+        palette.glass.copy(alpha = 0.82f), palette.glass.copy(alpha = 0.68f),
+        palette.glass.copy(alpha = 0.80f))))
         .border(1.dp, Brush.linearGradient(listOf(palette.glassBorder.copy(alpha = 0.28f),
             palette.glassBorder.copy(alpha = 0.08f), palette.glassBorder.copy(alpha = 0.18f))), shape)
 }
