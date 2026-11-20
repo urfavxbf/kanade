@@ -24,10 +24,10 @@ internal enum class KanadeIcon {
 }
 
 @Composable
-internal fun KanadeGlyph(icon: KanadeIcon, color: Color, selected: Boolean = false, size: Dp = 22.dp) {
+internal fun KanadeGlyph(icon: KanadeIcon, color: Color, selected: Boolean = false, size: Dp = 22.dp, bold: Boolean = false) {
     Canvas(Modifier.size(size)) {
         scale(this.size.width / 24f, this.size.height / 24f, pivot = Offset.Zero) {
-            val width = if (selected) 2.9f else 1.8f
+            val width = if (bold) 3.2f else if (selected) 2.9f else 1.8f
             val stroke = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round)
             fun line(x1: Float, y1: Float, x2: Float, y2: Float) =
                 drawLine(color, Offset(x1, y1), Offset(x2, y2), width, cap = StrokeCap.Round)
@@ -35,6 +35,14 @@ internal fun KanadeGlyph(icon: KanadeIcon, color: Color, selected: Boolean = fal
             fun box(x: Float, y: Float, w: Float, h: Float, radius: Float = 3f) =
                 drawRoundRect(color, Offset(x, y), Size(w, h), CornerRadius(radius), style = stroke)
             fun path(block: Path.() -> Unit) = drawPath(Path().apply(block), color, style = stroke)
+            fun triangle(base: Float, tip: Float) {
+                drawPath(Path().apply {
+                    moveTo(base, 3.5f)
+                    lineTo(tip, 12f)
+                    lineTo(base, 20.5f)
+                    close()
+                }, color)
+            }
             when (icon) {
                 KanadeIcon.LIBRARY -> {
                     path { moveTo(14f, 3f); lineTo(6f, 3f); quadraticTo(3f, 3f, 3f, 6f); lineTo(3f, 16f); quadraticTo(3f, 19f, 6f, 19f) }
@@ -55,15 +63,18 @@ internal fun KanadeGlyph(icon: KanadeIcon, color: Color, selected: Boolean = fal
                 KanadeIcon.ADD -> { line(12f, 5f, 12f, 19f); line(5f, 12f, 19f, 12f) }
                 KanadeIcon.REMOVE -> line(5f, 12f, 19f, 12f)
                 KanadeIcon.EDIT -> { path { moveTo(5f, 19f); lineTo(6f, 15f); lineTo(16f, 5f); quadraticTo(18f, 3f, 20f, 5f); quadraticTo(22f, 7f, 20f, 9f); lineTo(10f, 19f); close() }; line(15f, 6f, 19f, 10f) }
-                KanadeIcon.PREVIOUS -> { line(5f, 5f, 5f, 19f); path { moveTo(19f, 5f); lineTo(8f, 12f); lineTo(19f, 19f); close() } }
-                KanadeIcon.NEXT -> { line(19f, 5f, 19f, 19f); path { moveTo(5f, 5f); lineTo(16f, 12f); lineTo(5f, 19f); close() } }
-                KanadeIcon.PLAY -> path { moveTo(8f, 5f); lineTo(19f, 12f); lineTo(8f, 19f); close() }
-                KanadeIcon.PAUSE -> { line(9f, 5f, 9f, 19f); line(15f, 5f, 15f, 19f) }
+                KanadeIcon.PREVIOUS -> if (bold) { triangle(20f, 7f); line(4f, 5f, 4f, 19f) } else { line(5f, 5f, 5f, 19f); path { moveTo(19f, 5f); lineTo(8f, 12f); lineTo(19f, 19f); close() } }
+                KanadeIcon.NEXT -> if (bold) { triangle(4f, 17f); line(20f, 5f, 20f, 19f) } else { line(19f, 5f, 19f, 19f); path { moveTo(5f, 5f); lineTo(16f, 12f); lineTo(5f, 19f); close() } }
+                KanadeIcon.PLAY -> if (bold) triangle(6f, 21f) else path { moveTo(8f, 5f); lineTo(19f, 12f); lineTo(8f, 19f); close() }
+                KanadeIcon.PAUSE -> if (bold) {
+                    drawRoundRect(color, Offset(5f, 4f), Size(5f, 16f), CornerRadius(1f))
+                    drawRoundRect(color, Offset(14f, 4f), Size(5f, 16f), CornerRadius(1f))
+                } else { line(9f, 5f, 9f, 19f); line(15f, 5f, 15f, 19f) }
                 KanadeIcon.SHUFFLE -> { path { moveTo(4f, 6f); lineTo(7f, 6f); cubicTo(12f, 6f, 12f, 18f, 17f, 18f); lineTo(20f, 18f) }; path { moveTo(4f, 18f); lineTo(7f, 18f); cubicTo(9f, 18f, 10f, 16f, 11f, 14f) }; path { moveTo(13f, 10f); cubicTo(14f, 8f, 15f, 6f, 17f, 6f); lineTo(20f, 6f) }; line(17f, 3f, 20f, 6f); line(20f, 6f, 17f, 9f); line(17f, 15f, 20f, 18f); line(20f, 18f, 17f, 21f) }
                 KanadeIcon.REPEAT, KanadeIcon.REPEAT_ONE -> { path { moveTo(4f, 9f); quadraticTo(4f, 5f, 8f, 5f); lineTo(19f, 5f); lineTo(16f, 2f); moveTo(19f, 5f); lineTo(16f, 8f); moveTo(20f, 15f); quadraticTo(20f, 19f, 16f, 19f); lineTo(5f, 19f); lineTo(8f, 22f); moveTo(5f, 19f); lineTo(8f, 16f) }; if (icon == KanadeIcon.REPEAT_ONE) { line(12f, 10f, 12f, 15f); line(10.5f, 11f, 12f, 10f) } }
                 KanadeIcon.QUEUE -> { line(4f, 6f, 20f, 6f); line(4f, 11f, 20f, 11f); line(4f, 16f, 14f, 16f); line(17f, 15f, 20f, 18f); line(20f, 18f, 17f, 21f) }
-                KanadeIcon.LYRICS -> { box(4f, 3f, 16f, 18f); line(8f, 8f, 16f, 8f); line(8f, 12f, 16f, 12f); line(8f, 16f, 13f, 16f) }
-                KanadeIcon.AUDIO -> { line(6f, 4f, 6f, 20f); line(12f, 4f, 12f, 20f); line(18f, 4f, 18f, 20f); drawCircle(color, 2.3f, Offset(6f, 8f)); drawCircle(color, 2.3f, Offset(12f, 15f)); drawCircle(color, 2.3f, Offset(18f, 10f)) }
+                KanadeIcon.LYRICS -> if (bold) { line(4f, 6f, 20f, 6f); line(4f, 12f, 16f, 12f); line(4f, 18f, 12f, 18f) } else { box(4f, 3f, 16f, 18f); line(8f, 8f, 16f, 8f); line(8f, 12f, 16f, 12f); line(8f, 16f, 13f, 16f) }
+                KanadeIcon.AUDIO -> if (bold) { line(5f, 9f, 5f, 15f); line(12f, 4f, 12f, 20f); line(19f, 7f, 19f, 17f) } else { line(6f, 4f, 6f, 20f); line(12f, 4f, 12f, 20f); line(18f, 4f, 18f, 20f); drawCircle(color, 2.3f, Offset(6f, 8f)); drawCircle(color, 2.3f, Offset(12f, 15f)); drawCircle(color, 2.3f, Offset(18f, 10f)) }
                 KanadeIcon.CLOSE -> { line(6f, 6f, 18f, 18f); line(18f, 6f, 6f, 18f) }
                 KanadeIcon.UP -> { line(12f, 19f, 12f, 5f); line(12f, 5f, 7f, 10f); line(12f, 5f, 17f, 10f) }
                 KanadeIcon.DOWN -> { line(12f, 5f, 12f, 19f); line(12f, 19f, 7f, 14f); line(12f, 19f, 17f, 14f) }

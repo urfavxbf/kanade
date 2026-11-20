@@ -982,14 +982,14 @@ private fun TinyButton(icon: KanadeIcon, description: String, selected: Boolean 
 }
 
 @Composable
-private fun IconTextButton(icon: KanadeIcon, text: String, glass: Boolean = false, onClick: () -> Unit) {
-    val style = if (glass) Modifier.playerGlass(20.dp).heightIn(min = 48.dp)
+private fun IconTextButton(icon: KanadeIcon, text: String, playerAction: Boolean = false, onClick: () -> Unit) {
+    val style = if (playerAction) Modifier.heightIn(min = 48.dp)
         else Modifier.clip(RoundedCornerShape(13.dp)).background(SurfaceLight)
-    val ink = if (glass) Color.White else PrimaryText
+    val ink = if (playerAction) Color.White else PrimaryText
     Row(style
         .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        KanadeGlyph(icon, ink, size = 17.dp)
+        KanadeGlyph(icon, ink, size = if (playerAction) 21.dp else 17.dp, bold = playerAction)
         Spacer(Modifier.width(5.dp))
         Label(text, 12.sp, ink)
     }
@@ -1124,24 +1124,17 @@ private fun VideoBackdrop(state: PlaybackState) {
     }
 }
 
-private fun Modifier.playerGlass(radius: androidx.compose.ui.unit.Dp): Modifier {
-    val shape = RoundedCornerShape(radius)
-    return clip(shape).background(Brush.verticalGradient(listOf(
-        Color(0x88484C52), Color(0x9912161A)
-    ))).border(1.dp, Brush.verticalGradient(listOf(
-        Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.18f)
-    )), shape)
-}
-
 @Composable
-private fun GlassPlayerButton(icon: KanadeIcon, description: String, large: Boolean = false,
+private fun PlayerButton(icon: KanadeIcon, description: String, large: Boolean = false,
     selected: Boolean = false, onClick: () -> Unit) {
     val size = if (large) 60.dp else 48.dp
-    Box(Modifier.size(size).playerGlass(if (large) 32.dp else 23.dp)
+    Box(Modifier.size(size)
         .clickable(role = Role.Button, onClick = onClick)
         .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
         KanadeGlyph(icon, if (selected) lerp(Accent, Color.White, 0.70f) else Color.White,
-            selected = selected || large, size = if (large) 29.dp else 20.dp)
+            selected = selected, size = if (large) 34.dp else 24.dp, bold = true)
+        if (selected) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp)
+            .width(10.dp).height(2.dp).background(Color.White))
     }
 }
 
@@ -1170,7 +1163,7 @@ private fun NowPlayingScreen(
                 val upper = if (shortWindow) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState())
                 Column(upper.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        GlassPlayerButton(KanadeIcon.BACK, "Back", onClick = onClose)
+                        PlayerButton(KanadeIcon.BACK, "Back", onClick = onClose)
                         val title = remember(state.mediaId, state.title, state.artist) {
                             if (state.mediaId.startsWith("youtube:")) songTitle(state.title, state.artist) else state.title
                         }
@@ -1178,7 +1171,7 @@ private fun NowPlayingScreen(
                             overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = LocalAppFont.current,
                                 color = Color.White, fontWeight = FontWeight.Bold, fontSize = 28.sp,
                                 textAlign = TextAlign.Center, shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f)))
-                        GlassPlayerButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
+                        PlayerButton(KanadeIcon.QUEUE, "Queue", onClick = onQueue)
                     }
                     Spacer(Modifier.height(16.dp))
                     val cover: @Composable () -> Unit = {
@@ -1220,12 +1213,12 @@ private fun NowPlayingScreen(
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically) {
-                    GlassPlayerButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle, onClick = onShuffle)
-                    GlassPlayerButton(KanadeIcon.PREVIOUS, "Previous", onClick = onPrevious)
-                    GlassPlayerButton(if (state.playing) KanadeIcon.PAUSE else KanadeIcon.PLAY,
+                    PlayerButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle, onClick = onShuffle)
+                    PlayerButton(KanadeIcon.PREVIOUS, "Previous", onClick = onPrevious)
+                    PlayerButton(if (state.playing) KanadeIcon.PAUSE else KanadeIcon.PLAY,
                         if (state.playing) "Pause" else "Play", large = true, onClick = onToggle)
-                    GlassPlayerButton(KanadeIcon.NEXT, "Next", onClick = onNext)
-                    GlassPlayerButton(if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
+                    PlayerButton(KanadeIcon.NEXT, "Next", onClick = onNext)
+                    PlayerButton(if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
                         if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
                         selected = state.repeatMode != Player.REPEAT_MODE_OFF, onClick = onRepeat)
                 }
@@ -1234,9 +1227,9 @@ private fun NowPlayingScreen(
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth().padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconTextButton(KanadeIcon.LYRICS, "Lyrics", glass = true, onClick = onLyrics)
-                    IconTextButton(KanadeIcon.AUDIO, "Audio", glass = true, onClick = onAudio)
-                    IconTextButton(KanadeIcon.QUEUE, "Queue", glass = true, onClick = onQueue)
+                    IconTextButton(KanadeIcon.LYRICS, "Lyrics", playerAction = true, onClick = onLyrics)
+                    IconTextButton(KanadeIcon.AUDIO, "Audio", playerAction = true, onClick = onAudio)
+                    IconTextButton(KanadeIcon.QUEUE, "Queue", playerAction = true, onClick = onQueue)
                 }
 
             }
