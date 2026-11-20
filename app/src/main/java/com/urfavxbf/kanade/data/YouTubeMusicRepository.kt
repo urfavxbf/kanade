@@ -12,6 +12,7 @@ import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_SONGS
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.io.IOException
@@ -49,14 +50,16 @@ object YouTubeMusicRepository {
 
     data class SearchPage(val tracks: List<Track>, val nextPage: Page?)
 
+    private fun songsExtractor(query: String) = ServiceList.YouTube.getSearchExtractor(query, listOf(MUSIC_SONGS), "")
+
     suspend fun search(query: String): SearchPage = withContext(Dispatchers.IO) {
-        val extractor = ServiceList.YouTube.getSearchExtractor(query)
+        val extractor = songsExtractor(query)
         extractor.fetchPage()
         parsePage(extractor.initialPage)
     }
 
     suspend fun searchNext(query: String, page: Page): SearchPage = withContext(Dispatchers.IO) {
-        val extractor = ServiceList.YouTube.getSearchExtractor(query)
+        val extractor = songsExtractor(query)
         parsePage(extractor.getPage(page))
     }
 

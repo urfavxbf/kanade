@@ -422,7 +422,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                     Header("Your library", "Your music stays yours, even offline.")
                     Spacer(Modifier.height(12.dp))
                     if (!model.hasPermission()) {
-                        EmptyState(KanadeIcon.MUSIC, "Grant music permission", "Browse audio stored on your device.") {
+                        EmptyState(KanadeIcon.MUSIC, "Grant music permission", "Browse MP3 music stored on your device.") {
                             permissions.launch(model.permission())
                         }
                     } else {
@@ -436,7 +436,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                         }
                         Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Label(if (library.loading) "Scanning…" else "${library.tracks.size} on-device tracks",
+                            Label(if (library.loading) "Scanning…" else "${library.tracks.size} on-device MP3s",
                                 11.sp, Muted, modifier = Modifier.weight(1f))
                             Chip("Sort: $sort") {
                                 sort = when (sort) {
@@ -485,10 +485,11 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                                 IconTextButton(KanadeIcon.BACK, "Back") { folder = ""; album = "" }
                                 Spacer(Modifier.height(8.dp))
                             }
+                            val indexedIds = remember(library.tracks) { library.tracks.mapTo(hashSetOf()) { it.id } }
                             val source = when (filter) {
-                                "Favorites" -> favorites.filter { it.source == TrackSource.LOCAL }
-                                "Recent" -> recent.filter { it.source == TrackSource.LOCAL }
-                                "Top" -> topTracks.filter { it.source == TrackSource.LOCAL }
+                                "Favorites" -> favorites.filter { it.id in indexedIds }
+                                "Recent" -> recent.filter { it.id in indexedIds }
+                                "Top" -> topTracks.filter { it.id in indexedIds }
                                 "Folders" -> library.tracks.filter { it.folder.ifBlank { "Unknown folder" } == folder }
                                 "Albums" -> library.tracks.filter { it.album.ifBlank { "Unknown album" } == album }
                                 "Artists" -> library.tracks.filter { it.artist == album }
@@ -524,7 +525,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                     }
                 }
                 Page.ONLINE -> Column {
-                    Header("Search", "Find songs on your phone and online.")
+                    Header("Search", "Search on-device MP3s and YouTube Music songs.")
                     val submit: () -> Unit = {
                         submitted = onlineQuery.trim()
                         if (scope != "On device") model.search(submitted)

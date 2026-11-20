@@ -297,12 +297,15 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         radioJob = viewModelScope.launch {
             val discovered = if (online && seed.artist.isNotBlank()) {
                 try {
-                    YouTubeMusicRepository.search(seed.artist.removeSuffix(" - Topic") + " songs").tracks
+                    YouTubeMusicRepository.search(seed.artist.removeSuffix(" - Topic")).tracks
                         .filter { it.durationMs in 30_000L..900_000L }
                 } catch (e: CancellationException) { throw e }
                 catch (_: Exception) { emptyList() }
             } else emptyList()
-            val pool = discovered + favorites.value + recent.value + library.value.tracks
+            val local = library.value.tracks
+            val localIds = local.mapTo(hashSetOf()) { it.id }
+            val saved = (favorites.value + recent.value).filter { it.source != TrackSource.LOCAL || it.id in localIds }
+            val pool = discovered + saved + local
             val queue = withContext(Dispatchers.Default) { radioQueue(seed, pool, online) }
             val now = playback.state.value
             if (now.mediaId != before.mediaId || now.queue != before.queue) {
