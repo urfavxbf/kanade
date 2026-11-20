@@ -982,13 +982,16 @@ private fun TinyButton(icon: KanadeIcon, description: String, selected: Boolean 
 }
 
 @Composable
-private fun IconTextButton(icon: KanadeIcon, text: String, onClick: () -> Unit) {
-    Row(Modifier.clip(RoundedCornerShape(13.dp)).background(SurfaceLight)
+private fun IconTextButton(icon: KanadeIcon, text: String, glass: Boolean = false, onClick: () -> Unit) {
+    val style = if (glass) Modifier.playerGlass(20.dp).heightIn(min = 48.dp)
+        else Modifier.clip(RoundedCornerShape(13.dp)).background(SurfaceLight)
+    val ink = if (glass) Color.White else PrimaryText
+    Row(style
         .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        KanadeGlyph(icon, PrimaryText, size = 17.dp)
+        KanadeGlyph(icon, ink, size = 17.dp)
         Spacer(Modifier.width(5.dp))
-        Label(text, 12.sp, PrimaryText)
+        Label(text, 12.sp, ink)
     }
 }
 
@@ -1121,14 +1124,23 @@ private fun VideoBackdrop(state: PlaybackState) {
     }
 }
 
+private fun Modifier.playerGlass(radius: androidx.compose.ui.unit.Dp): Modifier {
+    val shape = RoundedCornerShape(radius)
+    return clip(shape).background(Brush.verticalGradient(listOf(
+        Color(0x88484C52), Color(0x9912161A)
+    ))).border(1.dp, Brush.verticalGradient(listOf(
+        Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.18f)
+    )), shape)
+}
+
 @Composable
 private fun GlassPlayerButton(icon: KanadeIcon, description: String, large: Boolean = false,
     selected: Boolean = false, onClick: () -> Unit) {
     val size = if (large) 60.dp else 48.dp
-    Box(Modifier.size(size).glassSurface(if (large) 32.dp else 23.dp)
+    Box(Modifier.size(size).playerGlass(if (large) 32.dp else 23.dp)
         .clickable(role = Role.Button, onClick = onClick)
         .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
-        KanadeGlyph(icon, if (selected || large) Accent else PrimaryText,
+        KanadeGlyph(icon, if (selected) lerp(Accent, Color.White, 0.70f) else Color.White,
             selected = selected || large, size = if (large) 29.dp else 20.dp)
     }
 }
@@ -1206,7 +1218,7 @@ private fun NowPlayingScreen(
                     state.error?.let { Label(it, 12.sp, ErrorColor) }
                 }
                 Spacer(Modifier.height(4.dp))
-                Row(Modifier.fillMaxWidth().glassSurface(32.dp).padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically) {
                     GlassPlayerButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle, onClick = onShuffle)
                     GlassPlayerButton(KanadeIcon.PREVIOUS, "Previous", onClick = onPrevious)
@@ -1218,16 +1230,13 @@ private fun NowPlayingScreen(
                         selected = state.repeatMode != Player.REPEAT_MODE_OFF, onClick = onRepeat)
                 }
                 Spacer(Modifier.height(12.dp))
-                Column(if (LocalKanadePalette.current.flat) Modifier.fillMaxWidth().glassSurface(16.dp)
-                    .padding(horizontal = 12.dp, vertical = 4.dp) else Modifier.fillMaxWidth()) {
-                    PlaybackProgress(state, onSeek)
-                }
+                PlaybackProgress(state, onSeek)
                 Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth().glassSurface(18.dp).padding(8.dp),
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconTextButton(KanadeIcon.LYRICS, "Lyrics", onLyrics)
-                    IconTextButton(KanadeIcon.AUDIO, "Audio", onAudio)
-                    IconTextButton(KanadeIcon.QUEUE, "Queue", onQueue)
+                    IconTextButton(KanadeIcon.LYRICS, "Lyrics", glass = true, onClick = onLyrics)
+                    IconTextButton(KanadeIcon.AUDIO, "Audio", glass = true, onClick = onAudio)
+                    IconTextButton(KanadeIcon.QUEUE, "Queue", glass = true, onClick = onQueue)
                 }
 
             }
@@ -1254,12 +1263,12 @@ private fun PlaybackProgress(state: PlaybackState, onSeek: (Long) -> Unit) {
                 }
             }
         }, contentAlignment = Alignment.CenterStart) {
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(LocalKanadePalette.current.tint.copy(alpha = 0.25f)))
-        Box(Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape).background(Accent))
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.38f)))
+        Box(Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape).background(Color.White))
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Label(DurationFormatter.format(state.positionMs), 10.sp, Muted)
-        Label(DurationFormatter.format(state.durationMs), 10.sp, Muted)
+        Label(DurationFormatter.format(state.positionMs), 12.sp, Color.White)
+        Label(DurationFormatter.format(state.durationMs), 12.sp, Color.White)
     }
 }
 
