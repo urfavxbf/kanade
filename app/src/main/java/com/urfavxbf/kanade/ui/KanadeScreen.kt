@@ -1691,11 +1691,13 @@ private fun NowPlayingScreen(
                             if (state.shuffle) "Shuffle on" else "Shuffle off",
                             active = state.shuffle,
                             reduceMotion = LocalReduceMotion.current,
+                            backdrop = glassBackdrop,
                             onClick = onShuffle,
                         )
                         MinimalGlassControlButton(
                             KanadeIcon.PREVIOUS, "Previous",
                             reduceMotion = LocalReduceMotion.current,
+                            backdrop = glassBackdrop,
                             onClick = onPrevious,
                         )
                         LiquidGlassPlayPauseButton(
@@ -1707,6 +1709,7 @@ private fun NowPlayingScreen(
                         MinimalGlassControlButton(
                             KanadeIcon.NEXT, "Next",
                             reduceMotion = LocalReduceMotion.current,
+                            backdrop = glassBackdrop,
                             onClick = onNext,
                         )
                         MinimalGlassControlButton(
@@ -1714,6 +1717,7 @@ private fun NowPlayingScreen(
                             if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
                             active = state.repeatMode != Player.REPEAT_MODE_OFF,
                             reduceMotion = LocalReduceMotion.current,
+                            backdrop = glassBackdrop,
                             onClick = onRepeat,
                         )
                     }
