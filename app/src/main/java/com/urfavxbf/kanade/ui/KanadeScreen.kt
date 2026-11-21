@@ -124,8 +124,8 @@ import com.urfavxbf.kanade.lyrics.LrcParser
 import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackState
-import com.styropyr0.prismal.sources.prismalGlassLayer
-import com.styropyr0.prismal.sources.rememberPrismalGlassLayer
+import io.github.itshedimisawi.vitro.glassBackdrop
+import io.github.itshedimisawi.vitro.rememberGlassBackdrop
 
 private val appFonts = linkedMapOf(
     "Open Sans" to FontFamily(Font(R.font.open_sans)),
@@ -1560,10 +1560,10 @@ private fun NowPlayingScreen(
     onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit, onSeek: (Long) -> Unit,
     onPlayAt: (Int) -> Unit, onLyrics: () -> Unit, lyricDelay: Long, onTools: () -> Unit,
 ) {
-    val glassBackdrop = rememberPrismalGlassLayer()
+    val glassBackdrop = rememberGlassBackdrop()
     Box(Modifier.fillMaxSize()) {
         // Only the artwork/backdrop is sampled: never the player controls themselves.
-        Box(Modifier.fillMaxSize().prismalGlassLayer(glassBackdrop).background(Background)) {
+        Box(Modifier.fillMaxSize().glassBackdrop(glassBackdrop).background(Background)) {
             if (!state.artworkUri.isNullOrBlank()) {
                 AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().blur(45.dp).alpha(0.28f))
