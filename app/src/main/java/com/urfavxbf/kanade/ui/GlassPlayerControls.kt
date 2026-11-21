@@ -25,6 +25,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -53,43 +58,61 @@ internal fun Modifier.warmRaisedGlass(
         .shadow(
             elevation = elevation,
             shape = shape,
-            ambientColor = WarmShadow.copy(alpha = 0.24f),
-            spotColor = WarmShadow.copy(alpha = 0.25f),
+            ambientColor = WarmShadow.copy(alpha = 0.34f),
+            spotColor = WarmShadow.copy(alpha = 0.40f),
         )
         .then(
             if (backdrop == null) Modifier
             else Modifier.liquid(backdrop) {
                 this.shape = shape
-                refraction = 0.38f
-                curve = 0.36f
-                edge = 0.10f
-                dispersion = 0.065f
-                frost = 1.dp
-                saturation = 1.12f
-                tint = WarmGlass.copy(alpha = 0.06f)
+                refraction = 0.48f
+                curve = 0.48f
+                edge = 0.17f
+                dispersion = 0.045f
+                frost = 0.6.dp
+                saturation = 1.06f
+                tint = WarmGlass.copy(alpha = 0.045f)
             }
         )
         .clip(shape)
         .background(
             Brush.verticalGradient(
                 listOf(
-                    Color(0xFFFFFCF7).copy(alpha = 0.055f),
+                    Color(0xFFFFFCF7).copy(alpha = 0.10f),
                     WarmGlass.copy(alpha = 0.025f),
-                    Color(0xFFB7A89A).copy(alpha = 0.018f),
+                    Color(0xFFB7A89A).copy(alpha = 0.035f),
                 )
             )
         )
         .border(
-            width = 1.dp,
+            width = 1.25.dp,
             brush = Brush.verticalGradient(
                 listOf(
-                    Color.White.copy(alpha = 0.55f),
-                    Color.White.copy(alpha = 0.12f),
-                    Color.White.copy(alpha = 0.28f),
+                    Color.White.copy(alpha = 0.84f),
+                    Color.White.copy(alpha = 0.10f),
+                    Color(0xFFFFE9C9).copy(alpha = 0.68f),
                 )
             ),
             shape = shape,
         )
+        .drawWithContent {
+            drawContent()
+            val inset = 2.dp.toPx()
+            val corner = (radius.toPx() - inset).coerceAtLeast(0f)
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = 0.30f), Color.Transparent,
+                        Color(0xFFFFDDB4).copy(alpha = 0.24f))
+                ),
+                topLeft = Offset(inset, inset),
+                size = Size(
+                    (size.width - inset * 2).coerceAtLeast(0f),
+                    (size.height - inset * 2).coerceAtLeast(0f)
+                ),
+                cornerRadius = CornerRadius(corner),
+                style = Stroke(width = 0.8.dp.toPx()),
+            )
+        }
 }
 
 /**
