@@ -2,7 +2,9 @@ package com.urfavxbf.kanade.playback
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.AudioAttributes
@@ -10,6 +12,10 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.urfavxbf.kanade.data.YouTubeMusicRepository
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
@@ -21,6 +27,8 @@ class KanadePlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private var player: ExoPlayer? = null
     private var effect: Equalizer? = null
+    private var loudness: LoudnessEnhancer? = null
+    private var loudnessSessionId = -1
     private var effectSessionId: Int = -1
     private val handler = Handler(Looper.getMainLooper())
     private val prefs by lazy { getSharedPreferences("kanade_audio", Context.MODE_PRIVATE) }
@@ -35,8 +43,22 @@ class KanadePlaybackService : MediaSessionService() {
         }
     }
 
+    private val loopTick = object : Runnable {
+        override fun run() {
+            val current = player ?: return
+            val region = loop.value ?: return
+            if (region.first != current.currentMediaItem?.mediaId) { loop.value = null; return }
+            if (current.isPlaying && current.currentPosition >= region.third) current.seekTo(region.second)
+            handler.postDelayed(this, if (current.isPlaying) (region.third - current.currentPosition).coerceIn(25, 200) else 250)
+        }
+    }
+
     companion object {
+        val loop = kotlinx.coroutines.flow.MutableStateFlow<Triple<String, Long, Long>?>(null)
+        const val ACTION_LOOP = "com.urfavxbf.kanade.LOOP"
         const val ACTION_SLEEP = "com.urfavxbf.kanade.SLEEP"
+        const val ACTION_ONLINE_BOOST = "com.urfavxbf.kanade.ONLINE_BOOST"
+        const val EXTRA_BOOST = "boost"
         const val ACTION_EQUALIZER = "com.urfavxbf.kanade.EQUALIZER"
         const val EXTRA_MINUTES = "minutes"
         const val EXTRA_PRESET = "preset"
@@ -44,7 +66,22 @@ class KanadePlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val instance = ExoPlayer.Builder(this)
+        val dataSource = ResolvingDataSource.Factory(DefaultDataSource.Factory(this)) { spec ->
+            if (spec.uri.scheme == "kanadeyt" && spec.uri.host == "track") {
+                val id = spec.uri.lastPathSegment.orEmpty()
+                spec.withUri(Uri.parse(YouTubeMusicRepository.streamUrl(id)))
+            } else spec
+        }
+        val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
+                enableAudioOutputPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink =
+                androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+                    .setAudioProcessors(arrayOf(androidx.media3.exoplayer.audio.TeeAudioProcessor(LiveSpectrum)))
+                    .build()
+        }
+        val instance = ExoPlayer.Builder(this, renderers)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
             .setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
@@ -52,7 +89,14 @@ class KanadePlaybackService : MediaSessionService() {
             .build()
         instance.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) applyEqualizer()
+                if (playbackState == Player.STATE_READY) { applyEqualizer(); applyOnlineBoost() }
+            }
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                if (loop.value?.first != mediaItem?.mediaId) {
+                    handler.removeCallbacks(loopTick)
+                    loop.value = null
+                }
+                applyOnlineBoost()
             }
         })
         player = instance
@@ -62,12 +106,28 @@ class KanadePlaybackService : MediaSessionService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_LOOP -> {
+                handler.removeCallbacks(loopTick)
+                val id = intent.getStringExtra("track").orEmpty()
+                val a = intent.getLongExtra("a", -1)
+                val b = intent.getLongExtra("b", -1)
+                loop.value = if (id == player?.currentMediaItem?.mediaId && a >= 0 && b >= a + 500)
+                    Triple(id, a, b) else null
+                if (loop.value != null) { player?.seekTo(a); handler.post(loopTick) }
+                return START_STICKY
+            }
             ACTION_SLEEP -> {
                 val minutes = intent.getIntExtra(EXTRA_MINUTES, 0).coerceIn(0, 180)
                 val deadline = if (minutes == 0) 0L else System.currentTimeMillis() + minutes * 60_000L
                 prefs.edit().putLong("sleepDeadline", deadline).apply()
                 handler.removeCallbacks(timer)
                 if (deadline > 0) handler.post(timer)
+                return START_STICKY
+            }
+            ACTION_ONLINE_BOOST -> {
+                val gain = intent.getIntExtra(EXTRA_BOOST, 0).coerceIn(0, 600)
+                prefs.edit().putInt("online_boost", gain).apply()
+                applyOnlineBoost()
                 return START_STICKY
             }
             ACTION_EQUALIZER -> {
@@ -80,6 +140,31 @@ class KanadePlaybackService : MediaSessionService() {
             }
         }
         return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun applyOnlineBoost() {
+        val current = player ?: return
+        val gain = onlineBoostGain(current.currentMediaItem?.mediaId, prefs.getInt("online_boost", 0))
+        val audioId = current.audioSessionId
+        try {
+            if (gain == 0 || audioId == C.AUDIO_SESSION_ID_UNSET || audioId == 0) {
+                loudness?.enabled = false
+                return
+            }
+            if (loudness == null || loudnessSessionId != audioId) {
+                loudness?.release()
+                loudness = null
+                loudnessSessionId = -1
+                loudness = LoudnessEnhancer(audioId)
+                loudnessSessionId = audioId
+            }
+            loudness?.setTargetGain(gain)
+            loudness?.enabled = true
+        } catch (_: RuntimeException) {
+            runCatching { loudness?.release() }
+            loudness = null
+            loudnessSessionId = -1
+        }
     }
 
     private fun applyEqualizer() {
@@ -119,9 +204,13 @@ class KanadePlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onDestroy() {
+        handler.removeCallbacks(loopTick)
+        loop.value = null
         handler.removeCallbacks(timer)
         effect?.release()
         effect = null
+        loudness?.release()
+        loudness = null
         session?.release()
         player?.release()
         session = null

@@ -34,6 +34,8 @@ class MusicStore(private val dao: MusicDao) {
         else dao.addFavorite(Favorite(track.id, System.currentTimeMillis()))
     }
 
+    suspend fun saveMix(name: String, tracks: List<Track>) = dao.saveMix(name, tracks.map { it.saved() })
+
     suspend fun newPlaylist(name: String) {
         val trimmed = name.trim()
         if (trimmed.isNotEmpty() && trimmed.length <= 80) dao.createPlaylist(Playlist(name = trimmed))
@@ -44,7 +46,8 @@ class MusicStore(private val dao: MusicDao) {
         dao.addItem(PlaylistItem(id, track.id, dao.nextPosition(id)))
     }
 
-    suspend fun removeFromPlaylist(id: Long, trackId: String) = dao.removeItem(id, trackId)
+    suspend fun removeFromPlaylist(id: Long, trackId: String) = dao.takeItem(id, trackId)
+    suspend fun restore(item: PlaylistItem) = dao.addItem(item)
     suspend fun removePlaylist(id: Long) {
         dao.clearPlaylistItems(id)
         dao.deletePlaylist(id)

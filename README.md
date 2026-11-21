@@ -1,29 +1,31 @@
 # Kanade
 
-Kanade is a native Android music player for **offline local music** and **licensed/authorized online streams**, built with Kotlin, Media3 and custom Compose Foundation UI (**no Material 3**).
+Kanade is a native Android music player built with Kotlin, Media3, and Compose Foundation. It plays local music and includes an experimental, unofficial YouTube search and audio player.
 
-## What works
+## Music
 
-- Offline library: songs, folders, albums, artists, sorting, favorites, playlists, local display metadata, and listening history.
-- Native playback: background media session, editable queue, shuffle/repeat, seek, sleep timer, audio presets on supported devices, and full Now Playing UI.
-- Audius: independent music search and authorized streams **playing inside Kanade** when available.
-- **YouTube Data API v3: OPM discovery / video metadata search only.** The YouTube API does **not** permit Kanade to isolate/stream YouTube audio in the native player, nor does it provide media stream URLs. YouTube results appear in a separate, clearly labeled discovery section and open on YouTube only if a user explicitly chooses to do so.
+- Browse local songs, folders, albums, and artists; create playlists and favorites.
+- Search YouTube without an API key and play available results inside Kanade. Search and stream resolution use [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor), a GPL-3.0-or-later dependency. This integration is unofficial and may stop working when YouTube changes.
+- The Media3 session manages the queue, background playback, seek, shuffle, repeat and sleep timer. Stream URLs are resolved at playback time rather than saved as permanent links.
+- Existing saved Audius entries are retained, though Audius search is removed. Their availability is not guaranteed.
 
-## YouTube setup — no paid service required
-
-Follow **[YouTube Data API setup](docs/youtube-api.md)** to create your own Google Cloud project, enable YouTube Data API v3, and configure a restricted API key inside Kanade. There is **no API key bundled into the APK**, so YouTube discovery cannot search until you supply one. Google's default quota (currently documented as 100 `search.list` calls per day) is subject to change.
-
-The feature requires active acceptance of **[Kanade Privacy Policy](docs/privacy-policy.md)** and **[Kanade Terms of Use](docs/terms.md)** before the first YouTube API call. Google [Privacy Policy](https://policies.google.com/privacy) and [YouTube Terms](https://www.youtube.com/t/terms) are linked in app.
-
-## Product principles
-
-- No separate external music player is required for local or authorized Audius songs.
-- No YouTube ripping, extracting audio, hidden/background video player, unauthorized download or caching, or embedded credentials in source.
-- All YouTube data remains **discovery metadata**; it is not inserted into a native audio queue.
-- The playback queue has a single owner in the Android media service.
-- Local music continues offline.
-- Key setup, permissions and network errors are explicit.
+See [privacy](docs/privacy-policy.md) and [terms](docs/terms.md). YouTube's API policies restrict separating audio and background playback; this unofficial integration is not an official YouTube API implementation. Check provider terms before distributing or using it.
 
 ## Build and tests
 
-GitHub Actions runs unit tests, debug APK build and Android lint; retrieve the `kanade-debug` artifact from successful runs. Real-device playback and API credential restrictions need manual Android testing.
+GitHub Actions runs unit tests, debug APK build and Android lint; retrieve the `kanade-debug` artifact from successful runs. Real-device playback requires separate Android testing. NewPipeExtractor is distributed under GPL-3.0-or-later; comply with its license if distributing a build containing it.
+
+### Kanade account setup
+
+Enable the Google provider in Firebase Authentication. Register the Android app
+`com.urfavxbf.kanade` with its signing certificate SHA-1, then download the updated
+`google-services.json` containing the web OAuth client and place it under `app/`.
+A build without the configuration supports guest listening.
+
+For Android CI, store the JSON contents in the repository Actions secret
+`GOOGLE_SERVICES_JSON`. For a repeatable debug signing certificate, store a
+dedicated Android debug keystore (standard Android debug alias and password)
+encoded as base64 in `KANADE_DEBUG_KEYSTORE_BASE64` and register its SHA-1.
+Keep release signing keys separate. To verify sign-in, install the matching
+build on a device with Google Play services, sign in, reopen Kanade, then sign
+out from Settings. Check that guest playback also works offline.

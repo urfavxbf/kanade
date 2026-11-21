@@ -12,3 +12,5 @@ captures/
 *.jks
 release.properties
 .DS_Store
+
+/app/google-services.json

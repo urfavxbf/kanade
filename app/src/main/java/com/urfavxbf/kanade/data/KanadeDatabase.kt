@@ -84,6 +84,25 @@ interface MusicDao {
     @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM playlist_items WHERE playlistId = :id")
     suspend fun nextPosition(id: Long): Int
 
+    @Query("SELECT * FROM playlist_items WHERE playlistId = :playlistId AND trackId = :trackId")
+    suspend fun item(playlistId: Long, trackId: String): PlaylistItem?
+
+    @androidx.room.Transaction
+    suspend fun saveMix(name: String, tracks: List<SavedTrack>) {
+        val playlist = createPlaylist(Playlist(name = name))
+        tracks.forEachIndexed { position, track ->
+            saveTrack(track)
+            addItem(PlaylistItem(playlist, track.id, position))
+        }
+    }
+
+    @androidx.room.Transaction
+    suspend fun takeItem(playlistId: Long, trackId: String): PlaylistItem? {
+        val removed = item(playlistId, trackId)
+        removeItem(playlistId, trackId)
+        return removed
+    }
+
     @Query("DELETE FROM playlist_items WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun removeItem(playlistId: Long, trackId: String)
 

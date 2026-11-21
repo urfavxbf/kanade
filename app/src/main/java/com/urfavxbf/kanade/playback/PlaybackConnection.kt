@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class QueueEntry(val id: String, val title: String, val artist: String)
+data class QueueEntry(val id: String, val title: String, val artist: String, val artworkUri: String? = null)
 
 data class PlaybackState(
     val mediaId: String = "",
@@ -39,6 +39,9 @@ data class PlaybackState(
 class PlaybackConnection(context: Context) {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("kanade_queue", Context.MODE_PRIVATE)
+    private val audioPrefs = app.getSharedPreferences("kanade_audio", Context.MODE_PRIVATE)
+    private val _onlineBoost = MutableStateFlow(audioPrefs.getInt("online_boost", 0).coerceIn(0, 600))
+    val onlineBoost: StateFlow<Int> = _onlineBoost
     private val future: ListenableFuture<MediaController> =
         MediaController.Builder(
             app,
@@ -81,6 +84,13 @@ class PlaybackConnection(context: Context) {
 
     fun play(tracks: List<Track>, position: Int) {
         if (tracks.isEmpty()) return
+        _state.value = _state.value.copy(error = null)
+        if (activeSession.isNotEmpty()) {
+            saveSession(activeSession)
+            activeSession = ""
+            sessions.edit().remove("active").apply()
+        }
+        station = ""
         val target = position.coerceIn(0, tracks.lastIndex)
         val player = controller
         if (player == null) {
@@ -98,6 +108,7 @@ class PlaybackConnection(context: Context) {
     fun playAt(index: Int) {
         controller?.let { if (index in 0 until it.mediaItemCount) {
             it.seekToDefaultPosition(index)
+            if (it.playbackState == Player.STATE_IDLE) it.prepare()
             it.play()
         } }
     }
@@ -124,6 +135,56 @@ class PlaybackConnection(context: Context) {
         } }
     }
 
+    private val sessions = app.getSharedPreferences("queue_sessions", Context.MODE_PRIVATE)
+    val sessionNames = MutableStateFlow(sessions.getStringSet("names", emptySet()).orEmpty().sorted())
+    private var activeSession = sessions.getString("active", "").orEmpty()
+    var station: String
+        get() = prefs.getString("station", "").orEmpty()
+        set(value) { prefs.edit().putString("station", value).apply() }
+
+    fun queueTracks(): List<Track> {
+        val player = controller ?: return emptyList()
+        return (0 until player.mediaItemCount).mapNotNull { index ->
+            knownTracks[player.getMediaItemAt(index).mediaId]
+        }
+    }
+
+    fun saveSession(name: String) {
+        val key = name.trim().take(60)
+        if (key.isEmpty() || controller?.mediaItemCount == 0 || controller == null) return
+        persist(force = true)
+        val names = sessionNames.value.toSet() + key
+        val snapshot = JSONObject(prefs.all).toString()
+        sessions.edit().putString("queue:$key", snapshot).putStringSet("names", names)
+            .putString("active", key).apply()
+        activeSession = key
+        sessionNames.value = names.sorted()
+    }
+
+    fun openSession(name: String) {
+        val player = controller ?: return
+        if (name == activeSession && player.mediaItemCount > 0) return
+        if (activeSession.isNotEmpty()) saveSession(activeSession)
+        val snapshot = sessions.getString("queue:$name", null)?.let(::JSONObject) ?: return
+        val editor = prefs.edit().clear()
+        for (key in snapshot.keys()) {
+            when (val value = snapshot.get(key)) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Number -> if (key == "position") editor.putLong(key, value.toLong()) else editor.putInt(key, value.toInt())
+            }
+        }
+        player.pause()
+        player.clearMediaItems()
+        editor.apply()
+        restore(player)
+        player.prepare()
+        player.play()
+        activeSession = name
+        sessions.edit().putString("active", name).apply()
+        sync()
+    }
+
     fun clear() {
         controller?.clearMediaItems()
         knownTracks.clear()
@@ -131,7 +192,12 @@ class PlaybackConnection(context: Context) {
         sync()
     }
 
-    fun toggle() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
+    fun toggle() { controller?.let {
+        if (it.isPlaying) it.pause() else {
+            if (it.playbackState == Player.STATE_IDLE) it.prepare()
+            it.play()
+        }
+    } }
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPreviousMediaItem() }
     fun seek(positionMs: Long) { controller?.seekTo(positionMs.coerceAtLeast(0)) }
@@ -147,10 +213,27 @@ class PlaybackConnection(context: Context) {
 
     fun setSpeed(speed: Float) { controller?.setPlaybackSpeed(speed.coerceIn(0.5f, 2f)) }
 
+    fun setLoop(track: String, a: Long, b: Long) {
+        app.startService(Intent(app, KanadePlaybackService::class.java).apply {
+            action = KanadePlaybackService.ACTION_LOOP
+            putExtra("track", track); putExtra("a", a); putExtra("b", b)
+        })
+    }
+
     fun sleep(minutes: Int) {
         app.startService(Intent(app, KanadePlaybackService::class.java).apply {
             action = KanadePlaybackService.ACTION_SLEEP
             putExtra(KanadePlaybackService.EXTRA_MINUTES, minutes.coerceIn(0, 180))
+        })
+    }
+
+    fun setOnlineBoost(gain: Int) {
+        val value = gain.coerceIn(0, 600)
+        _onlineBoost.value = value
+        audioPrefs.edit().putInt("online_boost", value).apply()
+        app.startService(Intent(app, KanadePlaybackService::class.java).apply {
+            action = KanadePlaybackService.ACTION_ONLINE_BOOST
+            putExtra(KanadePlaybackService.EXTRA_BOOST, value)
         })
     }
 
@@ -180,7 +263,7 @@ class PlaybackConnection(context: Context) {
             queue = (0 until player.mediaItemCount).map { i ->
                 val item = player.getMediaItemAt(i)
                 QueueEntry(item.mediaId, item.mediaMetadata.title?.toString().orEmpty(),
-                    item.mediaMetadata.artist?.toString().orEmpty())
+                    item.mediaMetadata.artist?.toString().orEmpty(), item.mediaMetadata.artworkUri?.toString())
             },
             error = _state.value.error,
         )
@@ -203,7 +286,11 @@ class PlaybackConnection(context: Context) {
                 .put("artist", item.mediaMetadata.artist?.toString().orEmpty())
                 .put("uri", track?.uri ?: item.localConfiguration?.uri?.toString().orEmpty())
                 .put("artwork", item.mediaMetadata.artworkUri?.toString())
-                .put("source", track?.source?.name ?: if (item.mediaId.startsWith("audius:")) "AUDIUS" else "LOCAL")
+                .put("source", track?.source?.name ?: when {
+                    item.mediaId.startsWith("audius:") -> "AUDIUS"
+                    item.mediaId.startsWith("youtube:") -> "YOUTUBE"
+                    else -> "LOCAL"
+                })
                 .put("duration", track?.durationMs ?: 0L)
                 .put("album", track?.album.orEmpty())
                 .put("folder", track?.folder.orEmpty()))
