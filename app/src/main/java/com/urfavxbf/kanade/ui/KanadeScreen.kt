@@ -356,17 +356,25 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     LaunchedEffect(playback.hasItem) { if (!playback.hasItem) showNowPlaying = false }
 
     val chrome = remember { ChromeMetrics() }
+    // Separate source layers: nav/mini-player sample page content while inputs
+    // sample the base background. Search controls never sample their own glass.
     val chromeGlass = rememberLiquidState()
+    val searchGlass = rememberLiquidState()
     CompositionLocalProvider(LocalChromeMetrics provides chrome) {
     Box(Modifier.fillMaxSize()) {
-    // Record only the page background, not controls or text, for chrome refraction.
-    Box(Modifier.fillMaxSize().liquefiable(chromeGlass).background(Brush.verticalGradient(
+    Box(Modifier.fillMaxSize().liquefiable(searchGlass).background(Brush.verticalGradient(
         listOf(LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom))))
     if (!showNowPlaying) Box(
         Modifier.fillMaxSize().safeDrawingPadding().imePadding()
             .padding(start = 16.dp, end = 16.dp, top = 8.dp),
     ) {
-        Box(Modifier.fillMaxSize().onGloballyPositioned { chrome.pageTop = it.positionInRoot().y.toInt() }) {
+        // Capture the scrolling page under the chrome, not just a flat gradient.
+        // Exclude the navbar and mini-player, which remain sibling overlays.
+        Box(Modifier.fillMaxSize().liquefiable(chromeGlass)
+            .background(Brush.verticalGradient(listOf(
+                LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom
+            )))
+            .onGloballyPositioned { chrome.pageTop = it.positionInRoot().y.toInt() }) {
             Crossfade(targetState = page, animationSpec = tween(if (LocalReduceMotion.current) 0 else 160),
                 label = "Navigation") { displayedPage ->
             pageStates.SaveableStateProvider(displayedPage.name) {
@@ -468,7 +476,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         }
                     } else {
                         Chip("MP3 folders") { overlay = Overlay.FOLDERS }
-                        SearchField(query, "Search songs, albums, artists, folders…", { query = it }, {}, glassBackdrop = chromeGlass)
+                        SearchField(query, "Search songs, albums, artists, folders…", { query = it }, {}, glassBackdrop = searchGlass)
                         Spacer(Modifier.height(9.dp))
                         Row(Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -572,7 +580,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         submitted = onlineQuery.trim()
                         if (scope != "On device") model.search(submitted)
                     }
-                    SearchField(onlineQuery, "Song, album or artist", { onlineQuery = it }, submit, glassBackdrop = chromeGlass)
+                    SearchField(onlineQuery, "Song, album or artist", { onlineQuery = it }, submit, glassBackdrop = searchGlass)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (choice in listOf("All", "On device", "Online")) {
                             Chip(choice, scope == choice) {
@@ -611,7 +619,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.weight(1f)) {
                                 SearchField(playlistName, "New playlist name", { playlistName = it }, {},
-                                    showSearchIcon = false, glassBackdrop = chromeGlass)
+                                    showSearchIcon = false, glassBackdrop = searchGlass)
                             }
                             Spacer(Modifier.width(8.dp))
                             AccentAction("Create") {
@@ -722,7 +730,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 val duration = if (LocalReduceMotion.current) 0 else 150
                 Column(Modifier.weight(1f).heightIn(min = 58.dp)
                     .clip(RoundedCornerShape(15.dp))
-                    .background(if (active) Color(0xFFF2E2D2).copy(alpha = 0.19f) else Color.Transparent)
+                    .background(if (active) Color(0xFFF2E2D2).copy(alpha = 0.09f) else Color.Transparent)
                     .selectable(selected = active, role = Role.Tab, onClick = { page = tab })
                     .semantics { contentDescription = label },
                     verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
