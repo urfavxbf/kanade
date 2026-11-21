@@ -41,7 +41,7 @@ private val WarmShadow = Color(0xFF130C0B)
  *
  * [backdrop] is optional so text fields hosted in separate dialog windows
  * receive the same visual finish without sampling a different window.
- * Keep glass sampling restricted to the app's background layer.
+ * Sample background AND page content, but never the glass chrome itself.
  */
 internal fun Modifier.warmRaisedGlass(
     backdrop: LiquidState?,
@@ -60,22 +60,22 @@ internal fun Modifier.warmRaisedGlass(
             if (backdrop == null) Modifier
             else Modifier.liquid(backdrop) {
                 this.shape = shape
-                refraction = 0.32f
-                curve = 0.34f
+                refraction = 0.38f
+                curve = 0.36f
                 edge = 0.10f
-                dispersion = 0.055f
-                frost = 8.dp
-                saturation = 1.20f
-                tint = WarmGlass.copy(alpha = 0.20f)
+                dispersion = 0.065f
+                frost = 1.dp
+                saturation = 1.12f
+                tint = WarmGlass.copy(alpha = 0.06f)
             }
         )
         .clip(shape)
         .background(
             Brush.verticalGradient(
                 listOf(
-                    Color(0xFFFFFCF7).copy(alpha = 0.18f),
-                    WarmGlass.copy(alpha = 0.10f),
-                    Color(0xFFB7A89A).copy(alpha = 0.07f),
+                    Color(0xFFFFFCF7).copy(alpha = 0.055f),
+                    WarmGlass.copy(alpha = 0.025f),
+                    Color(0xFFB7A89A).copy(alpha = 0.018f),
                 )
             )
         )
@@ -83,9 +83,9 @@ internal fun Modifier.warmRaisedGlass(
             width = 1.dp,
             brush = Brush.verticalGradient(
                 listOf(
-                    Color.White.copy(alpha = 0.63f),
-                    Color.White.copy(alpha = 0.24f),
-                    Color.White.copy(alpha = 0.35f),
+                    Color.White.copy(alpha = 0.55f),
+                    Color.White.copy(alpha = 0.12f),
+                    Color.White.copy(alpha = 0.28f),
                 )
             ),
             shape = shape,
@@ -147,11 +147,11 @@ internal fun MinimalGlassControlButton(
             .background(
                 Brush.verticalGradient(
                     if (active) listOf(
-                        Color(0xFFFFF3E3).copy(alpha = 0.40f),
-                        Color(0xFFE2C7AC).copy(alpha = 0.22f),
+                        Color(0xFFFFF3E3).copy(alpha = 0.18f),
+                        Color(0xFFE2C7AC).copy(alpha = 0.09f),
                     ) else listOf(
-                        Color(0xFFFFFAF5).copy(alpha = 0.20f),
-                        Color(0xFFE7DAD0).copy(alpha = 0.085f),
+                        Color(0xFFFFFAF5).copy(alpha = 0.075f),
+                        Color(0xFFE7DAD0).copy(alpha = 0.025f),
                     )
                 )
             )
