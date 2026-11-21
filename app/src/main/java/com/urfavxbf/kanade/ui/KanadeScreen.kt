@@ -31,6 +31,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.layout.requiredSize
@@ -364,6 +366,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     val chrome = remember { ChromeMetrics() }
     // Separate source layers: nav/mini-player sample page content while inputs
     // sample the base background. Search controls never sample their own glass.
+    val reduceNavigationMotion = LocalReduceMotion.current
     val chromeGlass = rememberLiquidState()
     val searchGlass = rememberLiquidState()
     CompositionLocalProvider(LocalChromeMetrics provides chrome) {
@@ -381,8 +384,20 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom
             )))
             .onGloballyPositioned { chrome.pageTop = it.positionInRoot().y.toInt() }) {
-            Crossfade(targetState = page, animationSpec = tween(if (LocalReduceMotion.current) 0 else 160),
-                label = "Navigation") { displayedPage ->
+            AnimatedContent(
+                targetState = page,
+                transitionSpec = {
+                    if (reduceNavigationMotion) {
+                        fadeIn(animationSpec = tween(0)) togetherWith fadeOut(animationSpec = tween(0))
+                    } else {
+                        (slideInHorizontally(animationSpec = tween(260), initialOffsetX = { it / 8 }) +
+                            fadeIn(animationSpec = tween(240))) togetherWith
+                            (slideOutHorizontally(animationSpec = tween(220), targetOffsetX = { -it / 8 }) +
+                                fadeOut(animationSpec = tween(220)))
+                    }
+                },
+                label = "Navigation",
+            ) { displayedPage ->
             pageStates.SaveableStateProvider(displayedPage.name) {
             when (displayedPage) {
                 Page.HOME -> {
@@ -1426,11 +1441,18 @@ private fun MiniPlayer(
                 reduceMotion = LocalReduceMotion.current, onClick = onNext,
             )
         }
+        val miniProgress = if (state.durationMs > 0) {
+            (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
+        } else 0f
+        val miniReduceMotion = LocalReduceMotion.current
+        val smoothMiniProgress by animateFloatAsState(
+            targetValue = miniProgress,
+            animationSpec = tween(if (miniReduceMotion) 0 else 220, easing = LinearEasing),
+            label = "Mini player progress",
+        )
         Box(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 5.dp)
             .height(2.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.19f))) {
-            Box(Modifier.fillMaxWidth(if (state.durationMs > 0) {
-                (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
-            } else 0f).height(2.dp).background(Accent))
+            Box(Modifier.fillMaxWidth(smoothMiniProgress).height(2.dp).background(Accent))
         }
     }
 }
