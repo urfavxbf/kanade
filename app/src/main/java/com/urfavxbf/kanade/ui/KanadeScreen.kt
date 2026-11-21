@@ -1647,6 +1647,7 @@ private fun NowPlayingScreen(
                     val lyricStage: @Composable () -> Unit = {
                         val index = LrcParser.current(lyrics.lines, lyricClock(state.positionMs, lyricDelay))
                         val line = lyrics.lines.getOrNull(index)
+                        val reduceLyricMotion = LocalReduceMotion.current
                         Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onLyrics)
                             .padding(horizontal = 12.dp, vertical = 18.dp),
                             horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1658,7 +1659,7 @@ private fun NowPlayingScreen(
                                 AnimatedContent(
                                     targetState = index,
                                     transitionSpec = {
-                                        if (LocalReduceMotion.current) {
+                                        if (reduceLyricMotion) {
                                             fadeIn(animationSpec = tween(0)) togetherWith fadeOut(animationSpec = tween(0))
                                         } else {
                                             (slideInVertically(animationSpec = tween(330), initialOffsetY = { it / 3 }) +
