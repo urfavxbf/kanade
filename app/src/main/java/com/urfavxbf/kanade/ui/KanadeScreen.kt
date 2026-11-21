@@ -724,7 +724,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             }
         }
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth().warmRaisedGlass(chromeGlass, radius = 20.dp, elevation = 8.dp)
+        Row(Modifier.fillMaxWidth().warmRaisedGlass(chromeGlass, radius = 24.dp, elevation = 12.dp)
             .padding(horizontal = 6.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             for ((tab, label, icon) in listOf(
                 Triple(Page.HOME, "Home", KanadeIcon.NAV_HOME),
@@ -1398,7 +1398,7 @@ private fun MiniPlayer(
     onNext: () -> Unit,
     onExpand: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().warmRaisedGlass(backdrop, radius = 18.dp, elevation = 8.dp)
+    Column(Modifier.fillMaxWidth().warmRaisedGlass(backdrop, radius = 24.dp, elevation = 12.dp)
         .pointerInput(Unit) {
         var dy = 0f
         detectVerticalDragGestures(onDragStart = { dy = 0f }, onDragEnd = {
