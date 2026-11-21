@@ -1,0 +1,12 @@
+<resources>
+    <string name="kanade_account">Kanade account</string>
+    <string name="guest_account">Guest account</string>
+    <string name="sign_in">Sign in</string>
+    <string name="sign_out">Sign out</string>
+    <string name="google_sign_in">Sign in with Google</string>
+    <string name="continue_guest">Continue as guest</string>
+    <string name="please_wait">Please wait…</string>
+    <string name="no_google_account">Add a Google account to your phone, then try again.</string>
+    <string name="account_error">Sign-in could not finish. Check your connection and try again.</string>
+    <string name="account_unavailable">Google sign-in is unavailable in this build. You can listen as a guest.</string>
+</resources>

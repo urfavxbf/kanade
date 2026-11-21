@@ -31,7 +31,9 @@ class MainActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = !darkTheme
                 }
             }
-            KanadeScreen(model, darkTheme, themeMode)
+            AccountEntry(this, darkTheme) { account, action, onAction ->
+                KanadeScreen(model, darkTheme, themeMode, account, action, onAction)
+            }
         }
     }
 }

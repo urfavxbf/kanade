@@ -275,7 +275,7 @@ private enum class Page { HOME, LIBRARY, ONLINE, PLAYLISTS, INSIGHTS, SETTINGS }
 private enum class Overlay { HOME_EDITOR, FOLDERS, TOOLS, SESSIONS, NONE, QUEUE, LYRICS, SEARCH_LYRICS, PICK_PLAYLIST, EDIT_TAGS }
 
 @Composable
-fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMode) {
+fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMode, account: String, accountAction: String, onAccountAction: () -> Unit) {
     val colorTheme by model.colorTheme.collectAsState()
     val font by model.appFont.collectAsState()
     val reduced by model.reduceMotion.collectAsState()
@@ -652,7 +652,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
                             onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                     }
                 }
-                Page.SETTINGS -> SettingsScreen(model, playback, themeMode)
+                Page.SETTINGS -> SettingsScreen(model, playback, themeMode, account, accountAction, onAccountAction)
                 Page.INSIGHTS -> Column {
                     Header("Your listening", "Private listening history, stored on this device.")
                     Spacer(Modifier.height(16.dp))
@@ -955,12 +955,15 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
 }
 
 @Composable
-private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, themeMode: ThemeMode) {
+private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, themeMode: ThemeMode, account: String, accountAction: String, onAccountAction: () -> Unit) {
     val onlineBoost by model.playback.onlineBoost.collectAsState()
     val colorTheme by model.colorTheme.collectAsState()
     val bottomInset = with(LocalDensity.current) { LocalChromeMetrics.current.bottomHeight.toDp() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Header("Settings", "Make Kanade feel like yours.")
+        Spacer(Modifier.height(16.dp))
+        Label(account, 16.sp, PrimaryText, FontWeight.SemiBold)
+        Chip(accountAction, onClick = onAccountAction)
         Spacer(Modifier.height(22.dp))
         Label("APPEARANCE", 12.sp, Accent, FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
