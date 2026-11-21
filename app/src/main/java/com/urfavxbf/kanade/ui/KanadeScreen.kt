@@ -281,12 +281,12 @@ fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMod
     val reduced by model.reduceMotion.collectAsState()
     CompositionLocalProvider(LocalReduceMotion provides reduced, LocalAppFont provides (appFonts[font] ?: appFonts.getValue("Open Sans")),
         LocalKanadePalette provides paletteFor(colorTheme, darkTheme)) {
-        KanadeContent(model, themeMode)
+        KanadeContent(model, themeMode, account, accountAction, onAccountAction)
     }
 }
 
 @Composable
-private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode) {
+private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account: String, accountAction: String, onAccountAction: () -> Unit) {
     val library by model.library.collectAsState()
     val discover by model.discover.collectAsState()
     val playback by model.playback.state.collectAsState()
