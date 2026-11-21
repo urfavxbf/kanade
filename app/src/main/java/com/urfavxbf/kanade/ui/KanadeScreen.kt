@@ -1627,26 +1627,49 @@ private fun NowPlayingScreen(
                     }
                     state.error?.let { Label(it, 12.sp, ErrorColor) }
                 }
-                Spacer(Modifier.height(4.dp))
-                PlaybackProgress(state, onSeek)
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    PlayerButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle, onClick = onShuffle)
-                    PlayerButton(KanadeIcon.PREVIOUS, "Previous", onClick = onPrevious)
-                    LiquidGlassPlayPauseButton(
-                        playing = state.playing,
-                        backdrop = glassBackdrop,
-                        reduceMotion = LocalReduceMotion.current,
-                        onToggle = onToggle,
-                    )
-                    PlayerButton(KanadeIcon.NEXT, "Next", onClick = onNext)
-                    PlayerButton(if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
-                        if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
-                        selected = state.repeatMode != Player.REPEAT_MODE_OFF, onClick = onRepeat)
+                Spacer(Modifier.height(8.dp))
+                // One continuous glass panel for BOTH the active equalizer seekbar
+                // and all five controls. Every button remains a separate element.
+                GlassPlayerControls(backdrop = glassBackdrop) {
+                    PlaybackProgress(state, onSeek)
+                    Spacer(Modifier.height(9.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MinimalGlassControlButton(
+                            KanadeIcon.SHUFFLE,
+                            if (state.shuffle) "Shuffle on" else "Shuffle off",
+                            active = state.shuffle,
+                            reduceMotion = LocalReduceMotion.current,
+                            onClick = onShuffle,
+                        )
+                        MinimalGlassControlButton(
+                            KanadeIcon.PREVIOUS, "Previous",
+                            reduceMotion = LocalReduceMotion.current,
+                            onClick = onPrevious,
+                        )
+                        LiquidGlassPlayPauseButton(
+                            playing = state.playing,
+                            backdrop = glassBackdrop,
+                            reduceMotion = LocalReduceMotion.current,
+                            onToggle = onToggle,
+                        )
+                        MinimalGlassControlButton(
+                            KanadeIcon.NEXT, "Next",
+                            reduceMotion = LocalReduceMotion.current,
+                            onClick = onNext,
+                        )
+                        MinimalGlassControlButton(
+                            if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
+                            if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
+                            active = state.repeatMode != Player.REPEAT_MODE_OFF,
+                            reduceMotion = LocalReduceMotion.current,
+                            onClick = onRepeat,
+                        )
+                    }
                 }
-
-
             }
         }
     }
