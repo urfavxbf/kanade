@@ -1637,7 +1637,6 @@ private fun NowPlayingScreen(
                     LiquidGlassPlayPauseButton(
                         playing = state.playing,
                         backdrop = glassBackdrop,
-                        accent = Accent,
                         reduceMotion = LocalReduceMotion.current,
                         onToggle = onToggle,
                     )
