@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -34,6 +35,62 @@ import io.github.fletchmckee.liquid.liquid
 
 private val WarmGlass = Color(0xFFF0E7DE)
 private val WarmShadow = Color(0xFF130C0B)
+
+/**
+ * Shared warm, softly raised optical surface for player chrome.
+ *
+ * [backdrop] is optional so text fields hosted in separate dialog windows
+ * receive the same visual finish without sampling a different window.
+ * Keep glass sampling restricted to the app's background layer.
+ */
+internal fun Modifier.warmRaisedGlass(
+    backdrop: LiquidState?,
+    radius: Dp,
+    elevation: Dp = 8.dp,
+): Modifier {
+    val shape = RoundedCornerShape(radius)
+    return this
+        .shadow(
+            elevation = elevation,
+            shape = shape,
+            ambientColor = WarmShadow.copy(alpha = 0.24f),
+            spotColor = WarmShadow.copy(alpha = 0.25f),
+        )
+        .then(
+            if (backdrop == null) Modifier
+            else Modifier.liquid(backdrop) {
+                this.shape = shape
+                refraction = 0.32f
+                curve = 0.34f
+                edge = 0.10f
+                dispersion = 0.055f
+                frost = 8.dp
+                saturation = 1.20f
+                tint = WarmGlass.copy(alpha = 0.20f)
+            }
+        )
+        .clip(shape)
+        .background(
+            Brush.verticalGradient(
+                listOf(
+                    Color(0xFFFFFCF7).copy(alpha = 0.18f),
+                    WarmGlass.copy(alpha = 0.10f),
+                    Color(0xFFB7A89A).copy(alpha = 0.07f),
+                )
+            )
+        )
+        .border(
+            width = 1.dp,
+            brush = Brush.verticalGradient(
+                listOf(
+                    Color.White.copy(alpha = 0.63f),
+                    Color.White.copy(alpha = 0.24f),
+                    Color.White.copy(alpha = 0.35f),
+                )
+            ),
+            shape = shape,
+        )
+}
 
 /**
  * One glass surface for the entire lower player area: live equalizer, elapsed
@@ -47,47 +104,10 @@ internal fun GlassPlayerControls(
     backdrop: LiquidState,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(27.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 12.dp,
-                shape = shape,
-                ambientColor = WarmShadow.copy(alpha = 0.24f),
-                spotColor = WarmShadow.copy(alpha = 0.25f),
-            )
-            .liquid(backdrop) {
-                this.shape = shape
-                refraction = 0.32f
-                curve = 0.34f
-                edge = 0.10f
-                dispersion = 0.055f
-                frost = 8.dp
-                saturation = 1.20f
-                tint = WarmGlass.copy(alpha = 0.20f)
-            }
-            .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFFFFCF7).copy(alpha = 0.18f),
-                        WarmGlass.copy(alpha = 0.10f),
-                        Color(0xFFB7A89A).copy(alpha = 0.07f),
-                    )
-                )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.63f),
-                        Color.White.copy(alpha = 0.24f),
-                        Color.White.copy(alpha = 0.35f),
-                    )
-                ),
-                shape = shape,
-            )
+            .warmRaisedGlass(backdrop, radius = 27.dp, elevation = 12.dp)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         content = content,
     )
