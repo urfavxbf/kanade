@@ -356,9 +356,12 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     LaunchedEffect(playback.hasItem) { if (!playback.hasItem) showNowPlaying = false }
 
     val chrome = remember { ChromeMetrics() }
+    val chromeGlass = rememberLiquidState()
     CompositionLocalProvider(LocalChromeMetrics provides chrome) {
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
-        listOf(LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom)))) {
+    Box(Modifier.fillMaxSize()) {
+    // Record only the page background, not controls or text, for chrome refraction.
+    Box(Modifier.fillMaxSize().liquefiable(chromeGlass).background(Brush.verticalGradient(
+        listOf(LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom))))
     if (!showNowPlaying) Box(
         Modifier.fillMaxSize().safeDrawingPadding().imePadding()
             .padding(start = 16.dp, end = 16.dp, top = 8.dp),
@@ -465,7 +468,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         }
                     } else {
                         Chip("MP3 folders") { overlay = Overlay.FOLDERS }
-                        SearchField(query, "Search songs, albums, artists, folders…", { query = it }, {})
+                        SearchField(query, "Search songs, albums, artists, folders…", { query = it }, {}, glassBackdrop = chromeGlass)
                         Spacer(Modifier.height(9.dp))
                         Row(Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -569,7 +572,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         submitted = onlineQuery.trim()
                         if (scope != "On device") model.search(submitted)
                     }
-                    SearchField(onlineQuery, "Song, album or artist", { onlineQuery = it }, submit)
+                    SearchField(onlineQuery, "Song, album or artist", { onlineQuery = it }, submit, glassBackdrop = chromeGlass)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (choice in listOf("All", "On device", "Online")) {
                             Chip(choice, scope == choice) {
@@ -607,7 +610,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     if (selectedPlaylistId < 0) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.weight(1f)) {
-                                SearchField(playlistName, "New playlist name", { playlistName = it }, {}, showSearchIcon = false)
+                                SearchField(playlistName, "New playlist name", { playlistName = it }, {},
+                                    showSearchIcon = false, glassBackdrop = chromeGlass)
                             }
                             Spacer(Modifier.width(8.dp))
                             AccentAction("Create") {
@@ -690,7 +694,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             .onGloballyPositioned { chrome.bottomHeight = it.size.height }) {
         if (playback.hasItem) {
             Spacer(Modifier.height(7.dp))
-            MiniPlayer(playback, onToggle = model.playback::toggle,
+            MiniPlayer(playback, backdrop = chromeGlass, onToggle = model.playback::toggle,
                 onNext = model.playback::next, onExpand = { showNowPlaying = true })
         }
         if (radioMessage.isNotEmpty()) {
@@ -706,7 +710,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             }
         }
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth().glassSurface(20.dp).padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+        Row(Modifier.fillMaxWidth().warmRaisedGlass(chromeGlass, radius = 20.dp, elevation = 8.dp)
+            .padding(horizontal = 6.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             for ((tab, label, icon) in listOf(
                 Triple(Page.HOME, "Home", KanadeIcon.NAV_HOME),
                 Triple(Page.LIBRARY, "Library", KanadeIcon.NAV_LIBRARY),
@@ -716,14 +721,16 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 val active = page == tab
                 val duration = if (LocalReduceMotion.current) 0 else 150
                 Column(Modifier.weight(1f).heightIn(min = 58.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(if (active) Color(0xFFF2E2D2).copy(alpha = 0.19f) else Color.Transparent)
                     .selectable(selected = active, role = Role.Tab, onClick = { page = tab })
                     .semantics { contentDescription = label },
                     verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                    KanadeGlyph(icon, if (active) Accent else Muted, size = 24.dp)
+                    KanadeGlyph(icon, if (active) PrimaryText else Muted, selected = active, size = 24.dp)
                     AnimatedVisibility(visible = active,
                         enter = fadeIn(tween(duration)) + expandVertically(tween(duration)),
                         exit = fadeOut(tween(duration)) + shrinkVertically(tween(duration))) {
-                        Label(label, 11.sp, Accent, FontWeight.Bold, Modifier.padding(top = 2.dp), lines = 1)
+                        Label(label, 11.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 2.dp), lines = 1)
                     }
                 }
             }
@@ -1164,7 +1171,14 @@ private fun LyricsSearchDialog(title: String, artist: String, close: () -> Unit,
 }
 
 @Composable
-private fun SearchField(value: String, hint: String, change: (String) -> Unit, search: () -> Unit, showSearchIcon: Boolean = true) {
+private fun SearchField(
+    value: String,
+    hint: String,
+    change: (String) -> Unit,
+    search: () -> Unit,
+    showSearchIcon: Boolean = true,
+    glassBackdrop: io.github.fletchmckee.liquid.LiquidState? = null,
+) {
     BasicTextField(
         value = value, onValueChange = change, singleLine = true,
         textStyle = TextStyle(fontFamily = LocalAppFont.current, color = PrimaryText, fontSize = 14.sp),
@@ -1172,9 +1186,8 @@ private fun SearchField(value: String, hint: String, change: (String) -> Unit, s
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { search() }),
         decorationBox = { inner ->
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                .background(LocalKanadePalette.current.tint.copy(alpha = 0.16f))
-
+            Row(Modifier.fillMaxWidth()
+                .warmRaisedGlass(glassBackdrop, radius = 16.dp, elevation = 4.dp)
                 .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (showSearchIcon) {
@@ -1364,8 +1377,15 @@ private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp): Modifier
 }
 
 @Composable
-private fun MiniPlayer(state: PlaybackState, onToggle: () -> Unit, onNext: () -> Unit, onExpand: () -> Unit) {
-    Column(Modifier.fillMaxWidth().glassSurface(18.dp).pointerInput(Unit) {
+private fun MiniPlayer(
+    state: PlaybackState,
+    backdrop: io.github.fletchmckee.liquid.LiquidState,
+    onToggle: () -> Unit,
+    onNext: () -> Unit,
+    onExpand: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().warmRaisedGlass(backdrop, radius = 18.dp, elevation = 8.dp)
+        .pointerInput(Unit) {
         var dy = 0f
         detectVerticalDragGestures(onDragStart = { dy = 0f }, onDragEnd = {
             if (dy < -32.dp.toPx()) onExpand()
@@ -1381,14 +1401,22 @@ private fun MiniPlayer(state: PlaybackState, onToggle: () -> Unit, onNext: () ->
                 Label(state.title, 14.sp, PrimaryText, FontWeight.Bold, lines = 1)
                 Label(state.artist, 12.sp, Muted, lines = 1)
             }
-            TinyButton(if (state.playing) KanadeIcon.PAUSE else KanadeIcon.PLAY,
-                if (state.playing) "Pause" else "Play", selected = true, onClick = onToggle)
-            TinyButton(KanadeIcon.NEXT, "Next", onClick = onNext)
+            MinimalGlassControlButton(
+                if (state.playing) KanadeIcon.PAUSE else KanadeIcon.PLAY,
+                if (state.playing) "Pause" else "Play",
+                active = state.playing, reduceMotion = LocalReduceMotion.current, onClick = onToggle,
+            )
+            Spacer(Modifier.width(4.dp))
+            MinimalGlassControlButton(
+                KanadeIcon.NEXT, "Next",
+                reduceMotion = LocalReduceMotion.current, onClick = onNext,
+            )
         }
-        Box(Modifier.fillMaxWidth().height(3.dp).background(LocalKanadePalette.current.tint.copy(alpha = 0.08f))) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 5.dp)
+            .height(2.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.19f))) {
             Box(Modifier.fillMaxWidth(if (state.durationMs > 0) {
                 (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
-            } else 0f).height(3.dp).background(Accent))
+            } else 0f).height(2.dp).background(Accent))
         }
     }
 }
