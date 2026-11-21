@@ -1534,7 +1534,7 @@ private fun QueueCoverStack(state: PlaybackState, coverSize: Dp, onPlayAt: (Int)
     }
     BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         val side = minOf(coverSize, maxWidth)
-        val overlap = side * 0.34f
+        val overlap = side * 0.42f
         LazyRow(
             state = list,
             modifier = Modifier.fillMaxWidth().height(side),
@@ -1543,7 +1543,7 @@ private fun QueueCoverStack(state: PlaybackState, coverSize: Dp, onPlayAt: (Int)
             flingBehavior = rememberSnapFlingBehavior(list),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            items(state.queue.size) { index ->
+            items(state.queue.size, key = { index -> "${state.queue[index].id}:$index" }) { index ->
                 val entry = state.queue[index]
                 val distance = remember(list, index) {
                     derivedStateOf {
@@ -1558,9 +1558,10 @@ private fun QueueCoverStack(state: PlaybackState, coverSize: Dp, onPlayAt: (Int)
                 Box(Modifier.size(side).zIndex(1f - distance.value)
                     .graphicsLayer {
                         val depth = if (reduced) 0f else distance.value
-                        scaleX = 1f - depth * 0.18f
+                        scaleX = 1f - depth * 0.22f
                         scaleY = scaleX
-                        alpha = 1f - depth * 0.26f
+                        rotationZ = if (reduced) 0f else (index - current).coerceIn(-1, 1) * depth * 5f
+                        alpha = 1f - depth * 0.18f
                     }
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(role = Role.Button, onClickLabel = "Play song") {
