@@ -124,6 +124,8 @@ import com.urfavxbf.kanade.lyrics.LrcParser
 import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackState
+import com.styropyr0.prismal.sources.prismalGlassLayer
+import com.styropyr0.prismal.sources.rememberPrismalGlassLayer
 
 private val appFonts = linkedMapOf(
     "Open Sans" to FontFamily(Font(R.font.open_sans)),
@@ -1558,15 +1560,19 @@ private fun NowPlayingScreen(
     onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit, onSeek: (Long) -> Unit,
     onPlayAt: (Int) -> Unit, onLyrics: () -> Unit, lyricDelay: Long, onTools: () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize().background(Background)) {
-        if (!state.artworkUri.isNullOrBlank()) {
-            AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().blur(45.dp).alpha(0.28f))
+    val glassBackdrop = rememberPrismalGlassLayer()
+    Box(Modifier.fillMaxSize()) {
+        // Only the artwork/backdrop is sampled: never the player controls themselves.
+        Box(Modifier.fillMaxSize().prismalGlassLayer(glassBackdrop).background(Background)) {
+            if (!state.artworkUri.isNullOrBlank()) {
+                AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().blur(45.dp).alpha(0.28f))
+            }
+            if (state.mediaId.startsWith("youtube:") && (videoMode == "Always" || (videoMode == "Wi-Fi only" && onWifi()))) VideoBackdrop(state)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
+                Color.Black.copy(alpha = 0.28f), Color.Black.copy(alpha = 0.40f), Color.Black.copy(alpha = 0.85f)
+            ))))
         }
-        if (state.mediaId.startsWith("youtube:") && (videoMode == "Always" || (videoMode == "Wi-Fi only" && onWifi()))) VideoBackdrop(state)
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
-            Color.Black.copy(alpha = 0.28f), Color.Black.copy(alpha = 0.40f), Color.Black.copy(alpha = 0.85f)
-        ))))
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
             val wide = maxWidth > maxHeight && maxWidth >= 520.dp
             val coverSize = if (wide) 100.dp else (maxHeight * 0.18f).coerceIn(80.dp, 154.dp)
@@ -1628,8 +1634,13 @@ private fun NowPlayingScreen(
                     verticalAlignment = Alignment.CenterVertically) {
                     PlayerButton(KanadeIcon.SHUFFLE, if (state.shuffle) "Shuffle on" else "Shuffle off", selected = state.shuffle, onClick = onShuffle)
                     PlayerButton(KanadeIcon.PREVIOUS, "Previous", onClick = onPrevious)
-                    PlayerButton(if (state.playing) KanadeIcon.PAUSE else KanadeIcon.PLAY,
-                        if (state.playing) "Pause" else "Play", large = true, onClick = onToggle)
+                    LiquidGlassPlayPauseButton(
+                        playing = state.playing,
+                        backdrop = glassBackdrop,
+                        accent = Accent,
+                        reduceMotion = LocalReduceMotion.current,
+                        onToggle = onToggle,
+                    )
                     PlayerButton(KanadeIcon.NEXT, "Next", onClick = onNext)
                     PlayerButton(if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
                         if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
