@@ -27,6 +27,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.draw.clipToBounds
 import androidx.media3.common.VideoSize
@@ -210,30 +218,42 @@ private val colorThemes = linkedMapOf(
     "Rosso" to Color(0xFFD40000),
 )
 
+/**
+ * 60/30/10 theme system:
+ * 60% dominant neutral canvas, 30% coordinated surface/chrome,
+ * 10% saturated accent reserved for progress, selection and actions.
+ * These percentages describe visual hierarchy, not literal pixel counts.
+ */
 private fun paletteFor(name: String, dark: Boolean): KanadePalette {
-    if (name == PLAIN) return plainPalette(dark)
-    if (name == "Kanade Green" || name !in colorThemes) return if (dark) DarkPalette else LightPalette
-    val seed = colorThemes.getValue(name)
-    return if (dark) DarkPalette.copy(
-        background = lerp(Color(0xFF0C1110), seed, 0.08f),
-        backgroundTop = lerp(Color(0xFF151C19), seed, 0.23f),
-        backgroundBottom = lerp(Color(0xFF0B1110), seed, 0.10f),
-        surface = lerp(Color(0xFF202522), seed, 0.20f),
-        accent = lerp(seed, Color.White, 0.62f), accentSoft = lerp(seed, Color.White, 0.40f),
-        text = Color(0xFFF6F8F4), muted = Color(0xFFC5CEC7),
-        glass = lerp(Color(0xFF17201C), seed, 0.22f),
-        artworkStart = lerp(Color(0xFF38413C), seed, 0.42f),
-        artworkEnd = lerp(Color(0xFF151C18), seed, 0.20f),
-    ) else LightPalette.copy(
-        background = lerp(Color.White, seed, 0.035f),
-        backgroundTop = lerp(Color.White, seed, 0.14f),
-        backgroundBottom = lerp(Color.White, seed, 0.07f),
-        surface = lerp(Color.White, seed, 0.18f),
-        accent = lerp(seed, Color.Black, 0.66f), accentSoft = lerp(seed, Color.Black, 0.50f),
-        text = Color(0xFF18211B), muted = Color(0xFF4A5650),
-        tint = lerp(seed, Color.Black, 0.62f), glass = lerp(Color.White, seed, 0.10f),
-        glassBorder = lerp(seed, Color.Black, 0.48f),
-        artworkStart = lerp(Color.White, seed, 0.32f), artworkEnd = lerp(Color.White, seed, 0.54f),
+    if (name == PLAIN || name == PLAIN_DARK || name == PLAIN_LIGHT) {
+        return plainPalette(when (name) {
+            PLAIN_DARK -> true
+            PLAIN_LIGHT -> false
+            else -> dark
+        })
+    }
+    val seed = colorThemes[name] ?: colorThemes.getValue("Kanade Green")
+    val base = if (dark) DarkPalette else LightPalette
+    val dominant = if (dark) Color(0xFF101318) else Color(0xFFF7F8FA)
+    val secondary = if (dark) Color(0xFF252B34) else Color(0xFFE8ECF1)
+    val accent = if (dark) lerp(seed, Color.White, 0.26f) else lerp(seed, Color.Black, 0.22f)
+    return base.copy(
+        // 60%: low-chroma, readable background even for neon theme seeds.
+        background = lerp(dominant, seed, if (dark) 0.035f else 0.018f),
+        backgroundTop = lerp(dominant, seed, if (dark) 0.085f else 0.045f),
+        backgroundBottom = lerp(dominant, seed, if (dark) 0.045f else 0.025f),
+        // 30%: tonal layers and glass, subtly coordinated with the selected hue.
+        surface = lerp(secondary, seed, if (dark) 0.12f else 0.075f),
+        glass = lerp(secondary, seed, if (dark) 0.095f else 0.06f),
+        glassBorder = if (dark) Color(0xFFEDF1F7) else Color(0xFF647080),
+        artworkStart = lerp(secondary, seed, 0.18f),
+        artworkEnd = lerp(dominant, seed, 0.075f),
+        // 10%: focus color, never the entire background or text body.
+        accent = accent,
+        accentSoft = lerp(accent, secondary, 0.30f),
+        text = if (dark) Color(0xFFF5F7FA) else Color(0xFF161C24),
+        muted = if (dark) Color(0xFFB7C0CC) else Color(0xFF556170),
+        tint = if (dark) Color.White else Color(0xFF222A34),
     )
 }
 
@@ -358,6 +378,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     val chrome = remember { ChromeMetrics() }
     // Separate source layers: nav/mini-player sample page content while inputs
     // sample the base background. Search controls never sample their own glass.
+    val reduceNavigationMotion = LocalReduceMotion.current
     val chromeGlass = rememberLiquidState()
     val searchGlass = rememberLiquidState()
     CompositionLocalProvider(LocalChromeMetrics provides chrome) {
@@ -375,8 +396,20 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom
             )))
             .onGloballyPositioned { chrome.pageTop = it.positionInRoot().y.toInt() }) {
-            Crossfade(targetState = page, animationSpec = tween(if (LocalReduceMotion.current) 0 else 160),
-                label = "Navigation") { displayedPage ->
+            AnimatedContent(
+                targetState = page,
+                transitionSpec = {
+                    if (reduceNavigationMotion) {
+                        fadeIn(animationSpec = tween(0)) togetherWith fadeOut(animationSpec = tween(0))
+                    } else {
+                        (slideInHorizontally(animationSpec = tween(260), initialOffsetX = { it / 8 }) +
+                            fadeIn(animationSpec = tween(240))) togetherWith
+                            (slideOutHorizontally(animationSpec = tween(220), targetOffsetX = { -it / 8 }) +
+                                fadeOut(animationSpec = tween(220)))
+                    }
+                },
+                label = "Navigation",
+            ) { displayedPage ->
             pageStates.SaveableStateProvider(displayedPage.name) {
             when (displayedPage) {
                 Page.HOME -> {
@@ -718,7 +751,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             }
         }
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth().warmRaisedGlass(chromeGlass, radius = 20.dp, elevation = 8.dp)
+        Row(Modifier.fillMaxWidth().warmRaisedGlass(chromeGlass, radius = 24.dp, elevation = 12.dp)
             .padding(horizontal = 6.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             for ((tab, label, icon) in listOf(
                 Triple(Page.HOME, "Home", KanadeIcon.NAV_HOME),
@@ -1392,7 +1425,7 @@ private fun MiniPlayer(
     onNext: () -> Unit,
     onExpand: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().warmRaisedGlass(backdrop, radius = 18.dp, elevation = 8.dp)
+    Column(Modifier.fillMaxWidth().warmRaisedGlass(backdrop, radius = 24.dp, elevation = 12.dp)
         .pointerInput(Unit) {
         var dy = 0f
         detectVerticalDragGestures(onDragStart = { dy = 0f }, onDragEnd = {
@@ -1420,11 +1453,18 @@ private fun MiniPlayer(
                 reduceMotion = LocalReduceMotion.current, onClick = onNext,
             )
         }
+        val miniProgress = if (state.durationMs > 0) {
+            (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
+        } else 0f
+        val miniReduceMotion = LocalReduceMotion.current
+        val smoothMiniProgress by animateFloatAsState(
+            targetValue = miniProgress,
+            animationSpec = tween(if (miniReduceMotion) 0 else 220, easing = LinearEasing),
+            label = "Mini player progress",
+        )
         Box(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 5.dp)
             .height(2.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.19f))) {
-            Box(Modifier.fillMaxWidth(if (state.durationMs > 0) {
-                (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
-            } else 0f).height(2.dp).background(Accent))
+            Box(Modifier.fillMaxWidth(smoothMiniProgress).height(2.dp).background(Accent))
         }
     }
 }
@@ -1603,16 +1643,18 @@ private fun NowPlayingScreen(
         Box(Modifier.fillMaxSize().liquefiable(glassBackdrop).background(Background)) {
             if (!state.artworkUri.isNullOrBlank()) {
                 AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().blur(45.dp).alpha(0.28f))
+                    modifier = Modifier.fillMaxSize().blur(55.dp).alpha(0.38f))
             }
             if (state.mediaId.startsWith("youtube:") && (videoMode == "Always" || (videoMode == "Wi-Fi only" && onWifi()))) VideoBackdrop(state)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
-                Color.Black.copy(alpha = 0.28f), Color.Black.copy(alpha = 0.40f), Color.Black.copy(alpha = 0.85f)
+                Color(0xFF070B14).copy(alpha = 0.42f),
+                Color(0xFF070B14).copy(alpha = 0.22f),
+                Color(0xFF070B14).copy(alpha = 0.76f)
             ))))
         }
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
             val wide = maxWidth > maxHeight && maxWidth >= 520.dp
-            val coverSize = if (wide) 100.dp else (maxHeight * 0.18f).coerceIn(80.dp, 154.dp)
+            val coverSize = if (wide) 100.dp else (maxHeight * 0.22f).coerceIn(96.dp, 184.dp)
             val shortWindow = maxHeight < 320.dp
             Column(Modifier.fillMaxSize()
                 .then(if (shortWindow) Modifier.verticalScroll(rememberScrollState()) else Modifier)
@@ -1630,7 +1672,7 @@ private fun NowPlayingScreen(
                                 textAlign = TextAlign.Center, shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f)))
                         PlayerButton(KanadeIcon.MORE, "Player tools", onClick = onTools)
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                     val cover: @Composable () -> Unit = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             QueueCoverStack(state, coverSize, onPlayAt)
@@ -1639,6 +1681,7 @@ private fun NowPlayingScreen(
                     val lyricStage: @Composable () -> Unit = {
                         val index = LrcParser.current(lyrics.lines, lyricClock(state.positionMs, lyricDelay))
                         val line = lyrics.lines.getOrNull(index)
+                        val reduceLyricMotion = LocalReduceMotion.current
                         Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onLyrics)
                             .padding(horizontal = 12.dp, vertical = 18.dp),
                             horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1647,8 +1690,22 @@ private fun NowPlayingScreen(
                                     Label(previous.text, 16.sp, Color.White.copy(alpha = 0.48f), lines = 2)
                                     Spacer(Modifier.height(12.dp))
                                 }
-                                Crossfade(targetState = line.text, animationSpec = tween(if (LocalReduceMotion.current) 0 else 200), label = "Current lyric") { text ->
-                                    Label(text, 30.sp, Color.White, FontWeight.Bold, lines = 3)
+                                AnimatedContent(
+                                    targetState = index,
+                                    transitionSpec = {
+                                        if (reduceLyricMotion) {
+                                            fadeIn(animationSpec = tween(0)) togetherWith fadeOut(animationSpec = tween(0))
+                                        } else {
+                                            (slideInVertically(animationSpec = tween(330), initialOffsetY = { it / 3 }) +
+                                                fadeIn(animationSpec = tween(330))) togetherWith
+                                                (slideOutVertically(animationSpec = tween(260), targetOffsetY = { -it / 3 }) +
+                                                    fadeOut(animationSpec = tween(260)))
+                                        }
+                                    },
+                                    label = "Synchronized lyric transition",
+                                ) { activeIndex ->
+                                    Label(lyrics.lines.getOrNull(activeIndex)?.text.orEmpty(),
+                                        30.sp, Color.White, FontWeight.Bold, lines = 3)
                                 }
                                 lyrics.lines.getOrNull(index + 1)?.let { next ->
                                     Spacer(Modifier.height(12.dp))
@@ -1668,7 +1725,7 @@ private fun NowPlayingScreen(
                         }
                     } else {
                         cover()
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(18.dp))
                         lyricStage()
                     }
                     state.error?.let { Label(it, 12.sp, ErrorColor) }
@@ -1689,11 +1746,13 @@ private fun NowPlayingScreen(
                             if (state.shuffle) "Shuffle on" else "Shuffle off",
                             active = state.shuffle,
                             reduceMotion = LocalReduceMotion.current,
+                            backdrop = glassBackdrop,
                             onClick = onShuffle,
                         )
                         MinimalGlassControlButton(
                             KanadeIcon.PREVIOUS, "Previous",
                             reduceMotion = LocalReduceMotion.current,
+                            backdrop = glassBackdrop,
                             onClick = onPrevious,
                         )
                         LiquidGlassPlayPauseButton(
@@ -1705,6 +1764,7 @@ private fun NowPlayingScreen(
                         MinimalGlassControlButton(
                             KanadeIcon.NEXT, "Next",
                             reduceMotion = LocalReduceMotion.current,
+                            backdrop = glassBackdrop,
                             onClick = onNext,
                         )
                         MinimalGlassControlButton(
@@ -1712,6 +1772,7 @@ private fun NowPlayingScreen(
                             if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
                             active = state.repeatMode != Player.REPEAT_MODE_OFF,
                             reduceMotion = LocalReduceMotion.current,
+                            backdrop = glassBackdrop,
                             onClick = onRepeat,
                         )
                     }
@@ -1724,7 +1785,14 @@ private fun NowPlayingScreen(
 @Composable
 private fun PlaybackProgress(state: PlaybackState, onSeek: (Long) -> Unit) {
     var preview by remember(state.mediaId) { mutableStateOf<Float?>(null) }
-    val progress = preview ?: if (state.durationMs > 0) (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f
+    val rawProgress = if (state.durationMs > 0) (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f
+    val reduceMotion = LocalReduceMotion.current
+    val animatedProgress by animateFloatAsState(
+        targetValue = rawProgress,
+        animationSpec = tween(durationMillis = if (reduceMotion) 0 else 220, easing = LinearEasing),
+        label = "Smooth playback progress",
+    )
+    val progress = preview ?: animatedProgress
     Box(Modifier.fillMaxWidth().height(40.dp)
         .semantics {
             contentDescription = "Playback position"
