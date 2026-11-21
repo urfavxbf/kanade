@@ -1603,16 +1603,18 @@ private fun NowPlayingScreen(
         Box(Modifier.fillMaxSize().liquefiable(glassBackdrop).background(Background)) {
             if (!state.artworkUri.isNullOrBlank()) {
                 AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().blur(45.dp).alpha(0.28f))
+                    modifier = Modifier.fillMaxSize().blur(55.dp).alpha(0.38f))
             }
             if (state.mediaId.startsWith("youtube:") && (videoMode == "Always" || (videoMode == "Wi-Fi only" && onWifi()))) VideoBackdrop(state)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
-                Color.Black.copy(alpha = 0.28f), Color.Black.copy(alpha = 0.40f), Color.Black.copy(alpha = 0.85f)
+                Color(0xFF070B14).copy(alpha = 0.42f),
+                Color(0xFF070B14).copy(alpha = 0.22f),
+                Color(0xFF070B14).copy(alpha = 0.76f)
             ))))
         }
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
             val wide = maxWidth > maxHeight && maxWidth >= 520.dp
-            val coverSize = if (wide) 100.dp else (maxHeight * 0.18f).coerceIn(80.dp, 154.dp)
+            val coverSize = if (wide) 100.dp else (maxHeight * 0.22f).coerceIn(96.dp, 184.dp)
             val shortWindow = maxHeight < 320.dp
             Column(Modifier.fillMaxSize()
                 .then(if (shortWindow) Modifier.verticalScroll(rememberScrollState()) else Modifier)
@@ -1630,7 +1632,7 @@ private fun NowPlayingScreen(
                                 textAlign = TextAlign.Center, shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f)))
                         PlayerButton(KanadeIcon.MORE, "Player tools", onClick = onTools)
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                     val cover: @Composable () -> Unit = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             QueueCoverStack(state, coverSize, onPlayAt)
@@ -1668,7 +1670,7 @@ private fun NowPlayingScreen(
                         }
                     } else {
                         cover()
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(18.dp))
                         lyricStage()
                     }
                     state.error?.let { Label(it, 12.sp, ErrorColor) }
