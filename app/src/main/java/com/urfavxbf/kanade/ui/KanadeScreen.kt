@@ -27,6 +27,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.draw.clipToBounds
 import androidx.media3.common.VideoSize
@@ -1649,8 +1655,22 @@ private fun NowPlayingScreen(
                                     Label(previous.text, 16.sp, Color.White.copy(alpha = 0.48f), lines = 2)
                                     Spacer(Modifier.height(12.dp))
                                 }
-                                Crossfade(targetState = line.text, animationSpec = tween(if (LocalReduceMotion.current) 0 else 200), label = "Current lyric") { text ->
-                                    Label(text, 30.sp, Color.White, FontWeight.Bold, lines = 3)
+                                AnimatedContent(
+                                    targetState = index,
+                                    transitionSpec = {
+                                        if (LocalReduceMotion.current) {
+                                            fadeIn(animationSpec = tween(0)) togetherWith fadeOut(animationSpec = tween(0))
+                                        } else {
+                                            (slideInVertically(animationSpec = tween(330), initialOffsetY = { it / 3 }) +
+                                                fadeIn(animationSpec = tween(330))) togetherWith
+                                                (slideOutVertically(animationSpec = tween(260), targetOffsetY = { -it / 3 }) +
+                                                    fadeOut(animationSpec = tween(260)))
+                                        }
+                                    },
+                                    label = "Synchronized lyric transition",
+                                ) { activeIndex ->
+                                    Label(lyrics.lines.getOrNull(activeIndex)?.text.orEmpty(),
+                                        30.sp, Color.White, FontWeight.Bold, lines = 3)
                                 }
                                 lyrics.lines.getOrNull(index + 1)?.let { next ->
                                     Spacer(Modifier.height(12.dp))
@@ -1730,7 +1750,14 @@ private fun NowPlayingScreen(
 @Composable
 private fun PlaybackProgress(state: PlaybackState, onSeek: (Long) -> Unit) {
     var preview by remember(state.mediaId) { mutableStateOf<Float?>(null) }
-    val progress = preview ?: if (state.durationMs > 0) (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f
+    val rawProgress = if (state.durationMs > 0) (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f
+    val reduceMotion = LocalReduceMotion.current
+    val animatedProgress by animateFloatAsState(
+        targetValue = rawProgress,
+        animationSpec = tween(durationMillis = if (reduceMotion) 0 else 220, easing = LinearEasing),
+        label = "Smooth playback progress",
+    )
+    val progress = preview ?: animatedProgress
     Box(Modifier.fillMaxWidth().height(40.dp)
         .semantics {
             contentDescription = "Playback position"
