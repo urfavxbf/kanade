@@ -1623,7 +1623,7 @@ private fun NowPlayingScreen(
                         val title = remember(state.mediaId, state.title, state.artist) {
                             if (state.mediaId.startsWith("youtube:")) songTitle(state.title, state.artist) else state.title
                         }
-                        BasicText(title, Modifier.weight(1f).padding(horizontal = 8.dp), maxLines = 3,
+                        BasicText(title, Modifier.weight(1f).padding(horizontal = 8.dp), maxLines = 1,
                             overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = LocalAppFont.current,
                                 color = Color.White, fontWeight = FontWeight.Bold, fontSize = 28.sp,
                                 textAlign = TextAlign.Center, shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f)))
@@ -1639,10 +1639,19 @@ private fun NowPlayingScreen(
                         val index = LrcParser.current(lyrics.lines, lyricClock(state.positionMs, lyricDelay))
                         val line = lyrics.lines.getOrNull(index)
                         Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onLyrics)
-                            .padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            .padding(horizontal = 12.dp, vertical = 18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally) {
                             if (line != null) {
+                                lyrics.lines.getOrNull(index - 1)?.let { previous ->
+                                    Label(previous.text, 16.sp, Color.White.copy(alpha = 0.48f), lines = 2)
+                                    Spacer(Modifier.height(12.dp))
+                                }
                                 Crossfade(targetState = line.text, animationSpec = tween(if (LocalReduceMotion.current) 0 else 200), label = "Current lyric") { text ->
-                                    Label(text, 30.sp, Color.White, FontWeight.Bold)
+                                    Label(text, 30.sp, Color.White, FontWeight.Bold, lines = 3)
+                                }
+                                lyrics.lines.getOrNull(index + 1)?.let { next ->
+                                    Spacer(Modifier.height(12.dp))
+                                    Label(next.text, 16.sp, Color.White.copy(alpha = 0.56f), lines = 2)
                                 }
                             } else if (lyrics.lines.isNotEmpty()) {
                                 Label("♪", 30.sp, Color.White, FontWeight.Bold)
