@@ -218,30 +218,42 @@ private val colorThemes = linkedMapOf(
     "Rosso" to Color(0xFFD40000),
 )
 
+/**
+ * 60/30/10 theme system:
+ * 60% dominant neutral canvas, 30% coordinated surface/chrome,
+ * 10% saturated accent reserved for progress, selection and actions.
+ * These percentages describe visual hierarchy, not literal pixel counts.
+ */
 private fun paletteFor(name: String, dark: Boolean): KanadePalette {
-    if (name == PLAIN) return plainPalette(dark)
-    if (name == "Kanade Green" || name !in colorThemes) return if (dark) DarkPalette else LightPalette
-    val seed = colorThemes.getValue(name)
-    return if (dark) DarkPalette.copy(
-        background = lerp(Color(0xFF0C1110), seed, 0.08f),
-        backgroundTop = lerp(Color(0xFF151C19), seed, 0.23f),
-        backgroundBottom = lerp(Color(0xFF0B1110), seed, 0.10f),
-        surface = lerp(Color(0xFF202522), seed, 0.20f),
-        accent = lerp(seed, Color.White, 0.62f), accentSoft = lerp(seed, Color.White, 0.40f),
-        text = Color(0xFFF6F8F4), muted = Color(0xFFC5CEC7),
-        glass = lerp(Color(0xFF17201C), seed, 0.22f),
-        artworkStart = lerp(Color(0xFF38413C), seed, 0.42f),
-        artworkEnd = lerp(Color(0xFF151C18), seed, 0.20f),
-    ) else LightPalette.copy(
-        background = lerp(Color.White, seed, 0.035f),
-        backgroundTop = lerp(Color.White, seed, 0.14f),
-        backgroundBottom = lerp(Color.White, seed, 0.07f),
-        surface = lerp(Color.White, seed, 0.18f),
-        accent = lerp(seed, Color.Black, 0.66f), accentSoft = lerp(seed, Color.Black, 0.50f),
-        text = Color(0xFF18211B), muted = Color(0xFF4A5650),
-        tint = lerp(seed, Color.Black, 0.62f), glass = lerp(Color.White, seed, 0.10f),
-        glassBorder = lerp(seed, Color.Black, 0.48f),
-        artworkStart = lerp(Color.White, seed, 0.32f), artworkEnd = lerp(Color.White, seed, 0.54f),
+    if (name == PLAIN || name == PLAIN_DARK || name == PLAIN_LIGHT) {
+        return plainPalette(when (name) {
+            PLAIN_DARK -> true
+            PLAIN_LIGHT -> false
+            else -> dark
+        })
+    }
+    val seed = colorThemes[name] ?: colorThemes.getValue("Kanade Green")
+    val base = if (dark) DarkPalette else LightPalette
+    val dominant = if (dark) Color(0xFF101318) else Color(0xFFF7F8FA)
+    val secondary = if (dark) Color(0xFF252B34) else Color(0xFFE8ECF1)
+    val accent = if (dark) lerp(seed, Color.White, 0.26f) else lerp(seed, Color.Black, 0.22f)
+    return base.copy(
+        // 60%: low-chroma, readable background even for neon theme seeds.
+        background = lerp(dominant, seed, if (dark) 0.035f else 0.018f),
+        backgroundTop = lerp(dominant, seed, if (dark) 0.085f else 0.045f),
+        backgroundBottom = lerp(dominant, seed, if (dark) 0.045f else 0.025f),
+        // 30%: tonal layers and glass, subtly coordinated with the selected hue.
+        surface = lerp(secondary, seed, if (dark) 0.12f else 0.075f),
+        glass = lerp(secondary, seed, if (dark) 0.095f else 0.06f),
+        glassBorder = if (dark) Color(0xFFEDF1F7) else Color(0xFF647080),
+        artworkStart = lerp(secondary, seed, 0.18f),
+        artworkEnd = lerp(dominant, seed, 0.075f),
+        // 10%: focus color, never the entire background or text body.
+        accent = accent,
+        accentSoft = lerp(accent, secondary, 0.30f),
+        text = if (dark) Color(0xFFF5F7FA) else Color(0xFF161C24),
+        muted = if (dark) Color(0xFFB7C0CC) else Color(0xFF556170),
+        tint = if (dark) Color.White else Color(0xFF222A34),
     )
 }
 
