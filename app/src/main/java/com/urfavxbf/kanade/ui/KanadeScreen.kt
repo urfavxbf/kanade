@@ -124,8 +124,8 @@ import com.urfavxbf.kanade.lyrics.LrcParser
 import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackState
-import io.github.itshedimisawi.vitro.glassBackdrop
-import io.github.itshedimisawi.vitro.rememberGlassBackdrop
+import io.github.fletchmckee.liquid.liquefiable
+import io.github.fletchmckee.liquid.rememberLiquidState
 
 private val appFonts = linkedMapOf(
     "Open Sans" to FontFamily(Font(R.font.open_sans)),
@@ -1560,10 +1560,10 @@ private fun NowPlayingScreen(
     onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit, onSeek: (Long) -> Unit,
     onPlayAt: (Int) -> Unit, onLyrics: () -> Unit, lyricDelay: Long, onTools: () -> Unit,
 ) {
-    val glassBackdrop = rememberGlassBackdrop()
+    val glassBackdrop = rememberLiquidState()
     Box(Modifier.fillMaxSize()) {
         // Only the artwork/backdrop is sampled: never the player controls themselves.
-        Box(Modifier.fillMaxSize().glassBackdrop(glassBackdrop).background(Background)) {
+        Box(Modifier.fillMaxSize().liquefiable(glassBackdrop).background(Background)) {
             if (!state.artworkUri.isNullOrBlank()) {
                 AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().blur(45.dp).alpha(0.28f))
