@@ -235,8 +235,8 @@ internal fun paletteFor(name: String, dark: Boolean): KanadePalette {
     }
     val seed = colorThemes[name] ?: colorThemes.getValue("Kanade Green")
     val base = if (dark) DarkPalette else LightPalette
-    val dominant = if (dark) Color(0xFF101318) else Color(0xFFF7F8FA)
-    val secondary = if (dark) Color(0xFF252B34) else Color(0xFFE8ECF1)
+    val dominant = if (dark) Color(0xFF050606) else Color(0xFFF7F8FA)
+    val secondary = if (dark) Color(0xFF1B1D20) else Color(0xFFE8ECF1)
     val canvas = lerp(dominant, seed, if (dark) 0.035f else 0.018f)
     val top = lerp(dominant, seed, if (dark) 0.085f else 0.045f)
     val bottom = lerp(dominant, seed, if (dark) 0.045f else 0.025f)
@@ -249,8 +249,8 @@ internal fun paletteFor(name: String, dark: Boolean): KanadePalette {
     return base.copy(
         // 60%: low-chroma, readable background even for neon theme seeds.
         background = canvas,
-        backgroundTop = top,
-        backgroundBottom = bottom,
+        backgroundTop = canvas,
+        backgroundBottom = canvas,
         // 30%: tonal layers and glass, subtly coordinated with the selected hue.
         surface = surface,
         glass = glass,
@@ -428,7 +428,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Label("Home", 30.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f).combinedClickable(
+                                Label("Home", 32.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f).combinedClickable(
                                     onClick = { overlay = Overlay.HOME_EDITOR }, onLongClick = { overlay = Overlay.HOME_EDITOR }))
                                 Chip("Edit Home") { overlay = Overlay.HOME_EDITOR }
                                 BasicText("⚙", Modifier.clickable(role = Role.Button) {
@@ -465,17 +465,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                         SimpleRow("Open local music", "Browse this device") { page = Page.LIBRARY }
                                         SimpleRow("Find music online", "Search songs and artists") { scope = "Online"; page = Page.ONLINE }
                                     } else {
-                                        item { Label("Quick picks", 20.sp, PrimaryText, FontWeight.Bold) }
-                                        items(quick.chunked(2)) { pair ->
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                for (track in pair) Row(Modifier.weight(1f).glassSurface(12.dp)
-                                                    .clickable { model.playListTracks(quick, track) },
-                                                    verticalAlignment = Alignment.CenterVertically) {
-                                                    AlbumImage(track.artworkUri, Modifier.size(48.dp))
-                                                    Label(track.title, 13.sp, PrimaryText, FontWeight.Bold, Modifier.padding(6.dp), lines = 2)
-                                                }
-                                                if (pair.size == 1) Spacer(Modifier.weight(1f))
-                                            }
+                                        item {
+                                            DashboardShelf("Quick picks", quick) { model.playListTracks(quick, it) }
                                         }
                                     }
                                 }
@@ -511,7 +502,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     }
                 }
                 Page.LIBRARY -> Column {
-                    Header("Your library", "Your music stays yours, even offline.")
+                    Header("Library", "Your music, all in one place.")
                     Spacer(Modifier.height(12.dp))
                     if (!model.hasPermission()) {
                         EmptyState(KanadeIcon.MUSIC, "Grant music permission", "Browse MP3 music stored on your device.") {
@@ -645,7 +636,31 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         Chip("Allow local music") { permissions.launch(model.permission()) }
                     }
                     if (showOnline) Label(discover.message, 12.sp, Muted)
-                    if (matches.isEmpty()) Label(if (needle.isEmpty()) "Enter a title or artist." else "No results shown.", 14.sp, Muted)
+                    if (needle.isEmpty()) {
+                        val (underlay, insets) = underChrome()
+                        val availableTracks = (recent + favorites + library.tracks).distinctBy { it.id }
+                        LazyColumn(modifier = underlay, contentPadding = insets,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            item { Spacer(Modifier.height(4.dp)); Label("Explore moods", 20.sp, PrimaryText, FontWeight.Bold) }
+                            items(moodCategories.chunked(2)) { pair ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    pair.forEach { mood ->
+                                        val artwork = availableTracks.firstOrNull {
+                                            it.title.contains(mood.name, true) || it.album.contains(mood.name, true)
+                                        }?.artworkUri
+                                        MoodTile(mood, artwork,
+                                            Modifier.weight(1f)) {
+                                            scope = "Online"
+                                            onlineQuery = mood.query
+                                            submitted = mood.query
+                                            model.search(mood.query)
+                                        }
+                                    }
+                                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    } else if (matches.isEmpty()) Label(if (discover.searching && showOnline) "Searching…" else "No results shown.", 14.sp, Muted)
                     else TrackList(matches, favoriteIds,
                         onPlay = { model.playListTracks(matches, it) },
                         onFavorite = model::toggleFavorite, onRadio = model::startRadio,
@@ -1018,12 +1033,31 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
 private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, themeMode: ThemeMode, account: String, accountAction: String, onAccountAction: () -> Unit) {
     val onlineBoost by model.playback.onlineBoost.collectAsState()
     val colorTheme by model.colorTheme.collectAsState()
+    val plays by model.totalPlays.collectAsState()
+    val listeningMs by model.totalListenMs.collectAsState()
     val bottomInset = with(LocalDensity.current) { LocalChromeMetrics.current.bottomHeight.toDp() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Header("Settings", "Make Kanade feel like yours.")
-        Spacer(Modifier.height(16.dp))
-        Label(account, 16.sp, PrimaryText, FontWeight.SemiBold)
-        Chip(accountAction, onClick = onAccountAction)
+        Spacer(Modifier.height(12.dp))
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+            .background(SurfaceLight.copy(alpha = 0.65f)).padding(16.dp)) {
+            Label(account, 16.sp, PrimaryText, FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Chip(accountAction, onClick = onAccountAction)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+            .background(SurfaceLight.copy(alpha = 0.65f)).padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Column(Modifier.weight(1f)) {
+                Label("${listeningMs / 3_600_000}h", 30.sp, PrimaryText, FontWeight.Bold)
+                Label("Listening time", 12.sp, Muted)
+            }
+            Column(Modifier.weight(1f)) {
+                Label(plays.toString(), 30.sp, PrimaryText, FontWeight.Bold)
+                Label("Plays", 12.sp, Muted)
+            }
+        }
         Spacer(Modifier.height(22.dp))
         Label("APPEARANCE", 12.sp, Accent, FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
@@ -1141,8 +1175,8 @@ private fun ThemeChoice(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable private fun Header(title: String, subtitle: String) {
-    Column(Modifier.fillMaxWidth().glassSurface(18.dp).padding(horizontal = 12.dp, vertical = 8.dp)) {
-        Label(title, 30.sp, PrimaryText, FontWeight.Bold)
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Label(title, 32.sp, PrimaryText, FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
         Label(subtitle, 13.sp, Muted)
     }
@@ -1237,8 +1271,8 @@ private fun SearchField(
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { search() }),
         decorationBox = { inner ->
-            Row(Modifier.fillMaxWidth()
-                .warmRaisedGlass(glassBackdrop, radius = 16.dp, elevation = 4.dp)
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
+                .background(SurfaceLight.copy(alpha = 0.72f))
                 .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (showSearchIcon) {
@@ -1260,14 +1294,44 @@ private fun DashboardShelf(title: String, tracks: List<Track>, onSelect: (Track)
         Label(title, 20.sp, PrimaryText, FontWeight.Bold)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(tracks, key = { it.id }) { track ->
-                Column(Modifier.width(128.dp).clickable(role = Role.Button) { onSelect(track) }) {
-                    AlbumImage(track.artworkUri, Modifier.size(128.dp))
+                Column(Modifier.width(144.dp).clickable(role = Role.Button) { onSelect(track) }) {
+                    AlbumImage(track.artworkUri, Modifier.size(144.dp))
                     Spacer(Modifier.height(5.dp))
                     Label(if (track.source == TrackSource.YOUTUBE) songTitle(track.title, track.artist) else track.title,
                         14.sp, PrimaryText, FontWeight.Bold, lines = 2)
                     Label(track.artist, 12.sp, Muted, lines = 1)
                 }
             }
+        }
+    }
+}
+
+private data class MoodCategory(val name: String, val query: String, val color: Color)
+
+private val moodCategories = listOf(
+    MoodCategory("Chill", "chill music", Color(0xFF3A4A59)),
+    MoodCategory("Commute", "commute music", Color(0xFF675929)),
+    MoodCategory("Energize", "energetic music", Color(0xFF56533A)),
+    MoodCategory("Feel good", "feel good music", Color(0xFF3D5A49)),
+    MoodCategory("Focus", "focus music", Color(0xFF464C4D)),
+    MoodCategory("Gaming", "gaming music", Color(0xFF454148)),
+    MoodCategory("Party", "party music", Color(0xFF554361)),
+    MoodCategory("Romance", "love songs", Color(0xFF63343A)),
+    MoodCategory("Sleep", "sleep music", Color(0xFF493D60)),
+    MoodCategory("Workout", "workout music", Color(0xFF674638)),
+)
+
+@Composable
+private fun MoodTile(mood: MoodCategory, artwork: String?, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(modifier.height(88.dp).clip(RoundedCornerShape(18.dp))
+        .background(Brush.linearGradient(listOf(mood.color, lerp(mood.color, Color.Black, 0.38f))))
+        .clickable(role = Role.Button, onClick = onClick)
+        .semantics { contentDescription = "Search ${mood.name} music" }.padding(14.dp)) {
+        Label(mood.name, 15.sp, Color.White, FontWeight.Bold,
+            modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(0.58f), lines = 2)
+        if (artwork != null) {
+            AsyncImage(model = artwork, contentDescription = null, contentScale = ContentScale.Crop,
+                modifier = Modifier.align(Alignment.BottomEnd).size(54.dp).clip(RoundedCornerShape(11.dp)))
         }
     }
 }
