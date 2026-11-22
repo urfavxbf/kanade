@@ -267,6 +267,7 @@ internal fun paletteFor(name: String, dark: Boolean): KanadePalette {
 }
 
 private val LocalKanadePalette = staticCompositionLocalOf { DarkPalette }
+private val LocalSurfaceBackdrop = staticCompositionLocalOf<io.github.fletchmckee.liquid.LiquidState?> { null }
 private val Background: Color @Composable get() = LocalKanadePalette.current.background
 private val SurfaceLight: Color @Composable get() = LocalKanadePalette.current.surface
 private val Accent: Color @Composable get() = LocalKanadePalette.current.accent
@@ -390,7 +391,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     val reduceNavigationMotion = LocalReduceMotion.current
     val chromeGlass = rememberLiquidState()
     val searchGlass = rememberLiquidState()
-    CompositionLocalProvider(LocalChromeMetrics provides chrome) {
+    CompositionLocalProvider(LocalChromeMetrics provides chrome, LocalSurfaceBackdrop provides searchGlass) {
     Box(Modifier.fillMaxSize()) {
     Box(Modifier.fillMaxSize().liquefiable(searchGlass).background(Brush.verticalGradient(
         listOf(LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom))))
@@ -1416,14 +1417,15 @@ private fun EmptyState(icon: KanadeIcon, title: String, detail: String, action: 
 }
 
 @Composable
-private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp): Modifier {
-    val shape = RoundedCornerShape(radius)
+private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp, dialog: Boolean = false): Modifier {
     val palette = LocalKanadePalette.current
+    val shape = RoundedCornerShape(radius)
     if (palette.flat) return clip(shape).background(palette.surface)
-
-    return shadow(3.dp, shape, clip = false).clip(shape).background(Brush.linearGradient(listOf(
-        palette.glass.copy(alpha = 0.82f), palette.glass.copy(alpha = 0.68f),
-        palette.glass.copy(alpha = 0.80f))))
+    // Page surfaces sample only the separately recorded background; dialogs are
+    // in another window and use an opaque-enough fallback for readable text.
+    val backdrop = if (dialog) null else LocalSurfaceBackdrop.current
+    val surface = warmRaisedGlass(backdrop, radius = radius, elevation = 8.dp)
+    return if (dialog) surface.background(palette.glass.copy(alpha = 0.90f)) else surface
 }
 
 @Composable
@@ -1454,12 +1456,13 @@ private fun MiniPlayer(
             MinimalGlassControlButton(
                 if (state.playing) KanadeIcon.PAUSE else KanadeIcon.PLAY,
                 if (state.playing) "Pause" else "Play",
-                active = state.playing, reduceMotion = LocalReduceMotion.current, onClick = onToggle,
+                active = state.playing, reduceMotion = LocalReduceMotion.current, backdrop = backdrop,
+                contentColor = if (state.playing) Accent else PrimaryText, onClick = onToggle,
             )
             Spacer(Modifier.width(4.dp))
             MinimalGlassControlButton(
                 KanadeIcon.NEXT, "Next",
-                reduceMotion = LocalReduceMotion.current, onClick = onNext,
+                reduceMotion = LocalReduceMotion.current, backdrop = backdrop, contentColor = PrimaryText, onClick = onNext,
             )
         }
         val miniProgress = if (state.durationMs > 0) {
@@ -1854,7 +1857,7 @@ private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composab
     Dialog(onDismissRequest = dismiss) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().heightIn(max = maxHeight * 0.9f)
-                .glassSurface(25.dp).verticalScroll(rememberScrollState()).padding(19.dp)) {
+                .glassSurface(25.dp, dialog = true).verticalScroll(rememberScrollState()).padding(19.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Label(title, 20.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f), lines = 2)
                     TinyButton(KanadeIcon.CLOSE, "Close dialog") { dismiss() }
