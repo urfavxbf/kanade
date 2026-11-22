@@ -78,6 +78,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -144,7 +145,7 @@ private val appFonts = linkedMapOf(
 private val LocalReduceMotion = staticCompositionLocalOf { false }
 private val LocalAppFont = staticCompositionLocalOf { appFonts.getValue("Open Sans") }
 
-private data class KanadePalette(
+internal data class KanadePalette(
     val background: Color, val backgroundTop: Color, val backgroundBottom: Color,
     val surface: Color, val accent: Color, val accentSoft: Color,
     val text: Color, val muted: Color, val error: Color,
@@ -188,7 +189,7 @@ private fun plainPalette(dark: Boolean): KanadePalette {
 }
 
 // The references use different palettes; offer each as a separate choice while keeping text legible.
-private val colorThemes = linkedMapOf(
+internal val colorThemes = linkedMapOf(
     PLAIN_DARK to Color(0xFF141414),
     PLAIN_LIGHT to Color(0xFFFAFAFA),
     "Kanade Green" to Color(0xFF40B979),
@@ -224,7 +225,7 @@ private val colorThemes = linkedMapOf(
  * 10% saturated accent reserved for progress, selection and actions.
  * These percentages describe visual hierarchy, not literal pixel counts.
  */
-private fun paletteFor(name: String, dark: Boolean): KanadePalette {
+internal fun paletteFor(name: String, dark: Boolean): KanadePalette {
     if (name == PLAIN || name == PLAIN_DARK || name == PLAIN_LIGHT) {
         return plainPalette(when (name) {
             PLAIN_DARK -> true
@@ -236,15 +237,23 @@ private fun paletteFor(name: String, dark: Boolean): KanadePalette {
     val base = if (dark) DarkPalette else LightPalette
     val dominant = if (dark) Color(0xFF101318) else Color(0xFFF7F8FA)
     val secondary = if (dark) Color(0xFF252B34) else Color(0xFFE8ECF1)
-    val accent = if (dark) lerp(seed, Color.White, 0.26f) else lerp(seed, Color.Black, 0.22f)
+    val canvas = lerp(dominant, seed, if (dark) 0.035f else 0.018f)
+    val top = lerp(dominant, seed, if (dark) 0.085f else 0.045f)
+    val bottom = lerp(dominant, seed, if (dark) 0.045f else 0.025f)
+    val surface = lerp(secondary, seed, if (dark) 0.12f else 0.075f)
+    val glass = lerp(secondary, seed, if (dark) 0.095f else 0.06f)
+    val accent = accessibleAccent(
+        if (dark) lerp(seed, Color.White, 0.26f) else lerp(seed, Color.Black, 0.22f),
+        listOf(canvas, top, bottom, surface, glass), dark,
+    )
     return base.copy(
         // 60%: low-chroma, readable background even for neon theme seeds.
-        background = lerp(dominant, seed, if (dark) 0.035f else 0.018f),
-        backgroundTop = lerp(dominant, seed, if (dark) 0.085f else 0.045f),
-        backgroundBottom = lerp(dominant, seed, if (dark) 0.045f else 0.025f),
+        background = canvas,
+        backgroundTop = top,
+        backgroundBottom = bottom,
         // 30%: tonal layers and glass, subtly coordinated with the selected hue.
-        surface = lerp(secondary, seed, if (dark) 0.12f else 0.075f),
-        glass = lerp(secondary, seed, if (dark) 0.095f else 0.06f),
+        surface = surface,
+        glass = glass,
         glassBorder = if (dark) Color(0xFFEDF1F7) else Color(0xFF647080),
         artworkStart = lerp(secondary, seed, 0.18f),
         artworkEnd = lerp(dominant, seed, 0.075f),
@@ -1493,6 +1502,7 @@ private fun onWifi(): Boolean {
 private fun VideoBackdrop(state: PlaybackState) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
+    val latestPlayback by rememberUpdatedState(state)
     var foreground by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
     var videoReady by remember { mutableStateOf(false) }
     var aspect by remember { mutableStateOf(1f) }
@@ -1524,11 +1534,14 @@ private fun VideoBackdrop(state: PlaybackState) {
             val url = try { withContext(Dispatchers.IO) { YouTubeMusicRepository.videoUrl(id) } }
                 catch (e: kotlinx.coroutines.CancellationException) { throw e }
                 catch (_: Exception) { null }
-            if (url != null) {
+            val playback = resolvedVideoPlayback(state.mediaId, latestPlayback)
+            if (url != null && playback != null) {
+                // Resolving a stream takes time; playback may have been paused or sought meanwhile.
                 videoPlayer.setMediaItem(MediaItem.fromUri(url))
                 videoPlayer.prepare()
-                videoPlayer.seekTo(state.positionMs)
-                videoPlayer.playWhenReady = state.playing
+                videoPlayer.seekTo(playback.positionMs)
+                videoPlayer.setPlaybackSpeed(playback.speed)
+                videoPlayer.playWhenReady = playback.playing
             }
         }
     }
