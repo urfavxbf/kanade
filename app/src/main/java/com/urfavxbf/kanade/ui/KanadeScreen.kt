@@ -309,7 +309,7 @@ private fun underChrome(): Pair<Modifier, PaddingValues> {
     return modifier to padding
 }
 
-private val homeSections = listOf("Continue listening", "Quick picks", "Pinned playlists", "Recently played", "Start radio", "Listening insights")
+private val homeSections = listOf("Continue listening", "Quick picks", "Pinned playlists", "Recently played", "Start radio")
 
 private enum class Page { HOME, LIBRARY, ONLINE, PLAYLISTS, INSIGHTS, SETTINGS }
 private enum class Overlay { HOME_EDITOR, FOLDERS, TOOLS, SESSIONS, NONE, QUEUE, LYRICS, SEARCH_LYRICS, PICK_PLAYLIST, EDIT_TAGS }
@@ -401,6 +401,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     LaunchedEffect(Unit) { if (model.hasPermission()) model.loadLocal() }
     BackHandler(enabled = showArtist && !showAlbum && !showNowPlaying && overlay == Overlay.NONE) { showArtist = false; if (artistReturnsToAlbum) showAlbum = true; artistReturnsToAlbum = false }
     BackHandler(enabled = showAlbum && !showNowPlaying && overlay == Overlay.NONE) { showAlbum = false }
+    BackHandler(enabled = page == Page.INSIGHTS && !showNowPlaying && overlay == Overlay.NONE) { page = Page.SETTINGS }
     BackHandler(enabled = page == Page.SETTINGS && !showAlbum && !showArtist && !showNowPlaying && overlay == Overlay.NONE) { page = settingsReturn }
     BackHandler(enabled = showNowPlaying && overlay == Overlay.NONE) { showNowPlaying = false }
     LaunchedEffect(playback.hasItem) { if (!playback.hasItem) showNowPlaying = false }
@@ -516,13 +517,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                     }
                                 }
                                 "Quick picks" -> {
-                                    if (quick.isEmpty()) item {
-                                        SimpleRow("Open local music", "Browse this device") { page = Page.LIBRARY }
-                                        SimpleRow("Find music online", "Search songs and artists") { scope = "Online"; page = Page.ONLINE }
-                                    } else {
-                                        item {
-                                            DashboardShelf("Quick picks", quick) { model.playListTracks(quick, it) }
-                                        }
+                                    if (quick.isNotEmpty()) item {
+                                        DashboardShelf("Quick picks", quick) { model.playListTracks(quick, it) }
                                     }
                                 }
                                 "Pinned playlists" -> {
@@ -548,9 +544,6 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                     if (stations.isNotEmpty()) item {
                                         DashboardShelf("Start radio", stations, onSelect = model::startRadio)
                                     }
-                                }
-                                "Listening insights" -> {
-                                    item { SimpleRow("Listening insights", "History and smart collections") { page = Page.INSIGHTS } }
                                 }
                             }
                         }
@@ -831,7 +824,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                             onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                     }
                 }
-                Page.SETTINGS -> SettingsScreen(model, playback, themeMode, account, accountAction, onAccountAction)
+                Page.SETTINGS -> SettingsScreen(model, playback, themeMode, account, accountAction, onAccountAction,
+                    onInsights = { page = Page.INSIGHTS })
                 Page.INSIGHTS -> Column {
                     Header("Your listening", "Private listening history, stored on this device.")
                     Spacer(Modifier.height(16.dp))
@@ -1147,7 +1141,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
 }
 
 @Composable
-private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, themeMode: ThemeMode, account: String, accountAction: String, onAccountAction: () -> Unit) {
+private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, themeMode: ThemeMode, account: String, accountAction: String, onAccountAction: () -> Unit, onInsights: () -> Unit) {
     val onlineBoost by model.playback.onlineBoost.collectAsState()
     val colorTheme by model.colorTheme.collectAsState()
     val plays by model.totalPlays.collectAsState()
@@ -1175,6 +1169,7 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
                 Label("Plays", 12.sp, Muted)
             }
         }
+        Chip("Listening insights", onClick = onInsights)
         Spacer(Modifier.height(22.dp))
         Label("APPEARANCE", 12.sp, Accent, FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
