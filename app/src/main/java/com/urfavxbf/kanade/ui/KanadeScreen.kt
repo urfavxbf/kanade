@@ -425,11 +425,16 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom
             )))
             .onGloballyPositioned { chrome.pageTop = it.positionInRoot().y.toInt() }) {
-            Crossfade(targetState = when {
+            AnimatedContent(targetState = when {
                 showAlbum && albumPage.album != null -> "album"
                 showArtist && artistPage.artist != null -> "artist"
                 else -> "page"
-            }, animationSpec = tween(if (reduceNavigationMotion) 0 else 220), label = "detail screen") { section ->
+            }, transitionSpec = {
+                val duration = if (reduceNavigationMotion) 0 else 260
+                val direction = if (targetState == "page") -1 else 1
+                (slideInHorizontally(tween(duration)) { direction * it / 6 } + fadeIn(tween(duration))) togetherWith
+                    (slideOutHorizontally(tween(duration)) { -direction * it / 10 } + fadeOut(tween(duration)))
+            }, label = "detail screen") { section ->
             if (section == "album") {
                 AlbumScreen(albumPage, favoriteIds, onBack = { showAlbum = false },
                     onPlay = { model.playListTracks(albumPage.tracks, it) }, onFavorite = model::toggleFavorite,
@@ -454,9 +459,10 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     if (reduceNavigationMotion) {
                         fadeIn(animationSpec = tween(0)) togetherWith fadeOut(animationSpec = tween(0))
                     } else {
-                        (slideInHorizontally(animationSpec = tween(260), initialOffsetX = { it / 8 }) +
+                        val direction = if (targetState.ordinal >= initialState.ordinal) 1 else -1
+                        (slideInHorizontally(animationSpec = tween(260), initialOffsetX = { direction * it / 8 }) +
                             fadeIn(animationSpec = tween(240))) togetherWith
-                            (slideOutHorizontally(animationSpec = tween(220), targetOffsetX = { -it / 8 }) +
+                            (slideOutHorizontally(animationSpec = tween(220), targetOffsetX = { -direction * it / 8 }) +
                                 fadeOut(animationSpec = tween(220)))
                     }
                 },
