@@ -58,7 +58,15 @@ def report(name, xml):
 adb("shell", "input", "keyevent", "KEYCODE_WAKEUP", check=False)
 adb("shell", "wm", "dismiss-keyguard", check=False)
 subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=90", "-metadata", "title=Kanade Test Tone", "-metadata", "artist=Test Artist", "-metadata", "album=Test Album", "-y", "/tmp/kanade-test-tone.mp3"], check=True)
-adb("push", "/tmp/kanade-test-tone.mp3", "/sdcard/Music/kanade-test-tone.mp3")
+for attempt in range(20):
+    try:
+        adb("shell", "mkdir", "-p", "/sdcard/Music")
+        adb("push", "/tmp/kanade-test-tone.mp3", "/sdcard/Music/kanade-test-tone.mp3")
+        break
+    except subprocess.CalledProcessError:
+        if attempt == 19:
+            raise
+        time.sleep(2)
 adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", "file:///sdcard/Music/kanade-test-tone.mp3", check=False)
 adb("install", "-r", "target-app/app/build/outputs/apk/debug/app-debug.apk")
 adb("shell", "am", "start", "-n", "com.urfavxbf.kanade/.MainActivity")
@@ -139,6 +147,17 @@ if tap("Continue as guest", xml):
 if require_tap("Settings", xml):
     xml = snapshot("11-persisted")
     verify_style("Soft Raised", xml)
+    if require_tap("Library", xml):
+        library_xml = snapshot("11-library")
+        if tap("Kanade Test Tone", library_xml) or tap("kanade-test-tone", library_xml):
+            player_xml = snapshot("11-mini-player")
+            if require_tap("Open now playing", player_xml):
+                snapshot("11-raised-player")
+                adb("shell", "input", "keyevent", "KEYCODE_BACK")
+        xml = snapshot("11-navigate")
+        require_tap("Home", xml)
+        require_tap("Settings", snapshot("11-home"))
+        xml = snapshot("11-settings")
     require_tap("Glass", xml)
     verify_style("Glass", snapshot("12-restored-glass"))
 
