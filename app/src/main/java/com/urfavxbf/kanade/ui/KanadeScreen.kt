@@ -323,6 +323,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     val library by model.library.collectAsState()
     val discover by model.discover.collectAsState()
     val homeDiscovery by model.homeDiscovery.collectAsState()
+    val artistPage by model.artistPage.collectAsState()
     val playback by model.playback.state.collectAsState()
     val favorites by model.favorites.collectAsState()
     val favoriteIds by model.favoriteIds.collectAsState()
@@ -358,6 +359,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     val undo by model.removedSong.collectAsState()
     var overlay by remember { mutableStateOf(Overlay.NONE) }
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
+    var showArtist by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var onlineQuery by rememberSaveable { mutableStateOf("") }
     var playlistName by rememberSaveable { mutableStateOf("") }
@@ -383,7 +385,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     }
 
     LaunchedEffect(Unit) { if (model.hasPermission()) model.loadLocal() }
-    BackHandler(enabled = page == Page.SETTINGS && !showNowPlaying && overlay == Overlay.NONE) { page = settingsReturn }
+    BackHandler(enabled = showArtist && !showNowPlaying && overlay == Overlay.NONE) { showArtist = false }
+    BackHandler(enabled = page == Page.SETTINGS && !showArtist && !showNowPlaying && overlay == Overlay.NONE) { page = settingsReturn }
     BackHandler(enabled = showNowPlaying && overlay == Overlay.NONE) { showNowPlaying = false }
     LaunchedEffect(playback.hasItem) { if (!playback.hasItem) showNowPlaying = false }
 
@@ -408,7 +411,16 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom
             )))
             .onGloballyPositioned { chrome.pageTop = it.positionInRoot().y.toInt() }) {
-            AnimatedContent(
+            if (showArtist && artistPage.artist != null) {
+                ArtistScreen(artistPage, favoriteIds, onBack = { showArtist = false },
+                    onPlay = { model.playListTracks(artistPage.tracks, it) }, onFavorite = model::toggleFavorite,
+                    onMoreTracks = model::moreArtistTracks, onRetryTracks = model::retryArtistTracks,
+                    onMoreAlbums = model::moreArtistAlbums, onAlbum = { entry ->
+                        showArtist = false
+                        if (artistPage.artist?.url == null) { page = Page.LIBRARY; filter = "Albums"; album = entry.name }
+                        else { scope = "Online"; onlineQuery = entry.name; submitted = entry.name; page = Page.ONLINE; model.search(entry.name) }
+                    })
+            } else AnimatedContent(
                 targetState = page,
                 transitionSpec = {
                     if (reduceNavigationMotion) {
@@ -446,7 +458,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         }
                         if (homeDiscovery.artists.isNotEmpty()) item {
                             CatalogShelf("Artists to explore", homeDiscovery.artists) { entry ->
-                                scope = "Online"; onlineQuery = entry.name; submitted = entry.name; page = Page.ONLINE; model.search(entry.name)
+                                model.openArtist(entry); showArtist = true
                             }
                         }
                         if (homeDiscovery.albums.isNotEmpty()) item {
@@ -579,7 +591,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                             LazyColumn(modifier = underlay, contentPadding = insets, verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                 items(artists) { item ->
                                     SimpleRow(item, "${library.tracks.count { it.artist == item }} tracks") {
-                                        album = item
+                                        model.openArtist(YouTubeMusicRepository.CatalogItem(item, "Artist", library.tracks.firstOrNull { it.artist == item }?.artworkUri)); showArtist = true
                                     }
                                 }
                             }
@@ -656,7 +668,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS },
                         pagination = if (showOnline) discover else null, onLoadMore = model::loadMoreSearchResults,
                         searchArtists = artists, searchAlbums = albums, searchLayout = true,
-                        onCatalog = { entry ->
+                        onArtist = { entry -> model.openArtist(entry); showArtist = true },
+                        onAlbum = { entry ->
                             onlineQuery = entry.name; submitted = entry.name
                             if (scope != "On device") model.search(entry.name)
                         },
@@ -819,7 +832,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 Column(Modifier.weight(1f).heightIn(min = 58.dp)
                     .clip(RoundedCornerShape(15.dp))
                     .background(if (active) Color(0xFFF2E2D2).copy(alpha = 0.09f) else Color.Transparent)
-                    .selectable(selected = active, role = Role.Tab, onClick = { page = tab })
+                    .selectable(selected = active, role = Role.Tab, onClick = { showArtist = false; page = tab })
                     .semantics { contentDescription = label },
                     verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     KanadeGlyph(icon, if (active) PrimaryText else Muted, selected = active, size = 24.dp)
@@ -1341,7 +1354,7 @@ private fun CatalogShelf(title: String, entries: List<YouTubeMusicRepository.Cat
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Label(title, 20.sp, PrimaryText, FontWeight.Bold)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(entries, key = { it.name }) { entry ->
+            items(entries) { entry ->
                 Column(Modifier.width(128.dp).clickable(role = Role.Button) { onSelect(entry) }) {
                     AlbumImage(entry.artwork, Modifier.size(128.dp))
                     Spacer(Modifier.height(5.dp))
@@ -1397,6 +1410,87 @@ private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun ArtistScreen(
+    state: ArtistPageState, favoriteIds: Set<String>, onBack: () -> Unit,
+    onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit,
+    onMoreTracks: () -> Unit, onRetryTracks: () -> Unit, onMoreAlbums: () -> Unit,
+    onAlbum: (YouTubeMusicRepository.CatalogItem) -> Unit,
+) {
+    val artist = state.artist ?: return
+    val online = artist.url != null
+    val bottom = with(LocalDensity.current) { LocalChromeMetrics.current.bottomHeight.toDp() + 20.dp }
+    val listState = rememberLazyListState()
+    val nearEnd by remember { derivedStateOf {
+        val info = listState.layoutInfo
+        info.totalItemsCount > 0 && (info.visibleItemsInfo.lastOrNull()?.index ?: -1) >= info.totalItemsCount - 3
+    } }
+    LaunchedEffect(nearEnd, state.tracksMore, state.loadingTracks, state.trackError, state.tracks.size) {
+        if (nearEnd && state.tracksMore && !state.loadingTracks && state.trackError == null) onMoreTracks()
+    }
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = bottom), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item(key = "artist-header") {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+                IconTextButton(KanadeIcon.BACK, "Back", onBack)
+                Spacer(Modifier.height(12.dp))
+                Box(Modifier.size(176.dp).clip(CircleShape).background(LocalKanadePalette.current.tint.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center) {
+                    KanadeGlyph(KanadeIcon.MUSIC, Accent, selected = true, size = 48.dp)
+                    if (!artist.artwork.isNullOrBlank()) AsyncImage(model = artist.artwork, contentDescription = "${artist.name} artist image",
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+                Spacer(Modifier.height(16.dp))
+                Label(artist.name, 30.sp, PrimaryText, FontWeight.Bold, lines = 3)
+                Label(if (online) "Artist · YouTube" else "Artist · On device", 13.sp, Muted)
+                if (state.subscribers >= 0) Label("${java.text.NumberFormat.getIntegerInstance().format(state.subscribers)} subscribers", 13.sp, Muted)
+                Spacer(Modifier.height(12.dp))
+                if (state.description.isNotBlank()) Label(state.description, 14.sp, PrimaryText, lines = Int.MAX_VALUE)
+                else Label(if (online) "Artist biography is unavailable from this source." else "Showing music stored on this device.", 13.sp, Muted)
+                if (online) Label("Albums and tracks are search results and may include related artists.", 12.sp, Muted, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+        item(key = "artist-albums") {
+            Column(Modifier.padding(top = 18.dp)) {
+                if (state.albums.isNotEmpty()) CatalogShelf(if (online) "Album results" else "Albums", state.albums, onAlbum)
+                else Label("Albums", 20.sp, PrimaryText, FontWeight.Bold)
+                when {
+                    state.loadingAlbums -> Label("Loading albums…", 13.sp, Muted)
+                    state.albumError != null -> { Label(state.albumError, 13.sp, Muted); Chip("Retry albums", onClick = onMoreAlbums) }
+                    state.albumsMore -> Chip("More albums", onClick = onMoreAlbums)
+                    state.albums.isEmpty() -> Label("No albums available.", 13.sp, Muted)
+                }
+            }
+        }
+        item(key = "artist-tracks-heading") {
+            Column(Modifier.padding(top = 18.dp)) {
+                Label(if (online) "Track results" else "Tracks", 20.sp, PrimaryText, FontWeight.Bold)
+                if (state.tracks.isNotEmpty()) AccentAction("Play all") { onPlay(state.tracks.first()) }
+                if (state.tracks.isEmpty() && !state.loadingTracks && state.trackError == null) Label("No tracks available.", 13.sp, Muted)
+            }
+        }
+        items(state.tracks, key = { it.id }) { track ->
+            Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onPlay(track) }.padding(vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                AlbumImage(track.artworkUri, Modifier.size(54.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Label(track.title, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
+                    Label(track.artist, 12.sp, Muted, lines = 1)
+                }
+                TinyButton(KanadeIcon.FAVORITE, if (track.id in favoriteIds) "Remove from favorites" else "Add to favorites", selected = track.id in favoriteIds) { onFavorite(track) }
+            }
+        }
+        item(key = "artist-tracks-footer") {
+            when {
+                state.loadingTracks -> Label("Loading tracks…", 13.sp, Muted)
+                state.trackError != null -> { Label(state.trackError, 13.sp, Muted); Chip("Retry tracks", onClick = onRetryTracks) }
+                state.tracksMore -> Chip("More tracks", onClick = onMoreTracks)
+            }
+        }
+    }
+}
+
+@Composable
 private fun TrackList(
     tracks: List<Track>, favoriteIds: Set<String>,
     onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit, onRadio: (Track) -> Unit,
@@ -1408,7 +1502,8 @@ private fun TrackList(
     searchArtists: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
     searchAlbums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
     searchLayout: Boolean = false,
-    onCatalog: (YouTubeMusicRepository.CatalogItem) -> Unit = {},
+    onArtist: (YouTubeMusicRepository.CatalogItem) -> Unit = {},
+    onAlbum: (YouTubeMusicRepository.CatalogItem) -> Unit = {},
     searchLeading: (@Composable () -> Unit)? = null,
     searchBrowse: (@Composable () -> Unit)? = null,
     searchEmptyMessage: String? = null,
@@ -1457,11 +1552,11 @@ private fun TrackList(
         }
         if (searchLayout && searchArtists.isNotEmpty()) {
             item(key = "search-artists-heading") { Label("Artists", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
-            items(searchArtists, key = { "artist:${it.name}" }) { entry -> CatalogResultRow(entry, onCatalog) }
+            items(searchArtists, key = { "artist:${it.name}" }) { entry -> CatalogResultRow(entry, onArtist) }
         }
         if (searchLayout && searchAlbums.isNotEmpty()) {
             item(key = "search-albums-heading") { Label("Albums", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
-            items(searchAlbums, key = { "album:${it.name}" }) { entry -> CatalogResultRow(entry, onCatalog) }
+            items(searchAlbums, key = { "album:${it.name}" }) { entry -> CatalogResultRow(entry, onAlbum) }
         }
         if (searchLayout && tracks.isNotEmpty()) item(key = "search-tracks-heading") { Label("Tracks", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
         items(tracks, key = { "track:${it.id}" }) { track ->

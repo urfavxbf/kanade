@@ -60,6 +60,14 @@ data class HomeDiscovery(
     val albums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
     val loading: Boolean = true, val error: String? = null,
 )
+data class ArtistPageState(
+    val artist: YouTubeMusicRepository.CatalogItem? = null,
+    val description: String = "", val subscribers: Long = -1,
+    val tracks: List<Track> = emptyList(), val albums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    val loadingTracks: Boolean = false, val loadingAlbums: Boolean = false,
+    val tracksMore: Boolean = false, val albumsMore: Boolean = false,
+    val trackError: String? = null, val albumError: String? = null,
+)
 data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Lyrics unavailable", val plain: String? = null)
 
 class KanadeViewModel(app: Application) : AndroidViewModel(app) {
@@ -132,6 +140,84 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val totalListenMs: StateFlow<Long> = _totalListenMs
     private val _lyrics = MutableStateFlow(LyricsState())
     val lyrics: StateFlow<LyricsState> = _lyrics
+
+    private val _artistPage = MutableStateFlow(ArtistPageState())
+    val artistPage: StateFlow<ArtistPageState> = _artistPage
+    private var artistJob: Job? = null
+    private var artistTrackJob: Job? = null
+    private var artistAlbumJob: Job? = null
+    private var artistTrackPage: Page? = null
+    private var artistAlbumPage: Page? = null
+    private var artistGeneration = 0L
+
+    fun openArtist(artist: YouTubeMusicRepository.CatalogItem) {
+        artistJob?.cancel(); artistTrackJob?.cancel(); artistAlbumJob?.cancel()
+        artistTrackPage = null; artistAlbumPage = null
+        val generation = ++artistGeneration
+        if (artist.url == null) {
+            val tracks = _library.value.tracks.filter { it.artist.equals(artist.name, true) }
+            val albums = tracks.filter { it.album.isNotBlank() }.distinctBy { it.album.lowercase() }
+                .map { YouTubeMusicRepository.CatalogItem(it.album, it.artist, it.artworkUri) }
+            _artistPage.value = ArtistPageState(artist = artist, tracks = tracks, albums = albums)
+            return
+        }
+        _artistPage.value = ArtistPageState(artist = artist, loadingTracks = true, loadingAlbums = true)
+        artistJob = viewModelScope.launch {
+            launch {
+                try {
+                    val profile = YouTubeMusicRepository.artistProfile(artist.url)
+                    if (generation == artistGeneration) _artistPage.value = _artistPage.value.copy(
+                        artist = artist.copy(artwork = profile.artwork ?: artist.artwork),
+                        description = profile.description, subscribers = profile.subscribers)
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+            }
+            launch { loadArtistTracks(generation, null) }
+            launch { loadArtistAlbums(generation, null) }
+        }
+    }
+
+    fun moreArtistTracks() {
+        val page = artistTrackPage ?: return
+        if (_artistPage.value.loadingTracks) return
+        artistTrackJob = viewModelScope.launch { loadArtistTracks(artistGeneration, page) }
+    }
+    private suspend fun loadArtistTracks(generation: Long, page: Page?) {
+        val artist = _artistPage.value.artist ?: return
+        _artistPage.value = _artistPage.value.copy(loadingTracks = true, trackError = null)
+        try {
+            val result = if (page == null) YouTubeMusicRepository.search(artist.name) else YouTubeMusicRepository.searchNext(artist.name, page)
+            if (generation != artistGeneration) return
+            val next = result.nextPage?.takeUnless { page != null && SearchPagination.sameCursor(page, it) }
+            artistTrackPage = next
+            result.tracks.forEach { known[it.id] = it }
+            _artistPage.value = _artistPage.value.copy(tracks = SearchPagination.merge(_artistPage.value.tracks, result.tracks),
+                loadingTracks = false, tracksMore = next != null)
+        } catch (e: CancellationException) { throw e } catch (_: Exception) {
+            if (generation == artistGeneration) _artistPage.value = _artistPage.value.copy(loadingTracks = false, trackError = "Couldn't load tracks. Try again.")
+        }
+    }
+    fun moreArtistAlbums() {
+        if (_artistPage.value.loadingAlbums) return
+        artistAlbumJob = viewModelScope.launch { loadArtistAlbums(artistGeneration, artistAlbumPage) }
+    }
+    private suspend fun loadArtistAlbums(generation: Long, page: Page?) {
+        val artist = _artistPage.value.artist ?: return
+        _artistPage.value = _artistPage.value.copy(loadingAlbums = true, albumError = null)
+        try {
+            val result = YouTubeMusicRepository.searchAlbumPage(artist.name, page)
+            if (generation != artistGeneration) return
+            val next = result.nextPage?.takeUnless { page != null && SearchPagination.sameCursor(page, it) }
+            artistAlbumPage = next
+            val albums = (_artistPage.value.albums + result.items).distinctBy { it.url ?: it.name }
+            _artistPage.value = _artistPage.value.copy(albums = albums, loadingAlbums = false, albumsMore = next != null)
+        } catch (e: CancellationException) { throw e } catch (_: Exception) {
+            if (generation == artistGeneration) _artistPage.value = _artistPage.value.copy(loadingAlbums = false, albumError = "Couldn't load albums. Try again.")
+        }
+    }
+    fun retryArtistTracks() {
+        if (_artistPage.value.loadingTracks) return
+        artistTrackJob = viewModelScope.launch { loadArtistTracks(artistGeneration, artistTrackPage) }
+    }
 
     private var searchJob: Job? = null
     private var loadMoreJob: Job? = null

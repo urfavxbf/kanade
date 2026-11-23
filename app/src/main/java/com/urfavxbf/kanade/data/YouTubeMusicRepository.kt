@@ -52,15 +52,40 @@ object YouTubeMusicRepository {
         })
     }
 
-    data class CatalogItem(val name: String, val subtitle: String, val artwork: String?)
+    data class CatalogItem(val name: String, val subtitle: String, val artwork: String?, val url: String? = null)
+    data class CatalogPage(val items: List<CatalogItem>, val nextPage: Page?)
+    data class ArtistProfile(val description: String, val subscribers: Long, val artwork: String?)
+
+    suspend fun artistProfile(url: String): ArtistProfile = withContext(Dispatchers.IO) {
+        val uri = java.net.URI(url)
+        require(uri.scheme == "https" && uri.host in listOf("youtube.com", "www.youtube.com", "music.youtube.com", "m.youtube.com"))
+        val path = uri.path.orEmpty()
+        require(Regex("^/channel/UC[A-Za-z0-9_-]+$").matches(path))
+        val extractor = ServiceList.YouTube.getChannelExtractor("https://www.youtube.com$path")
+        extractor.fetchPage()
+        ArtistProfile(
+            runCatching { extractor.description }.getOrDefault(""),
+            runCatching { extractor.subscriberCount }.getOrDefault(-1L),
+            runCatching { extractor.avatars.lastOrNull()?.url }.getOrNull(),
+        )
+    }
+
+    suspend fun searchAlbumPage(query: String, page: Page? = null): CatalogPage = withContext(Dispatchers.IO) {
+        val extractor = ServiceList.YouTube.getSearchExtractor(query, listOf(MUSIC_ALBUMS), "")
+        val results = if (page == null) { extractor.fetchPage(); extractor.initialPage } else extractor.getPage(page)
+        val items = results.items.filterIsInstance<PlaylistInfoItem>().map {
+            CatalogItem(it.name, it.uploaderName ?: "Album", it.thumbnails.lastOrNull()?.url, it.url)
+        }.distinctBy { it.url ?: it.name }
+        CatalogPage(items, results.nextPage?.takeIf { Page.isValid(it) })
+    }
 
     suspend fun searchCatalog(query: String, artists: Boolean): List<CatalogItem> = withContext(Dispatchers.IO) {
         val extractor = ServiceList.YouTube.getSearchExtractor(query, listOf(if (artists) MUSIC_ARTISTS else MUSIC_ALBUMS), "")
         extractor.fetchPage()
         extractor.initialPage.items.mapNotNull { item ->
             when (item) {
-                is ChannelInfoItem -> if (artists) CatalogItem(item.name, "Artist", item.thumbnails.lastOrNull()?.url) else null
-                is PlaylistInfoItem -> if (!artists) CatalogItem(item.name, item.uploaderName ?: "Album", item.thumbnails.lastOrNull()?.url) else null
+                is ChannelInfoItem -> if (artists) CatalogItem(item.name, "Artist", item.thumbnails.lastOrNull()?.url, item.url) else null
+                is PlaylistInfoItem -> if (!artists) CatalogItem(item.name, item.uploaderName ?: "Album", item.thumbnails.lastOrNull()?.url, item.url) else null
                 else -> null
             }
         }.distinctBy { it.name.lowercase() }.take(10)
