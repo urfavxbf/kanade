@@ -110,6 +110,38 @@ if require_tap("Home", xml):
     else:
         failures.append("Could not locate Settings")
 
+
+def selected(label, xml):
+    for node in ET.fromstring(xml).iter("node"):
+        if node.get("selected") == "true" or node.get("checked") == "true":
+            if any(label in (child.get("text"), child.get("content-desc")) for child in node.iter("node")):
+                return True
+    return False
+
+def verify_style(label, xml):
+    if not selected(label, xml):
+        failures.append(f"{label} is not the selected control style")
+    else:
+        print(f"Verified selected control style: {label}", flush=True)
+
+verify_style("Glass", xml)
+require_tap("Soft Raised", xml)
+xml = snapshot("08-soft-raised-light")
+verify_style("Soft Raised", xml)
+require_tap("Dark", xml)
+xml = snapshot("09-soft-raised-dark")
+adb("shell", "am", "force-stop", "com.urfavxbf.kanade")
+adb("shell", "am", "start", "-n", "com.urfavxbf.kanade/.MainActivity")
+time.sleep(5)
+xml = snapshot("10-relaunch")
+if tap("Continue as guest", xml):
+    xml = snapshot("10-guest")
+if require_tap("Settings", xml):
+    xml = snapshot("11-persisted")
+    verify_style("Soft Raised", xml)
+    require_tap("Glass", xml)
+    verify_style("Glass", snapshot("12-restored-glass"))
+
 (OUT / "summary.txt").write_text("\n".join(failures) if failures else "Navigation controls were found and tapped. Screenshots require visual review.\n")
 if failures:
     raise SystemExit("\n".join(failures))

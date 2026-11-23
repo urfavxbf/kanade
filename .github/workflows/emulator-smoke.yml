@@ -19,7 +19,7 @@ jobs:
       - name: Checkout latest Kanade draft
         uses: actions/checkout@v4
         with:
-          ref: a13c42f0d17979aef2e260f61b1f249b1a33ea8b
+          ref: 4452037bea944489331e099bc3f4d2f84b94832f
           path: target-app
       - uses: actions/setup-java@v4
         with:
