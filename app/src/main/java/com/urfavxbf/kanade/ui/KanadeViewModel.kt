@@ -60,6 +60,11 @@ data class HomeDiscovery(
     val albums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
     val loading: Boolean = true, val error: String? = null,
 )
+data class AlbumPageState(
+    val album: YouTubeMusicRepository.CatalogItem? = null,
+    val tracks: List<Track> = emptyList(), val loading: Boolean = false,
+    val hasMore: Boolean = false, val error: String? = null,
+)
 data class ArtistPageState(
     val artist: YouTubeMusicRepository.CatalogItem? = null,
     val description: String = "", val subscribers: Long = -1,
@@ -140,6 +145,53 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val totalListenMs: StateFlow<Long> = _totalListenMs
     private val _lyrics = MutableStateFlow(LyricsState())
     val lyrics: StateFlow<LyricsState> = _lyrics
+
+    private val _albumPage = MutableStateFlow(AlbumPageState())
+    val albumPage: StateFlow<AlbumPageState> = _albumPage
+    private var albumJob: Job? = null
+    private var albumNext: Page? = null
+    private var albumGeneration = 0L
+
+    fun openAlbum(album: YouTubeMusicRepository.CatalogItem) {
+        albumJob?.cancel()
+        albumNext = null
+        val generation = ++albumGeneration
+        if (album.url == null) {
+            val tracks = _library.value.tracks.filter {
+                it.album.ifBlank { "Unknown album" }.equals(album.name, true) &&
+                    (album.subtitle == "Album" || it.artist.equals(album.subtitle, true))
+            }
+            _albumPage.value = AlbumPageState(album = album, tracks = tracks)
+        } else {
+            _albumPage.value = AlbumPageState(album = album, loading = true)
+            albumJob = viewModelScope.launch { loadAlbum(generation, null) }
+        }
+    }
+    fun moreAlbumTracks() {
+        val page = albumNext ?: return
+        if (_albumPage.value.loading) return
+        _albumPage.value = _albumPage.value.copy(loading = true, error = null)
+        albumJob = viewModelScope.launch { loadAlbum(albumGeneration, page) }
+    }
+    fun retryAlbum() {
+        val album = _albumPage.value.album ?: return
+        if (_albumPage.value.loading) return
+        if (albumNext == null) openAlbum(album) else moreAlbumTracks()
+    }
+    private suspend fun loadAlbum(generation: Long, page: Page?) {
+        val url = _albumPage.value.album?.url ?: return
+        try {
+            val result = YouTubeMusicRepository.albumTracks(url, page)
+            if (generation != albumGeneration) return
+            albumNext = result.nextPage?.takeUnless { page != null && SearchPagination.sameCursor(page, it) }
+            result.tracks.forEach { known[it.id] = it }
+            _albumPage.value = _albumPage.value.copy(tracks = SearchPagination.merge(_albumPage.value.tracks, result.tracks),
+                loading = false, hasMore = albumNext != null)
+        } catch (e: CancellationException) { throw e } catch (_: Exception) {
+            if (generation == albumGeneration) _albumPage.value = _albumPage.value.copy(loading = false,
+                error = "Couldn't load this album. Check your connection and try again.")
+        }
+    }
 
     private val _artistPage = MutableStateFlow(ArtistPageState())
     val artistPage: StateFlow<ArtistPageState> = _artistPage

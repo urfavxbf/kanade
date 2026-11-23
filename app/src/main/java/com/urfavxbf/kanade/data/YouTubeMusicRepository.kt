@@ -52,7 +52,7 @@ object YouTubeMusicRepository {
         })
     }
 
-    data class CatalogItem(val name: String, val subtitle: String, val artwork: String?, val url: String? = null)
+    data class CatalogItem(val name: String, val subtitle: String, val artwork: String?, val url: String? = null, val artistUrl: String? = null)
     data class CatalogPage(val items: List<CatalogItem>, val nextPage: Page?)
     data class ArtistProfile(val description: String, val subscribers: Long, val artwork: String?)
 
@@ -74,7 +74,7 @@ object YouTubeMusicRepository {
         val extractor = ServiceList.YouTube.getSearchExtractor(query, listOf(MUSIC_ALBUMS), "")
         val results = if (page == null) { extractor.fetchPage(); extractor.initialPage } else extractor.getPage(page)
         val items = results.items.filterIsInstance<PlaylistInfoItem>().map {
-            CatalogItem(it.name, it.uploaderName ?: "Album", it.thumbnails.lastOrNull()?.url, it.url)
+            CatalogItem(it.name, it.uploaderName ?: "Album", it.thumbnails.lastOrNull()?.url, it.url, it.uploaderUrl)
         }.distinctBy { it.url ?: it.name }
         CatalogPage(items, results.nextPage?.takeIf { Page.isValid(it) })
     }
@@ -85,10 +85,23 @@ object YouTubeMusicRepository {
         extractor.initialPage.items.mapNotNull { item ->
             when (item) {
                 is ChannelInfoItem -> if (artists) CatalogItem(item.name, "Artist", item.thumbnails.lastOrNull()?.url, item.url) else null
-                is PlaylistInfoItem -> if (!artists) CatalogItem(item.name, item.uploaderName ?: "Album", item.thumbnails.lastOrNull()?.url, item.url) else null
+                is PlaylistInfoItem -> if (!artists) CatalogItem(item.name, item.uploaderName ?: "Album", item.thumbnails.lastOrNull()?.url, item.url, item.uploaderUrl) else null
                 else -> null
             }
         }.distinctBy { it.name.lowercase() }.take(10)
+    }
+
+    suspend fun albumTracks(url: String, page: Page? = null): SearchPage = withContext(Dispatchers.IO) {
+        val id = YouTubePlaylistId.fromUrl(url) ?: throw IOException("Invalid album address")
+        val extractor = ServiceList.YouTube.getPlaylistExtractor("https://www.youtube.com/playlist?list=$id")
+        val results = if (page == null) { extractor.fetchPage(); extractor.initialPage } else extractor.getPage(page)
+        val tracks = results.items.mapNotNull { item ->
+            val videoId = YouTubeTrackId.fromUrl(item.url) ?: return@mapNotNull null
+            Track(id = "youtube:$videoId", title = item.name, artist = item.uploaderName ?: "Unknown artist",
+                uri = "kanadeyt://track/$videoId", artworkUri = item.thumbnails.lastOrNull()?.url,
+                durationMs = item.duration.coerceAtLeast(0) * 1_000, source = TrackSource.YOUTUBE)
+        }.distinctBy { it.id }
+        SearchPage(tracks, results.nextPage?.takeIf { Page.isValid(it) })
     }
 
     data class SearchPage(val tracks: List<Track>, val nextPage: Page?)
