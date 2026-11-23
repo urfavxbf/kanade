@@ -86,6 +86,14 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         if (appearancePrefs.contains("dark_theme")) appearancePrefs.getBoolean("dark_theme", true) else null,
     ))
     val themeMode: StateFlow<ThemeMode> = _themeMode
+    private val _controlStyle = MutableStateFlow(ControlStyle.fromStored(appearancePrefs.getString("control_style", null)))
+    internal val controlStyle: StateFlow<ControlStyle> = _controlStyle
+
+    internal fun setControlStyle(style: ControlStyle) {
+        appearancePrefs.edit().putString("control_style", style.key).apply()
+        _controlStyle.value = style
+    }
+
     private val _colorTheme = MutableStateFlow(appearancePrefs.getString("color_theme", "Kanade Green") ?: "Kanade Green")
     val colorTheme: StateFlow<String> = _colorTheme
     private val _appFont = MutableStateFlow(appearancePrefs.getString("app_font", "Kanade Sans") ?: "Kanade Sans")

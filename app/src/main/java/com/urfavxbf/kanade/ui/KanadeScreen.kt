@@ -1,5 +1,7 @@
 package com.urfavxbf.kanade.ui
 
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.graphics.luminance
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -317,8 +319,12 @@ fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMod
     val colorTheme by model.colorTheme.collectAsState()
     val font by model.appFont.collectAsState()
     val reduced by model.reduceMotion.collectAsState()
-    CompositionLocalProvider(LocalReduceMotion provides reduced, LocalAppFont provides (appFonts[font] ?: appFonts.getValue("Kanade Sans")),
-        LocalKanadePalette provides paletteFor(colorTheme, darkTheme)) {
+    val style by model.controlStyle.collectAsState()
+    val palette = paletteFor(colorTheme, darkTheme)
+    CompositionLocalProvider(LocalControlStyle provides style,
+        LocalRaisedColors provides (if (palette.background.luminance() < 0.5f) DarkRaised else LightRaised),
+        LocalReduceMotion provides reduced, LocalAppFont provides (appFonts[font] ?: appFonts.getValue("Kanade Sans")),
+        LocalKanadePalette provides palette) {
         KanadeContent(model, themeMode, account, accountAction, onAccountAction)
     }
 }
@@ -403,6 +409,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     // Separate source layers: nav/mini-player sample page content while inputs
     // sample the base background. Search controls never sample their own glass.
     val reduceNavigationMotion = LocalReduceMotion.current
+    val raised = LocalControlStyle.current == ControlStyle.SOFT_RAISED
     val chromeGlass = rememberLiquidState()
     val searchGlass = rememberLiquidState()
     CompositionLocalProvider(LocalChromeMetrics provides chrome, LocalSurfaceBackdrop provides searchGlass) {
@@ -420,7 +427,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     ) {
         // Capture the scrolling page under the chrome, not just a flat gradient.
         // Exclude the navbar and mini-player, which remain sibling overlays.
-        Box(Modifier.fillMaxSize().liquefiable(chromeGlass)
+        Box(Modifier.fillMaxSize().then(if (raised) Modifier else Modifier.liquefiable(chromeGlass))
             .background(Brush.verticalGradient(listOf(
                 LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom
             )))
@@ -881,7 +888,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             }
         }
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth().warmRaisedGlass(chromeGlass, radius = 24.dp, elevation = 12.dp)
+        Row(Modifier.fillMaxWidth().chromeSurface(chromeGlass)
             .padding(horizontal = 6.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             for ((tab, label, icon) in listOf(
                 Triple(Page.HOME, "Home", KanadeIcon.NAV_HOME),
@@ -895,12 +902,12 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     animationSpec = tween(duration), label = "navigation icon")
                 Column(Modifier.weight(1f).heightIn(min = 58.dp)
                     .clip(RoundedCornerShape(15.dp))
-                    .background(if (active) Color(0xFFF2E2D2).copy(alpha = 0.09f) else Color.Transparent)
+                    .background(if (raised && active) LocalRaisedColors.current.accent.copy(alpha = 0.14f) else if (active) Color(0xFFF2E2D2).copy(alpha = 0.09f) else Color.Transparent)
                     .motionSelectable(selected = active, role = Role.Tab, onClick = { showAlbum = false; showArtist = false; artistReturnsToAlbum = false; page = tab })
                     .semantics { contentDescription = label },
                     verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(Modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale }) {
-                        KanadeGlyph(icon, if (active) PrimaryText else Muted, selected = active, size = 24.dp)
+                        KanadeGlyph(icon, if (active && raised) LocalRaisedColors.current.accent else if (active) PrimaryText else Muted, selected = active, size = 24.dp)
                     }
                     AnimatedVisibility(visible = active,
                         enter = fadeIn(tween(duration)) + expandVertically(tween(duration)),
@@ -1176,6 +1183,14 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for ((mode, title) in listOf(ThemeMode.SYSTEM to "Follow system", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark")) {
                 ThemeChoice(title, themeMode == mode) { model.setThemeMode(mode) }
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        Label("Control style", 15.sp, PrimaryText, FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (style in ControlStyle.entries) {
+                ThemeChoice(style.label, LocalControlStyle.current == style) { model.setControlStyle(style) }
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -1846,6 +1861,11 @@ private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp, dialog: B
     clip(RoundedCornerShape(radius)).background(SurfaceLight)
 
 @Composable
+private fun Modifier.chromeSurface(backdrop: io.github.fletchmckee.liquid.LiquidState): Modifier =
+    if (LocalControlStyle.current == ControlStyle.SOFT_RAISED) softRaised(RoundedCornerShape(24.dp))
+    else warmRaisedGlass(backdrop, radius = 24.dp, elevation = 12.dp)
+
+@Composable
 private fun MiniPlayer(
     state: PlaybackState,
     backdrop: io.github.fletchmckee.liquid.LiquidState,
@@ -1853,7 +1873,9 @@ private fun MiniPlayer(
     onNext: () -> Unit,
     onExpand: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().warmRaisedGlass(backdrop, radius = 24.dp, elevation = 12.dp)
+    val raised = LocalControlStyle.current == ControlStyle.SOFT_RAISED
+    val progressColor = if (raised) LocalRaisedColors.current.accent else Accent
+    Column(Modifier.fillMaxWidth().chromeSurface(backdrop)
         .pointerInput(Unit) {
         var dy = 0f
         detectVerticalDragGestures(onDragStart = { dy = 0f }, onDragEnd = {
@@ -1892,8 +1914,8 @@ private fun MiniPlayer(
             label = "Mini player progress",
         )
         Box(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 5.dp)
-            .height(2.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.19f))) {
-            Box(Modifier.fillMaxWidth(smoothMiniProgress).height(2.dp).background(Accent))
+            .height(2.dp).clip(CircleShape).background(if (raised) progressColor.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.19f))) {
+            Box(Modifier.fillMaxWidth(smoothMiniProgress).height(2.dp).background(progressColor))
         }
     }
 }
@@ -2164,50 +2186,54 @@ private fun NowPlayingScreen(
                     state.error?.let { Label(it, 12.sp, ErrorColor) }
                 }
                 Spacer(Modifier.height(8.dp))
-                // One continuous glass panel for BOTH the active equalizer seekbar
-                // and all five controls. Every button remains a separate element.
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFF1B1D20)).padding(12.dp)) {
-                    PlaybackProgress(state, onSeek)
-                    Spacer(Modifier.height(9.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        MinimalGlassControlButton(
-                            KanadeIcon.SHUFFLE,
-                            if (state.shuffle) "Shuffle on" else "Shuffle off",
-                            active = state.shuffle,
-                            reduceMotion = LocalReduceMotion.current,
-                            backdrop = glassBackdrop, glass = false,
-                            onClick = onShuffle,
-                        )
-                        MinimalGlassControlButton(
-                            KanadeIcon.PREVIOUS, "Previous",
-                            reduceMotion = LocalReduceMotion.current,
-                            backdrop = glassBackdrop, glass = false,
-                            onClick = onPrevious,
-                        )
-                        LiquidGlassPlayPauseButton(
-                            playing = state.playing,
-                            backdrop = glassBackdrop,
-                            reduceMotion = LocalReduceMotion.current,
-                            onToggle = onToggle,
-                        )
-                        MinimalGlassControlButton(
-                            KanadeIcon.NEXT, "Next",
-                            reduceMotion = LocalReduceMotion.current,
-                            backdrop = glassBackdrop, glass = false,
-                            onClick = onNext,
-                        )
-                        MinimalGlassControlButton(
-                            if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
-                            if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
-                            active = state.repeatMode != Player.REPEAT_MODE_OFF,
-                            reduceMotion = LocalReduceMotion.current,
-                            backdrop = glassBackdrop, glass = false,
-                            onClick = onRepeat,
-                        )
+                // The video-backed player uses light foregrounds in both app themes.
+                CompositionLocalProvider(LocalRaisedColors provides DarkRaised) {
+                    val panelShape = RoundedCornerShape(24.dp)
+                    val panel = if (LocalControlStyle.current == ControlStyle.SOFT_RAISED) Modifier.softRaised(panelShape)
+                        else Modifier.clip(panelShape).background(Color(0xFF1B1D20))
+                    Column(Modifier.fillMaxWidth().then(panel).padding(12.dp)) {
+                        PlaybackProgress(state, onSeek)
+                        Spacer(Modifier.height(9.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            MinimalGlassControlButton(
+                                KanadeIcon.SHUFFLE,
+                                if (state.shuffle) "Shuffle on" else "Shuffle off",
+                                active = state.shuffle,
+                                reduceMotion = LocalReduceMotion.current,
+                                backdrop = glassBackdrop, glass = false,
+                                onClick = onShuffle,
+                            )
+                            MinimalGlassControlButton(
+                                KanadeIcon.PREVIOUS, "Previous",
+                                reduceMotion = LocalReduceMotion.current,
+                                backdrop = glassBackdrop, glass = false,
+                                onClick = onPrevious,
+                            )
+                            LiquidGlassPlayPauseButton(
+                                playing = state.playing,
+                                backdrop = glassBackdrop,
+                                reduceMotion = LocalReduceMotion.current,
+                                onToggle = onToggle,
+                            )
+                            MinimalGlassControlButton(
+                                KanadeIcon.NEXT, "Next",
+                                reduceMotion = LocalReduceMotion.current,
+                                backdrop = glassBackdrop, glass = false,
+                                onClick = onNext,
+                            )
+                            MinimalGlassControlButton(
+                                if (state.repeatMode == Player.REPEAT_MODE_ONE) KanadeIcon.REPEAT_ONE else KanadeIcon.REPEAT,
+                                if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
+                                active = state.repeatMode != Player.REPEAT_MODE_OFF,
+                                reduceMotion = LocalReduceMotion.current,
+                                backdrop = glassBackdrop, glass = false,
+                                onClick = onRepeat,
+                            )
+                        }
                     }
                 }
             }
@@ -2254,7 +2280,8 @@ private fun PlaybackProgress(state: PlaybackState, onSeek: (Long) -> Unit) {
                 }
             } finally { preview = null }
         }, contentAlignment = Alignment.CenterStart) {
-        SpectrumBar(state.artworkUri, progress, state.playing, LocalReduceMotion.current, Accent)
+        val accent = if (LocalControlStyle.current == ControlStyle.SOFT_RAISED) LocalRaisedColors.current.accent else Accent
+        SpectrumBar(state.artworkUri, progress, state.playing, LocalReduceMotion.current, accent)
         preview?.let {
             BoxWithConstraints(Modifier.fillMaxWidth().align(Alignment.TopStart)) {
                 val time = DurationFormatter.format((state.durationMs * it).toLong())
