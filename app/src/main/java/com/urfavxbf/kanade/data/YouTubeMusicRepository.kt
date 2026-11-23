@@ -15,6 +15,10 @@ import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_SONGS
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -46,6 +50,20 @@ object YouTubeMusicRepository {
                 }
             }
         })
+    }
+
+    data class CatalogItem(val name: String, val subtitle: String, val artwork: String?)
+
+    suspend fun searchCatalog(query: String, artists: Boolean): List<CatalogItem> = withContext(Dispatchers.IO) {
+        val extractor = ServiceList.YouTube.getSearchExtractor(query, listOf(if (artists) MUSIC_ARTISTS else MUSIC_ALBUMS), "")
+        extractor.fetchPage()
+        extractor.initialPage.items.mapNotNull { item ->
+            when (item) {
+                is ChannelInfoItem -> if (artists) CatalogItem(item.name, "Artist", item.thumbnails.lastOrNull()?.url) else null
+                is PlaylistInfoItem -> if (!artists) CatalogItem(item.name, item.uploaderName ?: "Album", item.thumbnails.lastOrNull()?.url) else null
+                else -> null
+            }
+        }.distinctBy { it.name.lowercase() }.take(10)
     }
 
     data class SearchPage(val tracks: List<Track>, val nextPage: Page?)

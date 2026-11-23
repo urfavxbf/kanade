@@ -55,7 +55,7 @@ internal fun LiquidGlassPlayPauseButton(
         modifier = Modifier
             .size(62.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .warmRaisedGlass(backdrop, radius = 31.dp, elevation = 8.dp)
+            .clip(CircleShape).background(Color.White.copy(alpha = 0.20f))
             .clickable(
                 interactionSource = source,
                 indication = null,

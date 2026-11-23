@@ -29,6 +29,7 @@ import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackConnection
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -45,11 +46,19 @@ data class LibraryState(
 )
 data class DiscoverState(
     val tracks: List<Track> = emptyList(),
+    val artists: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    val albums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
     val searching: Boolean = false,
     val loadingMore: Boolean = false,
     val hasMore: Boolean = false,
     val loadMoreError: String? = null,
     val message: String = "Search for songs or artists on YouTube.",
+)
+data class HomeDiscovery(
+    val recommended: List<Track> = emptyList(), val hits: List<Track> = emptyList(),
+    val artists: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    val albums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    val loading: Boolean = true, val error: String? = null,
 )
 data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Lyrics unavailable", val plain: String? = null)
 
@@ -102,6 +111,9 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val library: StateFlow<LibraryState> = _library
     private val _discover = MutableStateFlow(DiscoverState())
     val discover: StateFlow<DiscoverState> = _discover
+    private val _homeDiscovery = MutableStateFlow(HomeDiscovery())
+    val homeDiscovery: StateFlow<HomeDiscovery> = _homeDiscovery
+    private var homeJob: Job? = null
     private val _favorites = MutableStateFlow<List<Track>>(emptyList())
     val favorites: StateFlow<List<Track>> = _favorites
     private val _favoriteIds = MutableStateFlow<Set<String>>(emptySet())
@@ -134,6 +146,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private var recordedEntryId: Long? = null
 
     init {
+        loadHomeDiscovery()
         viewModelScope.launch { store.favorites.collect { _favoriteIds.value = it.toSet() } }
         viewModelScope.launch { store.favoriteTracks.collect { _favorites.value = it.map { item -> item.toTrack() } } }
         viewModelScope.launch { store.playlists.collect { _playlists.value = it } }
@@ -239,6 +252,31 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private suspend fun <T> homeResult(fallback: T, block: suspend () -> T): T =
+        try { block() } catch (e: CancellationException) { throw e } catch (_: Exception) { fallback }
+
+    fun loadHomeDiscovery() {
+        homeJob?.cancel()
+        _homeDiscovery.value = HomeDiscovery()
+        homeJob = viewModelScope.launch {
+            try {
+                kotlinx.coroutines.supervisorScope {
+                    val recommended = async { homeResult(emptyList()) { YouTubeMusicRepository.search("popular music Philippines").tracks } }
+                    val hits = async { homeResult(emptyList()) { YouTubeMusicRepository.search("top hits Philippines").tracks } }
+                    val artists = async { homeResult(emptyList()) { YouTubeMusicRepository.searchCatalog("popular Philippines", true) } }
+                    val albums = async { homeResult(emptyList()) { YouTubeMusicRepository.searchCatalog("popular Philippines", false) } }
+                    val first = recommended.await()
+                    val top = hits.await()
+                    val performers = artists.await()
+                    val records = albums.await()
+                    (first + top).forEach { known[it.id] = it }
+                    _homeDiscovery.value = HomeDiscovery(first, top, performers, records, false,
+                        if (first.isEmpty() && top.isEmpty() && performers.isEmpty() && records.isEmpty()) "Could not load music. Check your connection." else null)
+                }
+            } catch (e: CancellationException) { throw e }
+        }
+    }
+
     fun search(query: String) {
         searchJob?.cancel()
         loadMoreJob?.cancel()
@@ -258,18 +296,30 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         val generation = searchGeneration
         _discover.value = DiscoverState(searching = true, message = "Searching YouTube…")
         searchJob = viewModelScope.launch {
+            launch {
+                try {
+                    val artists = YouTubeMusicRepository.searchCatalog(normalized, true)
+                    if (generation == searchGeneration) _discover.value = _discover.value.copy(artists = artists)
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+            }
+            launch {
+                try {
+                    val albums = YouTubeMusicRepository.searchCatalog(normalized, false)
+                    if (generation == searchGeneration) _discover.value = _discover.value.copy(albums = albums)
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+            }
             try {
                 val page = YouTubeMusicRepository.search(normalized)
                 if (generation != searchGeneration) return@launch
                 nextSearchPage = page.nextPage
                 page.tracks.forEach { known[it.id] = it }
-                _discover.value = DiscoverState(tracks = page.tracks, hasMore = page.nextPage != null,
+                _discover.value = _discover.value.copy(tracks = page.tracks, searching = false, hasMore = page.nextPage != null,
                     message = if (page.tracks.isEmpty() && page.nextPage == null) "No matches. Try another song."
                         else "${page.tracks.size} results")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 if (generation == searchGeneration) {
-                    _discover.value = DiscoverState(message = "Couldn't load YouTube results. Check your connection and try again.")
+                    _discover.value = _discover.value.copy(searching = false, message = "Couldn't load YouTube results. Check your connection and try again.")
                 }
             }
         }
@@ -511,6 +561,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         searchJob?.cancel()
+        homeJob?.cancel()
         loadMoreJob?.cancel()
         playlistJob?.cancel()
         lyricJob?.cancel()

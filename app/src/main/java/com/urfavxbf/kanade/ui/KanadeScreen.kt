@@ -321,6 +321,7 @@ fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMod
 private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account: String, accountAction: String, onAccountAction: () -> Unit) {
     val library by model.library.collectAsState()
     val discover by model.discover.collectAsState()
+    val homeDiscovery by model.homeDiscovery.collectAsState()
     val playback by model.playback.state.collectAsState()
     val favorites by model.favorites.collectAsState()
     val favoriteIds by model.favoriteIds.collectAsState()
@@ -436,6 +437,24 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                 }.semantics { contentDescription = "Settings" }.padding(10.dp),
                                     style = TextStyle(color = PrimaryText, fontSize = 26.sp))
                             }
+                        }
+                        if (homeDiscovery.loading) item { Label("Finding music…", 13.sp, Muted) }
+                        homeDiscovery.error?.let { message -> item { Label(message, 13.sp, Muted); Chip("Retry") { model.loadHomeDiscovery() } } }
+                        if (homeDiscovery.recommended.isNotEmpty()) item {
+                            DashboardShelf("Recommended · popular searches", homeDiscovery.recommended.take(12)) { model.playListTracks(homeDiscovery.recommended, it) }
+                        }
+                        if (homeDiscovery.artists.isNotEmpty()) item {
+                            CatalogShelf("Artists to explore", homeDiscovery.artists) { entry ->
+                                scope = "Online"; onlineQuery = entry.name; submitted = entry.name; page = Page.ONLINE; model.search(entry.name)
+                            }
+                        }
+                        if (homeDiscovery.albums.isNotEmpty()) item {
+                            CatalogShelf("Albums to explore", homeDiscovery.albums) { entry ->
+                                scope = "Online"; onlineQuery = entry.name; submitted = entry.name; page = Page.ONLINE; model.search(entry.name)
+                            }
+                        }
+                        if (homeDiscovery.hits.isNotEmpty()) item {
+                            DashboardShelf("Top hits · search results", homeDiscovery.hits.take(12)) { model.playListTracks(homeDiscovery.hits, it) }
                         }
                         val quick = (favorites + topTracks + recent + library.tracks.take(6)).distinctBy { it.id }.take(6)
                         for (section in homeOrder) {
@@ -631,7 +650,13 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         }
                     }
                     val showOnline = scope != "On device" && submitted.isNotBlank() && submitted == needle
-                    val matches = if (showOnline) local + discover.tracks else local
+                    val matches = (if (showOnline) local + discover.tracks else local).distinctBy { it.id }
+                    val localArtists = local.map { it.artist }.filter { it.isNotBlank() && it != "Unknown artist" }.distinct()
+                        .map { name -> YouTubeMusicRepository.CatalogItem(name, "Artist", local.firstOrNull { it.artist == name }?.artworkUri) }
+                    val localAlbums = local.filter { it.album.isNotBlank() }.distinctBy { it.album.lowercase() }
+                        .map { YouTubeMusicRepository.CatalogItem(it.album, it.artist, it.artworkUri) }
+                    val artists = (localArtists + if (showOnline) discover.artists else emptyList()).distinctBy { it.name.lowercase() }
+                    val albums = (localAlbums + if (showOnline) discover.albums else emptyList()).distinctBy { it.name.lowercase() }
                     if (scope != "Online" && !model.hasPermission()) {
                         Chip("Allow local music") { permissions.launch(model.permission()) }
                     }
@@ -660,14 +685,19 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                 }
                             }
                         }
-                    } else if (matches.isEmpty()) Label(if (discover.searching && showOnline) "Searching…" else "No results shown.", 14.sp, Muted)
+                    } else if (matches.isEmpty() && artists.isEmpty() && albums.isEmpty()) Label(if (discover.searching && showOnline) "Searching…" else "No results shown.", 14.sp, Muted)
                     else TrackList(matches, favoriteIds,
                         onPlay = { model.playListTracks(matches, it) },
                         onFavorite = model::toggleFavorite, onRadio = model::startRadio,
                         onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS },
-                        pagination = if (showOnline) discover else null, onLoadMore = model::loadMoreSearchResults)
+                        pagination = if (showOnline) discover else null, onLoadMore = model::loadMoreSearchResults,
+                        searchArtists = artists, searchAlbums = albums, searchLayout = true,
+                        onCatalog = { entry ->
+                            onlineQuery = entry.name; submitted = entry.name
+                            if (scope != "On device") model.search(entry.name)
+                        })
                 }
                 Page.PLAYLISTS -> Column {
                     Chip("Queue sessions") { overlay = Overlay.SESSIONS }
@@ -1306,6 +1336,23 @@ private fun DashboardShelf(title: String, tracks: List<Track>, onSelect: (Track)
     }
 }
 
+@Composable
+private fun CatalogShelf(title: String, entries: List<YouTubeMusicRepository.CatalogItem>, onSelect: (YouTubeMusicRepository.CatalogItem) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Label(title, 20.sp, PrimaryText, FontWeight.Bold)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(entries, key = { it.name }) { entry ->
+                Column(Modifier.width(128.dp).clickable(role = Role.Button) { onSelect(entry) }) {
+                    AlbumImage(entry.artwork, Modifier.size(128.dp))
+                    Spacer(Modifier.height(5.dp))
+                    Label(entry.name, 14.sp, PrimaryText, FontWeight.Bold, lines = 2)
+                    Label(entry.subtitle, 12.sp, Muted, lines = 1)
+                }
+            }
+        }
+    }
+}
+
 private data class MoodCategory(val name: String, val query: String, val color: Color)
 
 private val moodCategories = listOf(
@@ -1358,13 +1405,21 @@ private fun TrackList(
     onTags: (Track) -> Unit = {},
     pagination: DiscoverState? = null,
     onLoadMore: (() -> Unit)? = null,
+    searchArtists: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    searchAlbums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    searchLayout: Boolean = false,
+    onCatalog: (YouTubeMusicRepository.CatalogItem) -> Unit = {},
 ) {
     var actionsTrack by remember { mutableStateOf<Track?>(null) }
     val listState = rememberLazyListState()
-    val nearEnd by remember(listState, tracks.size) {
+    val prefixCount = if (!searchLayout) 0 else
+        (if (tracks.isNotEmpty()) 2 else 0) +
+        (if (searchArtists.isNotEmpty()) 1 + searchArtists.size else 0) +
+        (if (searchAlbums.isNotEmpty()) 1 + searchAlbums.size else 0)
+    val nearEnd by remember(listState, tracks.size, prefixCount) {
         derivedStateOf {
             val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            last >= (tracks.size - 4).coerceAtLeast(0)
+            last >= prefixCount + (tracks.size - 4).coerceAtLeast(0)
         }
     }
     LaunchedEffect(nearEnd, pagination?.hasMore, pagination?.loadingMore, pagination?.loadMoreError, tracks.size) {
@@ -1374,10 +1429,36 @@ private fun TrackList(
     val (underlay, insets) = underChrome()
     LazyColumn(state = listState, modifier = underlay, contentPadding = insets,
         verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        items(tracks, key = { it.id }) { track ->
+        if (searchLayout && tracks.isNotEmpty()) {
+            item(key = "search-top-result") {
+                val top = tracks.first()
+                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                    Label("Top result", 20.sp, PrimaryText, FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onPlay(top) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AlbumImage(top.artworkUri, Modifier.size(64.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Label(top.title, 16.sp, PrimaryText, FontWeight.Bold, lines = 2)
+                            Label("Track · ${top.artist}", 12.sp, Muted, lines = 1)
+                        }
+                    }
+                }
+            }
+        }
+        if (searchLayout && searchArtists.isNotEmpty()) {
+            item(key = "search-artists-heading") { Label("Artists", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
+            items(searchArtists, key = { "artist:${it.name}" }) { entry -> CatalogResultRow(entry, onCatalog) }
+        }
+        if (searchLayout && searchAlbums.isNotEmpty()) {
+            item(key = "search-albums-heading") { Label("Albums", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
+            items(searchAlbums, key = { "album:${it.name}" }) { entry -> CatalogResultRow(entry, onCatalog) }
+        }
+        if (searchLayout && tracks.isNotEmpty()) item(key = "search-tracks-heading") { Label("Tracks", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
+        items(tracks, key = { "track:${it.id}" }) { track ->
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
-                    .background(LocalKanadePalette.current.tint.copy(alpha = 0.055f)).padding(8.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(if (searchLayout) 0.dp else 15.dp))
+                    .background(if (searchLayout) Color.Transparent else LocalKanadePalette.current.tint.copy(alpha = 0.055f)).padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AlbumImage(track.artworkUri, Modifier.size(54.dp).clickable { onPlay(track) })
@@ -1423,6 +1504,18 @@ private fun TrackList(
                 Spacer(Modifier.height(7.dp))
                 SimpleRow("Edit display metadata", "Change the labels shown in Kanade") { actionsTrack = null; onTags(track) }
             }
+        }
+    }
+}
+
+@Composable
+private fun CatalogResultRow(entry: YouTubeMusicRepository.CatalogItem, onSelect: (YouTubeMusicRepository.CatalogItem) -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onSelect(entry) }.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        AlbumImage(entry.artwork, Modifier.size(50.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Label(entry.name, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
+            Label(entry.subtitle, 12.sp, Muted, lines = 1)
         }
     }
 }
@@ -1481,16 +1574,8 @@ private fun EmptyState(icon: KanadeIcon, title: String, detail: String, action: 
 }
 
 @Composable
-private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp, dialog: Boolean = false): Modifier {
-    val palette = LocalKanadePalette.current
-    val shape = RoundedCornerShape(radius)
-    if (palette.flat) return clip(shape).background(palette.surface)
-    // Page surfaces sample only the separately recorded background; dialogs are
-    // in another window and use an opaque-enough fallback for readable text.
-    val backdrop = if (dialog) null else LocalSurfaceBackdrop.current
-    val surface = warmRaisedGlass(backdrop, radius = radius, elevation = 8.dp)
-    return if (dialog) surface.background(palette.glass.copy(alpha = 0.90f)) else surface
-}
+private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp, dialog: Boolean = false): Modifier =
+    clip(RoundedCornerShape(radius)).background(SurfaceLight)
 
 @Composable
 private fun MiniPlayer(
@@ -1720,7 +1805,7 @@ private fun NowPlayingScreen(
     val glassBackdrop = rememberLiquidState()
     Box(Modifier.fillMaxSize()) {
         // Only the artwork/backdrop is sampled: never the player controls themselves.
-        Box(Modifier.fillMaxSize().liquefiable(glassBackdrop).background(Background)) {
+        Box(Modifier.fillMaxSize().background(Background)) {
             if (!state.artworkUri.isNullOrBlank()) {
                 AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().blur(55.dp).alpha(0.38f))
@@ -1813,7 +1898,7 @@ private fun NowPlayingScreen(
                 Spacer(Modifier.height(8.dp))
                 // One continuous glass panel for BOTH the active equalizer seekbar
                 // and all five controls. Every button remains a separate element.
-                GlassPlayerControls(backdrop = glassBackdrop) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(SurfaceLight.copy(alpha = 0.82f)).padding(12.dp)) {
                     PlaybackProgress(state, onSeek)
                     Spacer(Modifier.height(9.dp))
                     Row(
@@ -1826,13 +1911,13 @@ private fun NowPlayingScreen(
                             if (state.shuffle) "Shuffle on" else "Shuffle off",
                             active = state.shuffle,
                             reduceMotion = LocalReduceMotion.current,
-                            backdrop = glassBackdrop,
+                            backdrop = glassBackdrop, glass = false,
                             onClick = onShuffle,
                         )
                         MinimalGlassControlButton(
                             KanadeIcon.PREVIOUS, "Previous",
                             reduceMotion = LocalReduceMotion.current,
-                            backdrop = glassBackdrop,
+                            backdrop = glassBackdrop, glass = false,
                             onClick = onPrevious,
                         )
                         LiquidGlassPlayPauseButton(
@@ -1844,7 +1929,7 @@ private fun NowPlayingScreen(
                         MinimalGlassControlButton(
                             KanadeIcon.NEXT, "Next",
                             reduceMotion = LocalReduceMotion.current,
-                            backdrop = glassBackdrop,
+                            backdrop = glassBackdrop, glass = false,
                             onClick = onNext,
                         )
                         MinimalGlassControlButton(
@@ -1852,7 +1937,7 @@ private fun NowPlayingScreen(
                             if (state.repeatMode == Player.REPEAT_MODE_OFF) "Repeat off" else "Repeat on",
                             active = state.repeatMode != Player.REPEAT_MODE_OFF,
                             reduceMotion = LocalReduceMotion.current,
-                            backdrop = glassBackdrop,
+                            backdrop = glassBackdrop, glass = false,
                             onClick = onRepeat,
                         )
                     }

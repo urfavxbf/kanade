@@ -148,6 +148,7 @@ internal fun MinimalGlassControlButton(
     reduceMotion: Boolean,
     backdrop: LiquidState? = null,
     contentColor: Color = Color(0xFFF9F3EC),
+    glass: Boolean = true,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -162,7 +163,8 @@ internal fun MinimalGlassControlButton(
         modifier = Modifier
             .size(44.dp)
             .graphicsLayer { scaleX = pressedScale; scaleY = pressedScale }
-            .warmRaisedGlass(backdrop, radius = 16.dp, elevation = if (active) 5.dp else 2.dp)
+            .then(if (glass) Modifier.warmRaisedGlass(backdrop, radius = 16.dp, elevation = if (active) 5.dp else 2.dp)
+                else Modifier.clip(shape).background(Color.White.copy(alpha = if (active) 0.16f else 0.05f)))
             .background(if (active) Color(0xFFFFF3E3).copy(alpha = 0.12f) else Color.Transparent)
             .clickable(
                 interactionSource = interactionSource,
