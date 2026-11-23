@@ -1907,7 +1907,7 @@ private fun NowPlayingScreen(
                 Spacer(Modifier.height(8.dp))
                 // One continuous glass panel for BOTH the active equalizer seekbar
                 // and all five controls. Every button remains a separate element.
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(SurfaceLight.copy(alpha = 0.82f)).padding(12.dp)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFF1B1D20)).padding(12.dp)) {
                     PlaybackProgress(state, onSeek)
                     Spacer(Modifier.height(9.dp))
                     Row(
