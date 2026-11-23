@@ -57,6 +57,9 @@ def report(name, xml):
 
 adb("shell", "input", "keyevent", "KEYCODE_WAKEUP", check=False)
 adb("shell", "wm", "dismiss-keyguard", check=False)
+subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=90", "-metadata", "title=Kanade Test Tone", "-metadata", "artist=Test Artist", "-metadata", "album=Test Album", "-y", "/tmp/kanade-test-tone.mp3"], check=True)
+adb("push", "/tmp/kanade-test-tone.mp3", "/sdcard/Music/kanade-test-tone.mp3")
+adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", "file:///sdcard/Music/kanade-test-tone.mp3", check=False)
 adb("install", "-r", "target-app/app/build/outputs/apk/debug/app-debug.apk")
 adb("shell", "am", "start", "-n", "com.urfavxbf.kanade/.MainActivity")
 time.sleep(10)
@@ -72,11 +75,30 @@ if require_tap("Search", xml):
 if require_tap("Library", xml):
     xml = snapshot("04-library")
     report("library", xml)
-    for permission in ("Grant music permission", "Allow", "Allow access to music and audio"):
-        if tap(permission, xml):
-            time.sleep(2)
-            xml = snapshot("04-library-permission")
+    if tap("Scan / allow", xml):
+        time.sleep(2)
+        xml = snapshot("04-library-permission")
+        report("permission-dialog", xml)
+        for permission in ("Allow", "Allow access to music and audio"):
+            if tap(permission, xml):
+                time.sleep(4)
+                xml = snapshot("04-library-allowed")
+                break
     report("library-after-permission", xml)
+    if tap("Kanade Test Tone", xml) or tap("kanade-test-tone", xml):
+        time.sleep(3)
+        xml = snapshot("04-playing")
+        report("playing", xml)
+        if tap("Open now playing", xml):
+            xml = snapshot("04-player")
+            report("player", xml)
+            adb("shell", "input", "keyevent", "KEYCODE_BACK")
+            xml = snapshot("04-after-player")
+        else:
+            failures.append("Could not find the mini-player to open the player")
+    else:
+        failures.append("Synthetic local test song not found")
+
 if require_tap("Playlists", xml):
     xml = snapshot("05-playlists")
     report("playlists", xml)
