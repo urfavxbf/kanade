@@ -627,21 +627,10 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         }
                     }
                 }
-                Page.ONLINE -> Column {
-                    Header("Search", "Search on-device MP3s and YouTube Music songs.")
+                Page.ONLINE -> {
                     val submit: () -> Unit = {
                         submitted = onlineQuery.trim()
                         if (scope != "On device") model.search(submitted)
-                    }
-                    SearchField(onlineQuery, "Song, album or artist", { onlineQuery = it }, submit, glassBackdrop = searchGlass)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (choice in listOf("All", "On device", "Online")) {
-                            Chip(choice, scope == choice) {
-                                scope = choice
-                                if (choice != "On device" && onlineQuery.isNotBlank()) submit()
-                            }
-                        }
-                        Chip("Search") { submit() }
                     }
                     val needle = onlineQuery.trim()
                     val local = remember(library.tracks, needle, scope) {
@@ -657,36 +646,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         .map { YouTubeMusicRepository.CatalogItem(it.album, it.artist, it.artworkUri) }
                     val artists = (localArtists + if (showOnline) discover.artists else emptyList()).distinctBy { it.name.lowercase() }
                     val albums = (localAlbums + if (showOnline) discover.albums else emptyList()).distinctBy { it.name.lowercase() }
-                    if (scope != "Online" && !model.hasPermission()) {
-                        Chip("Allow local music") { permissions.launch(model.permission()) }
-                    }
-                    if (showOnline) Label(discover.message, 12.sp, Muted)
-                    if (needle.isEmpty()) {
-                        val (underlay, insets) = underChrome()
-                        val availableTracks = (recent + favorites + library.tracks).distinctBy { it.id }
-                        LazyColumn(modifier = underlay, contentPadding = insets,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            item { Spacer(Modifier.height(4.dp)); Label("Explore moods", 20.sp, PrimaryText, FontWeight.Bold) }
-                            items(moodCategories.chunked(2)) { pair ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    pair.forEach { mood ->
-                                        val artwork = availableTracks.firstOrNull {
-                                            it.title.contains(mood.name, true) || it.album.contains(mood.name, true)
-                                        }?.artworkUri
-                                        MoodTile(mood, artwork,
-                                            Modifier.weight(1f)) {
-                                            scope = "Online"
-                                            onlineQuery = mood.query
-                                            submitted = mood.query
-                                            model.search(mood.query)
-                                        }
-                                    }
-                                    if (pair.size == 1) Spacer(Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    } else if (matches.isEmpty() && artists.isEmpty() && albums.isEmpty()) Label(if (discover.searching && showOnline) "Searching…" else "No results shown.", 14.sp, Muted)
-                    else TrackList(matches, favoriteIds,
+                    val availableTracks = (recent + favorites + library.tracks).distinctBy { it.id }
+                    TrackList(matches, favoriteIds,
                         onPlay = { model.playListTracks(matches, it) },
                         onFavorite = model::toggleFavorite, onRadio = model::startRadio,
                         onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
@@ -697,7 +658,45 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         onCatalog = { entry ->
                             onlineQuery = entry.name; submitted = entry.name
                             if (scope != "On device") model.search(entry.name)
-                        })
+                        },
+                        searchLeading = {
+                            Column {
+                                Header("Search", "Search on-device MP3s and YouTube Music songs.")
+                                SearchField(onlineQuery, "Song, album or artist", { onlineQuery = it }, submit, glassBackdrop = searchGlass)
+                                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    for (choice in listOf("All", "On device", "Online")) {
+                                        Chip(choice, scope == choice) {
+                                            scope = choice
+                                            if (choice != "On device" && onlineQuery.isNotBlank()) submit()
+                                        }
+                                    }
+                                    Chip("Search") { submit() }
+                                }
+                                if (scope != "Online" && !model.hasPermission()) Chip("Allow local music") { permissions.launch(model.permission()) }
+                                if (showOnline) Label(discover.message, 12.sp, Muted)
+                            }
+                        },
+                        searchBrowse = if (needle.isEmpty()) {{
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Spacer(Modifier.height(4.dp))
+                                Label("Explore moods", 20.sp, PrimaryText, FontWeight.Bold)
+                                for (pair in moodCategories.chunked(2)) {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        pair.forEach { mood ->
+                                            val artwork = availableTracks.firstOrNull {
+                                                it.title.contains(mood.name, true) || it.album.contains(mood.name, true)
+                                            }?.artworkUri
+                                            MoodTile(mood, artwork, Modifier.weight(1f)) {
+                                                scope = "Online"; onlineQuery = mood.query; submitted = mood.query; model.search(mood.query)
+                                            }
+                                        }
+                                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        }} else null,
+                        searchEmptyMessage = if (needle.isNotEmpty() && matches.isEmpty() && artists.isEmpty() && albums.isEmpty())
+                            if (discover.searching && showOnline) "Searching…" else "No results shown." else null)
                 }
                 Page.PLAYLISTS -> Column {
                     Chip("Queue sessions") { overlay = Overlay.SESSIONS }
@@ -1409,11 +1408,15 @@ private fun TrackList(
     searchAlbums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
     searchLayout: Boolean = false,
     onCatalog: (YouTubeMusicRepository.CatalogItem) -> Unit = {},
+    searchLeading: (@Composable () -> Unit)? = null,
+    searchBrowse: (@Composable () -> Unit)? = null,
+    searchEmptyMessage: String? = null,
 ) {
     var actionsTrack by remember { mutableStateOf<Track?>(null) }
     val listState = rememberLazyListState()
     val prefixCount = if (!searchLayout) 0 else
-        (if (tracks.isNotEmpty()) 2 else 0) +
+        (if (searchLeading != null) 1 else 0) + (if (searchBrowse != null) 1 else 0) +
+        (if (searchEmptyMessage != null) 1 else 0) + (if (tracks.isNotEmpty()) 2 else 0) +
         (if (searchArtists.isNotEmpty()) 1 + searchArtists.size else 0) +
         (if (searchAlbums.isNotEmpty()) 1 + searchAlbums.size else 0)
     val nearEnd by remember(listState, tracks.size, prefixCount) {
@@ -1427,8 +1430,13 @@ private fun TrackList(
             !pagination.loadingMore && pagination.loadMoreError == null) onLoadMore?.invoke()
     }
     val (underlay, insets) = underChrome()
-    LazyColumn(state = listState, modifier = underlay, contentPadding = insets,
+    val bottomPadding = with(LocalDensity.current) { LocalChromeMetrics.current.bottomHeight.toDp() + 12.dp }
+    LazyColumn(state = listState, modifier = if (searchLayout) Modifier.fillMaxSize() else underlay,
+        contentPadding = if (searchLayout) PaddingValues(bottom = bottomPadding) else insets,
         verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        if (searchLeading != null) item(key = "search-leading") { searchLeading() }
+        if (searchBrowse != null) item(key = "search-browse") { searchBrowse() }
+        if (searchEmptyMessage != null) item(key = "search-empty") { Label(searchEmptyMessage, 14.sp, Muted) }
         if (searchLayout && tracks.isNotEmpty()) {
             item(key = "search-top-result") {
                 val top = tracks.first()
