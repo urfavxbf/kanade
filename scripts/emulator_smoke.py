@@ -57,7 +57,7 @@ def report(name, xml):
 
 adb("shell", "input", "keyevent", "KEYCODE_WAKEUP", check=False)
 adb("shell", "wm", "dismiss-keyguard", check=False)
-adb("install", "-r", "app/build/outputs/apk/debug/app-debug.apk")
+adb("install", "-r", "target-app/app/build/outputs/apk/debug/app-debug.apk")
 adb("shell", "am", "start", "-n", "com.urfavxbf.kanade/.MainActivity")
 time.sleep(10)
 xml = snapshot("01-launch")
