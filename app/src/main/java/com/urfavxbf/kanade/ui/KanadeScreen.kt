@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.animation.core.tween
 import android.view.TextureView
@@ -28,6 +30,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -405,7 +409,12 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     Box(Modifier.fillMaxSize()) {
     Box(Modifier.fillMaxSize().liquefiable(searchGlass).background(Brush.verticalGradient(
         listOf(LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom))))
-    if (!showNowPlaying) Box(
+    AnimatedContent(targetState = showNowPlaying, transitionSpec = {
+        val duration = if (reduceNavigationMotion) 0 else 220
+        if (targetState) (slideInVertically(tween(duration)) { it / 6 } + fadeIn(tween(duration))) togetherWith fadeOut(tween(duration))
+        else fadeIn(tween(duration)) togetherWith (slideOutVertically(tween(duration)) { it / 6 } + fadeOut(tween(duration)))
+    }, label = "player screen") { playerVisible ->
+    if (!playerVisible) Box(
         Modifier.fillMaxSize().safeDrawingPadding().imePadding()
             .padding(start = 16.dp, end = 16.dp, top = 8.dp),
     ) {
@@ -416,7 +425,12 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom
             )))
             .onGloballyPositioned { chrome.pageTop = it.positionInRoot().y.toInt() }) {
-            if (showAlbum && albumPage.album != null) {
+            Crossfade(targetState = when {
+                showAlbum && albumPage.album != null -> "album"
+                showArtist && artistPage.artist != null -> "artist"
+                else -> "page"
+            }, animationSpec = tween(if (reduceNavigationMotion) 0 else 220), label = "detail screen") { section ->
+            if (section == "album") {
                 AlbumScreen(albumPage, favoriteIds, onBack = { showAlbum = false },
                     onPlay = { model.playListTracks(albumPage.tracks, it) }, onFavorite = model::toggleFavorite,
                     onRadio = model::startRadio, onQueue = { model.playback.add(it, true) },
@@ -424,7 +438,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                     onMore = model::moreAlbumTracks, onRetry = model::retryAlbum,
                     onArtist = { entry -> model.openArtist(entry); artistReturnsToAlbum = true; showAlbum = false; showArtist = true })
-            } else if (showArtist && artistPage.artist != null) {
+            } else if (section == "artist") {
                 ArtistScreen(artistPage, favoriteIds, onBack = { showArtist = false; if (artistReturnsToAlbum) showAlbum = true; artistReturnsToAlbum = false },
                     onPlay = { model.playListTracks(artistPage.tracks, it) }, onFavorite = model::toggleFavorite,
                     onRadio = model::startRadio, onQueue = { model.playback.add(it, true) },
@@ -459,7 +473,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                 Label("Home", 32.sp, PrimaryText, FontWeight.ExtraBold, Modifier.weight(1f).combinedClickable(
                                     onClick = { overlay = Overlay.HOME_EDITOR }, onLongClick = { overlay = Overlay.HOME_EDITOR }))
                                 Chip("Edit Home") { overlay = Overlay.HOME_EDITOR }
-                                BasicText("⚙", Modifier.clickable(role = Role.Button) {
+                                BasicText("⚙", Modifier.motionClick {
                                     settingsReturn = page; page = Page.SETTINGS
                                 }.semantics { contentDescription = "Settings" }.padding(10.dp),
                                     style = TextStyle(color = PrimaryText, fontSize = 26.sp))
@@ -472,7 +486,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                 "Continue listening" -> {
                                     val resume = recent.firstOrNull()
                                     if (playback.hasItem || resume != null) item {
-                                        Row(Modifier.fillMaxWidth().glassSurface(18.dp).clickable(role = Role.Button) {
+                                        Row(Modifier.fillMaxWidth().glassSurface(18.dp).motionClick {
                                             if (playback.hasItem) {
                                                 if (!playback.playing) model.playback.toggle()
                                                 showNowPlaying = true
@@ -723,7 +737,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                             }
                         },
                         searchBrowse = if (needle.isEmpty()) {{
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(modifier = if (LocalReduceMotion.current) Modifier else Modifier.animateContentSize(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Spacer(Modifier.height(4.dp))
                                 if (selectedMood != null) Chip("All moods") { selectedMood = null }
                                 Label(selectedMood?.name ?: "Explore moods", 20.sp, PrimaryText, FontWeight.Bold)
@@ -834,13 +849,18 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
         }
         }
         }
+        }
 
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
             .onGloballyPositioned { chrome.bottomHeight = it.size.height }) {
-        if (playback.hasItem) {
-            Spacer(Modifier.height(7.dp))
-            MiniPlayer(playback, backdrop = chromeGlass, onToggle = model.playback::toggle,
-                onNext = model.playback::next, onExpand = { showNowPlaying = true })
+        AnimatedVisibility(visible = playback.hasItem,
+            enter = fadeIn(tween(if (reduceNavigationMotion) 0 else 180)) + expandVertically(tween(if (reduceNavigationMotion) 0 else 220)),
+            exit = fadeOut(tween(if (reduceNavigationMotion) 0 else 140)) + shrinkVertically(tween(if (reduceNavigationMotion) 0 else 180))) {
+            Column {
+                Spacer(Modifier.height(7.dp))
+                MiniPlayer(playback, backdrop = chromeGlass, onToggle = model.playback::toggle,
+                    onNext = model.playback::next, onExpand = { showNowPlaying = true })
+            }
         }
         if (radioMessage.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -865,13 +885,17 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             )) {
                 val active = page == tab
                 val duration = if (LocalReduceMotion.current) 0 else 150
+                val iconScale by animateFloatAsState(if (active) 1f else 0.91f,
+                    animationSpec = tween(duration), label = "navigation icon")
                 Column(Modifier.weight(1f).heightIn(min = 58.dp)
                     .clip(RoundedCornerShape(15.dp))
                     .background(if (active) Color(0xFFF2E2D2).copy(alpha = 0.09f) else Color.Transparent)
                     .selectable(selected = active, role = Role.Tab, onClick = { showAlbum = false; showArtist = false; artistReturnsToAlbum = false; page = tab })
                     .semantics { contentDescription = label },
                     verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                    KanadeGlyph(icon, if (active) PrimaryText else Muted, selected = active, size = 24.dp)
+                    Box(Modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale }) {
+                        KanadeGlyph(icon, if (active) PrimaryText else Muted, selected = active, size = 24.dp)
+                    }
                     AnimatedVisibility(visible = active,
                         enter = fadeIn(tween(duration)) + expandVertically(tween(duration)),
                         exit = fadeOut(tween(duration)) + shrinkVertically(tween(duration))) {
@@ -891,6 +915,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             onShuffle = model.playback::toggleShuffle, onRepeat = model.playback::cycleRepeat,
             onSeek = model.playback::seek, onPlayAt = model.playback::playAt,
             onLyrics = { overlay = Overlay.LYRICS }, lyricDelay = lyricDelay, onTools = { overlay = Overlay.TOOLS })
+    }
     }
     }
 
@@ -1272,10 +1297,11 @@ private fun Label(
 }
 
 @Composable private fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
+    val color by animateColorAsState(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f),
+        animationSpec = tween(if (LocalReduceMotion.current) 0 else 180), label = "chip color")
     Box(Modifier.clip(RoundedCornerShape(13.dp))
-        .background(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f))
-
-        .clickable(onClick = onClick)
+        .background(color)
+        .motionClick(onClick = onClick)
         .padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
         Label(text, 12.sp, if (selected) Background else PrimaryText,
             if (selected) FontWeight.Bold else FontWeight.Normal)
@@ -1284,9 +1310,21 @@ private fun Label(
 
 @Composable private fun AccentAction(text: String, onClick: () -> Unit) {
     Box(Modifier.clip(RoundedCornerShape(13.dp)).background(Accent)
-        .clickable(onClick = onClick).padding(horizontal = 17.dp, vertical = 14.dp)) {
+        .motionClick(onClick = onClick).padding(horizontal = 17.dp, vertical = 14.dp)) {
         Label(text, 12.sp, Background, FontWeight.Bold)
     }
+}
+
+@Composable
+private fun Modifier.motionClick(role: Role = Role.Button, onClickLabel: String? = null, onClick: () -> Unit): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && !LocalReduceMotion.current) 0.96f else 1f,
+        animationSpec = tween(if (LocalReduceMotion.current) 0 else 130), label = "press scale",
+    )
+    return graphicsLayer { scaleX = scale; scaleY = scale }
+        .clickable(interactionSource = interaction, indication = null, role = role, onClickLabel = onClickLabel, onClick = onClick)
 }
 
 @Composable
@@ -1324,7 +1362,7 @@ private fun LyricsSearchDialog(title: String, artist: String, close: () -> Unit,
         AccentAction("Search LRCLIB") { if (query.isNotBlank()) submit() }
         if (message.isNotEmpty()) Label(message, 14.sp, Muted)
         for (match in matches) {
-            Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { choose(match) }.padding(vertical = 10.dp)) {
+            Column(Modifier.fillMaxWidth().motionClick { choose(match) }.padding(vertical = 10.dp)) {
                 Label(match.title, 16.sp, PrimaryText, FontWeight.Bold)
                 Label(listOf(match.artist, match.album).filter { it.isNotBlank() }.joinToString(" · "), 13.sp, Muted)
                 val type = if (match.lyrics.synced.isEmpty()) "Plain lyrics" else "Synced lyrics"
@@ -1373,7 +1411,7 @@ private fun DashboardShelf(title: String, tracks: List<Track>, onSelect: (Track)
         Label(title, 20.sp, PrimaryText, FontWeight.Bold)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(tracks, key = { it.id }) { track ->
-                Column(Modifier.width(144.dp).clickable(role = Role.Button) { onSelect(track) }) {
+                Column(Modifier.width(144.dp).motionClick { onSelect(track) }) {
                     AlbumImage(track.artworkUri, Modifier.size(144.dp))
                     Spacer(Modifier.height(5.dp))
                     Label(if (track.source == TrackSource.YOUTUBE) songTitle(track.title, track.artist) else track.title,
@@ -1391,7 +1429,7 @@ private fun CatalogShelf(title: String, entries: List<YouTubeMusicRepository.Cat
         Label(title, 20.sp, PrimaryText, FontWeight.Bold)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(entries) { entry ->
-                Column(Modifier.width(128.dp).clickable(role = Role.Button) { onSelect(entry) }) {
+                Column(Modifier.width(128.dp).motionClick { onSelect(entry) }) {
                     AlbumImage(entry.artwork, Modifier.size(128.dp))
                     Spacer(Modifier.height(5.dp))
                     Label(entry.name, 14.sp, PrimaryText, FontWeight.Bold, lines = 2)
@@ -1408,7 +1446,7 @@ private fun MoodTile(name: String, modifier: Modifier = Modifier, onClick: () ->
     val color = colors[(name.hashCode() and Int.MAX_VALUE) % colors.size]
     Box(modifier.height(88.dp).clip(RoundedCornerShape(18.dp))
         .background(Brush.linearGradient(listOf(color, lerp(color, Color.Black, 0.38f))))
-        .clickable(role = Role.Button, onClick = onClick)
+        .motionClick(onClick = onClick)
         .semantics { contentDescription = "Browse $name playlists" }.padding(14.dp)) {
         Label(name, 15.sp, Color.White, FontWeight.Bold,
             modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(0.58f), lines = 2)
@@ -1421,8 +1459,8 @@ private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
         .background(Brush.linearGradient(listOf(LocalKanadePalette.current.artworkStart, LocalKanadePalette.current.artworkEnd))),
         contentAlignment = Alignment.Center) {
         KanadeGlyph(KanadeIcon.MUSIC, Accent, selected = true, size = 28.dp)
-        if (!artwork.isNullOrEmpty()) {
-            AsyncImage(model = artwork, contentDescription = "Album cover",
+        Crossfade(targetState = artwork, animationSpec = tween(if (LocalReduceMotion.current) 0 else 220), label = "album artwork") { image ->
+            if (!image.isNullOrEmpty()) AsyncImage(model = image, contentDescription = "Album cover",
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
     }
@@ -1461,7 +1499,7 @@ private fun AlbumScreen(
                 if (album.subtitle.isNotBlank() && album.subtitle != "Album") {
                     if (album.url == null || album.artistUrl != null) {
                         Label(album.subtitle, 15.sp, Accent, FontWeight.SemiBold,
-                            modifier = Modifier.clickable(role = Role.Button) {
+                            modifier = Modifier.motionClick {
                                 onArtist(YouTubeMusicRepository.CatalogItem(album.subtitle, "Artist", null, album.artistUrl))
                             }.padding(vertical = 8.dp))
                     } else Label(album.subtitle, 15.sp, Muted, modifier = Modifier.padding(vertical = 8.dp))
@@ -1480,7 +1518,7 @@ private fun AlbumScreen(
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 AlbumImage(track.artworkUri ?: album.artwork, Modifier.size(54.dp).clickable { onPlay(track) })
                 Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f).clickable(role = Role.Button) { onPlay(track) }) {
+                Column(Modifier.weight(1f).motionClick { onPlay(track) }) {
                     Label(track.title, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
                     Label(track.artist, 12.sp, Muted, lines = 1)
                     if (track.durationMs > 0) Label(DurationFormatter.format(track.durationMs), 11.sp, Muted)
@@ -1569,7 +1607,7 @@ private fun ArtistScreen(
             }
         }
         items(state.tracks, key = { it.id }) { track ->
-            Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onPlay(track) }.padding(vertical = 7.dp),
+            Row(Modifier.fillMaxWidth().motionClick { onPlay(track) }.padding(vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 AlbumImage(track.artworkUri, Modifier.size(54.dp))
                 Spacer(Modifier.width(12.dp))
@@ -1648,7 +1686,7 @@ private fun TrackList(
                 Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                     Label("Top result", 20.sp, PrimaryText, FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onPlay(top) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().motionClick { onPlay(top) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         AlbumImage(top.artworkUri, Modifier.size(64.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -1670,13 +1708,13 @@ private fun TrackList(
         if (searchLayout && tracks.isNotEmpty()) item(key = "search-tracks-heading") { Label("Tracks", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
         items(tracks, key = { "track:${it.id}" }) { track ->
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(if (searchLayout) 0.dp else 15.dp))
+                (if (LocalReduceMotion.current) Modifier else Modifier.animateItem()).fillMaxWidth().clip(RoundedCornerShape(if (searchLayout) 0.dp else 15.dp))
                     .background(if (searchLayout) Color.Transparent else LocalKanadePalette.current.tint.copy(alpha = 0.055f)).padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AlbumImage(track.artworkUri, Modifier.size(54.dp).clickable { onPlay(track) })
+                AlbumImage(track.artworkUri, Modifier.size(54.dp).motionClick { onPlay(track) })
                 Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f).clickable { onPlay(track) }) {
+                Column(Modifier.weight(1f).motionClick { onPlay(track) }) {
                     Label(if (track.source == TrackSource.YOUTUBE) songTitle(track.title, track.artist) else track.title, 13.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
                     Label(track.artist, 11.sp, Muted, lines = 1)
                     Label(when (track.source) { TrackSource.LOCAL -> "ON DEVICE"; TrackSource.AUDIUS -> "AUDIUS STREAM"; TrackSource.YOUTUBE -> "YOUTUBE" },
@@ -1723,7 +1761,7 @@ private fun TrackList(
 
 @Composable
 private fun CatalogResultRow(entry: YouTubeMusicRepository.CatalogItem, onSelect: (YouTubeMusicRepository.CatalogItem) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onSelect(entry) }.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().motionClick { onSelect(entry) }.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         AlbumImage(entry.artwork, Modifier.size(50.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -1735,7 +1773,7 @@ private fun CatalogResultRow(entry: YouTubeMusicRepository.CatalogItem, onSelect
 
 @Composable
 private fun TinyButton(icon: KanadeIcon, description: String, selected: Boolean = false, onClick: () -> Unit) {
-    Box(Modifier.size(39.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClick)
+    Box(Modifier.size(39.dp).clip(CircleShape).motionClick(onClick = onClick)
         .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
         KanadeGlyph(icon, if (selected) Accent else Muted, selected = selected, size = 21.dp)
     }
@@ -1744,7 +1782,7 @@ private fun TinyButton(icon: KanadeIcon, description: String, selected: Boolean 
 @Composable
 private fun IconTextButton(icon: KanadeIcon, text: String, onClick: () -> Unit) {
     Row(Modifier.clip(RoundedCornerShape(13.dp)).background(SurfaceLight)
-        .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
+        .motionClick(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
         KanadeGlyph(icon, PrimaryText, size = 17.dp)
         Spacer(Modifier.width(5.dp))
@@ -1754,7 +1792,7 @@ private fun IconTextButton(icon: KanadeIcon, text: String, onClick: () -> Unit) 
 
 @Composable private fun SimpleRow(title: String, subtitle: String, click: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
-        .glassSurface(15.dp).clickable(onClick = click).padding(15.dp),
+        .glassSurface(15.dp).motionClick(onClick = click).padding(15.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Label(title, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
@@ -1805,7 +1843,7 @@ private fun MiniPlayer(
             if (dy < -32.dp.toPx()) onExpand()
         }) { change, delta -> change.consume(); dy += delta }
     }) {
-        Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onExpand)
+        Row(Modifier.fillMaxWidth().motionClick(onClick = onExpand)
             .semantics { contentDescription = "Open now playing" }
             .padding(start = 8.dp, end = 6.dp, top = 8.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -1929,7 +1967,7 @@ private fun PlayerButton(icon: KanadeIcon, description: String, large: Boolean =
     selected: Boolean = false, onClick: () -> Unit) {
     val size = if (large) 60.dp else 48.dp
     Box(Modifier.size(size)
-        .clickable(role = Role.Button, onClick = onClick)
+        .motionClick(onClick = onClick)
         .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
         KanadeGlyph(icon, if (selected) lerp(Accent, Color.White, 0.70f) else Color.White,
             selected = selected, size = if (large) 34.dp else 24.dp, bold = true)
@@ -1982,7 +2020,7 @@ private fun QueueCoverStack(state: PlaybackState, coverSize: Dp, onPlayAt: (Int)
                         alpha = 1f - depth * 0.18f
                     }
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable(role = Role.Button, onClickLabel = "Play song") {
+                    .motionClick(onClickLabel = "Play song") {
                         if (index != current || !state.playing) onPlayAt(index)
                     }
                     .semantics { contentDescription = "${entry.title}, ${entry.artist}" }) {
@@ -2060,7 +2098,7 @@ private fun NowPlayingScreen(
                         val index = LrcParser.current(lyrics.lines, lyricClock(state.positionMs, lyricDelay))
                         val line = lyrics.lines.getOrNull(index)
                         val reduceLyricMotion = LocalReduceMotion.current
-                        Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onLyrics)
+                        Column(Modifier.fillMaxWidth().motionClick(onClick = onLyrics)
                             .padding(horizontal = 12.dp, vertical = 18.dp),
                             horizontalAlignment = Alignment.CenterHorizontally) {
                             if (line != null) {
@@ -2216,8 +2254,17 @@ private fun PlaybackProgress(state: PlaybackState, onSeek: (Long) -> Unit) {
 
 @Composable
 private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composable () -> Unit) {
+    var entered by remember { mutableStateOf(false) }
+    val reduced = LocalReduceMotion.current
+    LaunchedEffect(Unit) { entered = true }
+    val dialogScale by animateFloatAsState(if (entered || reduced) 1f else 0.96f,
+        animationSpec = tween(if (reduced) 0 else 180), label = "dialog entrance")
+    val dialogAlpha by animateFloatAsState(if (entered || reduced) 1f else 0f,
+        animationSpec = tween(if (reduced) 0 else 160), label = "dialog opacity")
     Dialog(onDismissRequest = dismiss) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
+        BoxWithConstraints(Modifier.fillMaxWidth().graphicsLayer {
+            scaleX = dialogScale; scaleY = dialogScale; alpha = dialogAlpha
+        }) {
             Column(Modifier.fillMaxWidth().heightIn(max = maxHeight * 0.9f)
                 .glassSurface(25.dp, dialog = true).verticalScroll(rememberScrollState()).padding(19.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
