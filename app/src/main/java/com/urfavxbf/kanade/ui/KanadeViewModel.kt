@@ -73,7 +73,7 @@ data class ArtistPageState(
     val tracksMore: Boolean = false, val albumsMore: Boolean = false,
     val trackError: String? = null, val albumError: String? = null,
 )
-data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Lyrics unavailable", val plain: String? = null)
+data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Lyrics unavailable", val plain: String? = null, val source: String = "Automatic")
 
 class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val local = LocalMusicRepository(app.contentResolver)
@@ -86,6 +86,16 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         if (appearancePrefs.contains("dark_theme")) appearancePrefs.getBoolean("dark_theme", true) else null,
     ))
     val themeMode: StateFlow<ThemeMode> = _themeMode
+    private val _playerLayout = MutableStateFlow(PlayerLayout.entries.firstOrNull {
+        it.name == appearancePrefs.getString("player_layout", null)
+    } ?: PlayerLayout.CINEMATIC)
+    internal val playerLayout: StateFlow<PlayerLayout> = _playerLayout
+
+    internal fun setPlayerLayout(layout: PlayerLayout) {
+        appearancePrefs.edit().putString("player_layout", layout.name).apply()
+        _playerLayout.value = layout
+    }
+
     private val _controlStyle = MutableStateFlow(ControlStyle.fromStored(appearancePrefs.getString("control_style", null)))
     internal val controlStyle: StateFlow<ControlStyle> = _controlStyle
 
@@ -398,7 +408,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun <T> homeResult(fallback: T, block: suspend () -> T): T =
+    private suspend fun <T> availableOr(fallback: T, block: suspend () -> T): T =
         try { block() } catch (e: CancellationException) { throw e } catch (_: Exception) { fallback }
 
     fun loadHomeDiscovery() {
@@ -407,10 +417,10 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         homeJob = viewModelScope.launch {
             try {
                 kotlinx.coroutines.supervisorScope {
-                    val recommended = async { homeResult(emptyList()) { YouTubeMusicRepository.search("popular music Philippines").tracks } }
-                    val hits = async { homeResult(emptyList()) { YouTubeMusicRepository.search("top hits Philippines").tracks } }
-                    val artists = async { homeResult(emptyList()) { YouTubeMusicRepository.searchCatalog("popular Philippines", true) } }
-                    val albums = async { homeResult(emptyList()) { YouTubeMusicRepository.searchCatalog("popular Philippines", false) } }
+                    val recommended = async { availableOr(emptyList()) { YouTubeMusicRepository.search("popular music Philippines").tracks } }
+                    val hits = async { availableOr(emptyList()) { YouTubeMusicRepository.search("top hits Philippines").tracks } }
+                    val artists = async { availableOr(emptyList()) { YouTubeMusicRepository.searchCatalog("popular Philippines", true) } }
+                    val albums = async { availableOr(emptyList()) { YouTubeMusicRepository.searchCatalog("popular Philippines", false) } }
                     val first = recommended.await()
                     val top = hits.await()
                     val performers = artists.await()
@@ -642,21 +652,27 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun loadLyrics(uri: Uri) {
-        val id = playback.state.value.mediaId
-        if (id.isBlank()) return
+    fun loadLyrics(uri: Uri, id: String) {
+        if (id.isBlank() || id != playback.state.value.mediaId) return
         val app = getApplication<Application>()
         try { app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         catch (_: SecurityException) { }
-        lyricPrefs.edit().remove("match:$id").putString(id, uri.toString()).apply()
+        lyricPrefs.edit().remove("source:$id").remove("match:$id").putString(id, uri.toString()).apply()
         loadSavedLyrics(id)
     }
 
     fun chooseLyrics(id: String, match: OnlineLyrics.Match) {
         if (id.isBlank() || id != playback.state.value.mediaId) return
         lyricJob?.cancel()
-        lyricPrefs.edit().remove(id).putString("match:$id", match.raw).apply()
-        _lyrics.value = LyricsState(match.lyrics.synced, "", match.lyrics.plain)
+        lyricPrefs.edit().remove("source:$id").remove(id).putString("match:$id", match.raw).apply()
+        _lyrics.value = LyricsState(match.lyrics.synced, "", match.lyrics.plain, "LRCLIB")
+    }
+
+    fun selectLyricSource(source: String) {
+        val id = playback.state.value.mediaId
+        if (id.isBlank()) return
+        lyricPrefs.edit().remove(id).remove("match:$id").putString("source:$id", source).apply()
+        loadSavedLyrics(id)
     }
 
     private fun loadSavedLyrics(id: String) {
@@ -665,7 +681,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         lyricPrefs.getString("match:$id", null)?.let { raw ->
             val saved = runCatching { OnlineLyrics.decode(org.json.JSONObject(raw)) }.getOrNull()
             if (saved != null) {
-                _lyrics.value = LyricsState(saved.synced, "", saved.plain)
+                _lyrics.value = LyricsState(saved.synced, "", saved.plain, "LRCLIB")
                 return
             }
         }
@@ -675,12 +691,20 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             if (id.isBlank()) { _lyrics.value = LyricsState(); return }
             lyricJob = viewModelScope.launch {
                 try {
-                    val result = OnlineLyrics.get(state.title, state.artist, state.durationMs)
+                    val source = lyricPrefs.getString("source:$id", "Automatic")
+                    val title = if (id.startsWith("youtube:")) songTitle(state.title, state.artist) else state.title
+                    val recording = if (source != "Video captions") availableOr<OnlineLyrics.Result?>(null) {
+                        OnlineLyrics.get(title, state.artist, state.durationMs)
+                    } else null
+                    val video = if (id.startsWith("youtube:") && (source == "Video captions" ||
+                            (source == "Automatic" && recording?.synced.isNullOrEmpty()))) {
+                        availableOr(emptyList()) { YouTubeMusicRepository.captionLines(id.removePrefix("youtube:")) }
+                    } else emptyList()
                     _lyrics.value = when {
-                        result == null -> LyricsState(message = "Lyrics unavailable for this song.")
-                        result.synced.isNotEmpty() -> LyricsState(lines = result.synced, message = "")
-                        !result.plain.isNullOrBlank() -> LyricsState(message = "", plain = result.plain)
-                        else -> LyricsState(message = "Lyrics unavailable for this song.")
+                        video.isNotEmpty() -> LyricsState(video, "", source = "Video captions")
+                        recording != null && (recording.synced.isNotEmpty() || recording.plain != null) ->
+                            LyricsState(recording.synced, "", recording.plain, "LRCLIB")
+                        else -> LyricsState(message = "No lyrics available from this source.", source = source ?: "Automatic")
                     }
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
@@ -697,7 +721,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val parsed = LrcParser.parse(contents)
                 _lyrics.value = LyricsState(parsed,
-                    if (parsed.isEmpty()) "No synchronized timestamps found in this LRC file." else "")
+                    if (parsed.isEmpty()) "No synchronized timestamps found in this LRC file." else "", source = "Local LRC")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _lyrics.value = LyricsState(message = "This lyrics file is no longer accessible.")

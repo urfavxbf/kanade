@@ -41,3 +41,8 @@ internal fun Modifier.softRaised(shape: Shape, pressed: Boolean = false): Modifi
         dropShadow(shape, light).dropShadow(shape, dark).clip(shape).background(colors.face)
     }
 }
+
+
+internal enum class PlayerLayout(val label: String) {
+    CINEMATIC("Cinematic"), LYRICS_FOCUS("Lyrics Focus")
+}
