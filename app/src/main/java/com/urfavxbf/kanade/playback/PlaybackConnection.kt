@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class QueueEntry(val id: String, val title: String, val artist: String, val artworkUri: String? = null)
+data class QueueEntry(val id: String, val title: String, val artist: String, val artworkUri: String? = null, val album: String = "")
 
 data class PlaybackState(
     val mediaId: String = "",
@@ -34,6 +34,7 @@ data class PlaybackState(
     val index: Int = 0,
     val queue: List<QueueEntry> = emptyList(),
     val error: String? = null,
+    val album: String = "",
 )
 
 class PlaybackConnection(context: Context) {
@@ -251,6 +252,7 @@ class PlaybackConnection(context: Context) {
             mediaId = player.currentMediaItem?.mediaId.orEmpty(),
             title = metadata?.title?.toString().orEmpty(),
             artist = metadata?.artist?.toString().orEmpty(),
+            album = metadata?.albumTitle?.toString().orEmpty(),
             artworkUri = metadata?.artworkUri?.toString(),
             playing = player.isPlaying,
             hasItem = player.currentMediaItem != null,
@@ -263,7 +265,8 @@ class PlaybackConnection(context: Context) {
             queue = (0 until player.mediaItemCount).map { i ->
                 val item = player.getMediaItemAt(i)
                 QueueEntry(item.mediaId, item.mediaMetadata.title?.toString().orEmpty(),
-                    item.mediaMetadata.artist?.toString().orEmpty(), item.mediaMetadata.artworkUri?.toString())
+                    item.mediaMetadata.artist?.toString().orEmpty(), item.mediaMetadata.artworkUri?.toString(),
+                    item.mediaMetadata.albumTitle?.toString().orEmpty())
             },
             error = _state.value.error,
         )

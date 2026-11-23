@@ -85,6 +85,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
+import com.urfavxbf.kanade.data.CoverQuery
+import com.urfavxbf.kanade.data.MusicBrainzArtwork
 import com.urfavxbf.kanade.data.MusicMoods
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -528,7 +530,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                         showNowPlaying = true
                                     } else if (track != null) model.playListTracks(if (resume) recent else homeDiscovery.recommended, track)
                                 }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    AlbumImage(if (current) playback.artworkUri else track?.artworkUri, Modifier.size(100.dp))
+                                    AlbumImage(if (current) playback.artworkUri else track?.artworkUri, Modifier.size(100.dp),
+                                        if (current) playback.coverQuery() else track?.coverQuery())
                                     Spacer(Modifier.width(14.dp))
                                     Column(Modifier.weight(1f)) {
                                         Label(if (resume) "Continue listening" else "Recommended", 12.sp, Accent, FontWeight.Bold)
@@ -580,12 +583,12 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                             DashboardShelf("Top hits", homeDiscovery.hits.take(8), onSeeAll = { shelf = "Top hits" }) { model.playListTracks(homeDiscovery.hits, it) }
                         }
                         if (homeDiscovery.artists.isNotEmpty()) item {
-                            CatalogShelf("Artists to explore", homeDiscovery.artists.take(8), onSeeAll = { shelf = "Artists" }) { entry ->
+                            CatalogShelf("Artists to explore", homeDiscovery.artists.take(8), albums = false, onSeeAll = { shelf = "Artists" }) { entry ->
                                 model.openArtist(entry); showArtist = true
                             }
                         }
                         if (homeDiscovery.albums.isNotEmpty()) item {
-                            CatalogShelf("Albums to explore", homeDiscovery.albums.take(8), onSeeAll = { shelf = "Albums" }) { entry ->
+                            CatalogShelf("Albums to explore", homeDiscovery.albums.take(8), albums = true, onSeeAll = { shelf = "Albums" }) { entry ->
                                 model.openAlbum(entry); showAlbum = true
                             }
                         }
@@ -778,7 +781,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                     Chip("Retry") { moodAttempt++ }
                                 }
                                 if (selectedMood != null && !moodLoading) moodPlaylists.forEach { entry ->
-                                    CatalogResultRow(entry) { model.openAlbum(it); showAlbum = true }
+                                    CatalogResultRow(entry, album = false) { model.openAlbum(it); showAlbum = true }
                                 }
                                 if (selectedMood == null) for (pair in moods.chunked(2)) {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -972,7 +975,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             LazyColumn(Modifier.fillMaxWidth().height(360.dp)) {
                 when (title) {
                     "Artists", "Albums" -> items(if (title == "Artists") homeDiscovery.artists else homeDiscovery.albums) { entry ->
-                        CatalogResultRow(entry) {
+                        CatalogResultRow(entry, album = title == "Albums") {
                             shelf = null
                             if (title == "Artists") { model.openArtist(it); showArtist = true }
                             else { model.openAlbum(it); showAlbum = true }
@@ -1151,7 +1154,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     .motionSelectable(item == layout, Role.RadioButton) { model.setPlayerLayout(item); overlay = Overlay.NONE }
                     .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Label(item.label, 16.sp, Accent, FontWeight.Bold)
-                    if (item == PlayerLayout.CINEMATIC) AlbumImage(playback.artworkUri, Modifier.size(92.dp))
+                    if (item == PlayerLayout.CINEMATIC) AlbumImage(playback.artworkUri, Modifier.size(92.dp), playback.coverQuery())
                     Label(playback.title, 16.sp, PrimaryText, FontWeight.Bold, lines = 1)
                     if (item == PlayerLayout.LYRICS_FOCUS) {
                         val active = LrcParser.current(lyrics.lines, lyricClock(playback.positionMs, lyricDelay))
@@ -1641,7 +1644,7 @@ private fun DashboardShelf(title: String, tracks: List<Track>, onSeeAll: (() -> 
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(tracks, key = { it.id }) { track ->
                 Column(Modifier.width(144.dp).motionClick { onSelect(track) }) {
-                    AlbumImage(track.artworkUri, Modifier.size(144.dp))
+                    AlbumImage(track.artworkUri, Modifier.size(144.dp), track.coverQuery())
                     Spacer(Modifier.height(5.dp))
                     Label(if (track.source == TrackSource.YOUTUBE) songTitle(track.title, track.artist) else track.title,
                         14.sp, PrimaryText, FontWeight.Bold, lines = 2)
@@ -1653,13 +1656,13 @@ private fun DashboardShelf(title: String, tracks: List<Track>, onSeeAll: (() -> 
 }
 
 @Composable
-private fun CatalogShelf(title: String, entries: List<YouTubeMusicRepository.CatalogItem>, onSeeAll: (() -> Unit)? = null, onSelect: (YouTubeMusicRepository.CatalogItem) -> Unit) {
+private fun CatalogShelf(title: String, entries: List<YouTubeMusicRepository.CatalogItem>, albums: Boolean, onSeeAll: (() -> Unit)? = null, onSelect: (YouTubeMusicRepository.CatalogItem) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ShelfHeading(title, onSeeAll)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(entries) { entry ->
                 Column(Modifier.width(128.dp).motionClick { onSelect(entry) }) {
-                    AlbumImage(entry.artwork, Modifier.size(128.dp))
+                    AlbumImage(entry.artwork, Modifier.size(128.dp), if (albums) entry.coverQuery() else null)
                     Spacer(Modifier.height(5.dp))
                     Label(entry.name, 14.sp, PrimaryText, FontWeight.Bold, lines = 2)
                     Label(entry.subtitle, 12.sp, Muted, lines = 1)
@@ -1683,15 +1686,59 @@ private fun MoodTile(name: String, modifier: Modifier = Modifier, onClick: () ->
 }
 
 @Composable
-private fun AlbumImage(artwork: String?, modifier: Modifier = Modifier) {
+private fun trackCover(id: String, title: String, artist: String, album: String) =
+    remember(id, title, artist, album) {
+        CoverQuery.forMusic(artist, album, if (id.startsWith("youtube:")) songTitle(title, artist) else title)
+    }
+
+@Composable
+private fun Track.coverQuery() = trackCover(id, title, artist, album)
+
+@Composable
+private fun PlaybackState.coverQuery() = trackCover(mediaId, title, artist, album)
+
+private fun YouTubeMusicRepository.CatalogItem.coverQuery(trackArtist: String = ""): CoverQuery? {
+    if (subtitle == "Playlist") return null
+    return CoverQuery.forMusic(subtitle.takeUnless { it == "Album" || it.isBlank() } ?: trackArtist, name)
+}
+
+@Composable
+private fun CoverImage(artwork: String?, query: CoverQuery?, description: String?, modifier: Modifier) {
+    androidx.compose.runtime.key(artwork, query) {
+        val primary = artwork?.takeIf { it.isNotBlank() }
+        var primaryFailed by remember { mutableStateOf(false) }
+        val needsCover = primary == null || primaryFailed
+        var alternatives by remember { mutableStateOf(emptyList<String>()) }
+        var index by remember { mutableStateOf(0) }
+        LaunchedEffect(needsCover) {
+            if (needsCover && query != null) {
+                // Let quickly scrolled rows leave composition before starting a network request.
+                kotlinx.coroutines.delay(250)
+                alternatives = MusicBrainzArtwork.find(query)
+            }
+        }
+        val model = if (needsCover) alternatives.getOrNull(index) else primary
+        Crossfade(targetState = model, modifier = modifier,
+            animationSpec = tween(if (LocalReduceMotion.current) 0 else 220), label = "album artwork") { image ->
+            if (image != null) AsyncImage(model = image, contentDescription = description,
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                onError = {
+                    if (image == primary) primaryFailed = true
+                    else if (image == alternatives.getOrNull(index)) index++
+                })
+        }
+    }
+}
+
+@Composable
+private fun AlbumImage(artwork: String?, modifier: Modifier, query: CoverQuery?,
+    placeholder: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {}) {
     Box(modifier.clip(RoundedCornerShape(15.dp))
         .background(Brush.linearGradient(listOf(LocalKanadePalette.current.artworkStart, LocalKanadePalette.current.artworkEnd))),
         contentAlignment = Alignment.Center) {
         KanadeGlyph(KanadeIcon.MUSIC, Accent, selected = true, size = 28.dp)
-        Crossfade(targetState = artwork, animationSpec = tween(if (LocalReduceMotion.current) 0 else 220), label = "album artwork") { image ->
-            if (!image.isNullOrEmpty()) AsyncImage(model = image, contentDescription = "Album cover",
-                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        }
+        placeholder()
+        CoverImage(artwork, query, "Album cover", Modifier.fillMaxSize())
     }
 }
 
@@ -1703,6 +1750,7 @@ private fun AlbumScreen(
     onMore: () -> Unit, onRetry: () -> Unit, onArtist: (YouTubeMusicRepository.CatalogItem) -> Unit,
 ) {
     val album = state.album ?: return
+    val albumCover = album.coverQuery(state.tracks.firstOrNull()?.artist.orEmpty())
     var actionsTrack by remember { mutableStateOf<Track?>(null) }
     val bottom = with(LocalDensity.current) { LocalChromeMetrics.current.bottomHeight.toDp() + 20.dp }
     val listState = rememberLazyListState()
@@ -1720,7 +1768,7 @@ private fun AlbumScreen(
                 IconTextButton(KanadeIcon.BACK, "Back", onBack)
                 Spacer(Modifier.height(18.dp))
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    AlbumImage(album.artwork, Modifier.size(220.dp))
+                    AlbumImage(album.artwork, Modifier.size(220.dp), albumCover)
                 }
                 Spacer(Modifier.height(20.dp))
                 Label(album.name, 27.sp, PrimaryText, FontWeight.Bold, lines = 3)
@@ -1745,7 +1793,8 @@ private fun AlbumScreen(
         }
         items(state.tracks, key = { it.id }) { track ->
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                AlbumImage(track.artworkUri ?: album.artwork, Modifier.size(54.dp).clickable { onPlay(track) })
+                AlbumImage(track.artworkUri ?: album.artwork, Modifier.size(54.dp).clickable { onPlay(track) },
+                    albumCover ?: track.coverQuery())
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f).motionClick { onPlay(track) }) {
                     Label(track.title, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
@@ -1818,7 +1867,7 @@ private fun ArtistScreen(
         }
         item(key = "artist-albums") {
             Column(Modifier.padding(top = 18.dp)) {
-                if (state.albums.isNotEmpty()) CatalogShelf(if (online) "Album results" else "Albums", state.albums, onSelect = onAlbum)
+                if (state.albums.isNotEmpty()) CatalogShelf(if (online) "Album results" else "Albums", state.albums, albums = true, onSelect = onAlbum)
                 else Label("Albums", 20.sp, PrimaryText, FontWeight.Bold)
                 when {
                     state.loadingAlbums -> Label("Loading albums…", 13.sp, Muted)
@@ -1838,7 +1887,7 @@ private fun ArtistScreen(
         items(state.tracks, key = { it.id }) { track ->
             Row(Modifier.fillMaxWidth().motionClick { onPlay(track) }.padding(vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                AlbumImage(track.artworkUri, Modifier.size(54.dp))
+                AlbumImage(track.artworkUri, Modifier.size(54.dp), track.coverQuery())
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Label(track.title, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
@@ -1916,7 +1965,7 @@ private fun TrackList(
                     Label("Top result", 20.sp, PrimaryText, FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth().motionClick { onPlay(top) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AlbumImage(top.artworkUri, Modifier.size(64.dp))
+                        AlbumImage(top.artworkUri, Modifier.size(64.dp), top.coverQuery())
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Label(top.title, 16.sp, PrimaryText, FontWeight.Bold, lines = 2)
@@ -1928,11 +1977,11 @@ private fun TrackList(
         }
         if (searchLayout && searchArtists.isNotEmpty()) {
             item(key = "search-artists-heading") { Label("Artists", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
-            items(searchArtists, key = { "artist:${it.name}" }) { entry -> CatalogResultRow(entry, onArtist) }
+            items(searchArtists, key = { "artist:${it.name}" }) { entry -> CatalogResultRow(entry, album = false, onSelect = onArtist) }
         }
         if (searchLayout && searchAlbums.isNotEmpty()) {
             item(key = "search-albums-heading") { Label("Albums", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
-            items(searchAlbums, key = { "album:${it.name}" }) { entry -> CatalogResultRow(entry, onAlbum) }
+            items(searchAlbums, key = { "album:${it.name}" }) { entry -> CatalogResultRow(entry, album = true, onSelect = onAlbum) }
         }
         if (searchLayout && tracks.isNotEmpty()) item(key = "search-tracks-heading") { Label("Tracks", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
         items(tracks, key = { "track:${it.id}" }) { track ->
@@ -1941,7 +1990,7 @@ private fun TrackList(
                     .background(if (searchLayout) Color.Transparent else LocalKanadePalette.current.tint.copy(alpha = 0.055f)).padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AlbumImage(track.artworkUri, Modifier.size(54.dp).motionClick { onPlay(track) })
+                AlbumImage(track.artworkUri, Modifier.size(54.dp).motionClick { onPlay(track) }, track.coverQuery())
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f).motionClick { onPlay(track) }) {
                     Label(if (track.source == TrackSource.YOUTUBE) songTitle(track.title, track.artist) else track.title, 13.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
@@ -1989,9 +2038,9 @@ private fun TrackList(
 }
 
 @Composable
-private fun CatalogResultRow(entry: YouTubeMusicRepository.CatalogItem, onSelect: (YouTubeMusicRepository.CatalogItem) -> Unit) {
+private fun CatalogResultRow(entry: YouTubeMusicRepository.CatalogItem, album: Boolean, onSelect: (YouTubeMusicRepository.CatalogItem) -> Unit) {
     Row(Modifier.fillMaxWidth().motionClick { onSelect(entry) }.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-        AlbumImage(entry.artwork, Modifier.size(50.dp))
+        AlbumImage(entry.artwork, Modifier.size(50.dp), if (album) entry.coverQuery() else null)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Label(entry.name, 14.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
@@ -2092,7 +2141,7 @@ private fun MiniPlayer(
             .semantics { contentDescription = "Open now playing" }
             .padding(start = 8.dp, end = 6.dp, top = 8.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            AlbumImage(state.artworkUri, Modifier.size(48.dp))
+            AlbumImage(state.artworkUri, Modifier.size(48.dp), state.coverQuery())
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Label(state.title, 14.sp, PrimaryText, FontWeight.Bold, lines = 1)
@@ -2147,7 +2196,7 @@ private fun onWifi(): Boolean {
 }
 
 @Composable
-private fun VideoBackdrop(state: PlaybackState) {
+private fun VideoBackdrop(state: PlaybackState, underlay: @Composable () -> Unit) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val latestPlayback by rememberUpdatedState(state)
@@ -2201,6 +2250,7 @@ private fun VideoBackdrop(state: PlaybackState) {
         }
     }
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
+        if (!videoReady) underlay()
         val width = maxOf(maxWidth, maxHeight * aspect)
         AndroidView(factory = { TextureView(it).apply { isOpaque = false; videoPlayer.setVideoTextureView(this) } },
             modifier = Modifier.requiredSize(width, width / aspect).alpha(if (videoReady) 1f else 0f))
@@ -2224,7 +2274,7 @@ private fun PlayerButton(icon: KanadeIcon, description: String, large: Boolean =
 @Composable
 private fun QueueCoverStack(state: PlaybackState, coverSize: Dp, onPlayAt: (Int) -> Unit) {
     if (state.queue.isEmpty()) {
-        AlbumImage(state.artworkUri, Modifier.size(coverSize))
+        AlbumImage(state.artworkUri, Modifier.size(coverSize), state.coverQuery())
         return
     }
     val current = state.index.coerceIn(state.queue.indices)
@@ -2269,13 +2319,13 @@ private fun QueueCoverStack(state: PlaybackState, coverSize: Dp, onPlayAt: (Int)
                         if (index != current || !state.playing) onPlayAt(index)
                     }
                     .semantics { contentDescription = "${entry.title}, ${entry.artist}" }) {
-                    AlbumImage(entry.artworkUri, Modifier.fillMaxSize())
-                    if (index == current) Label(if (state.playing) "Playing" else "Paused", 11.sp, Color.White,
-                        modifier = Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.78f)).padding(4.dp))
-                    if (entry.artworkUri.isNullOrBlank()) {
+                    AlbumImage(entry.artworkUri, Modifier.fillMaxSize(),
+                        trackCover(entry.id, entry.title, entry.artist, entry.album)) {
                         Label(entry.title, 12.sp, PrimaryText, FontWeight.Bold,
                             Modifier.align(Alignment.BottomCenter).padding(8.dp), lines = 2)
                     }
+                    if (index == current) Label(if (state.playing) "Playing" else "Paused", 11.sp, Color.White,
+                        modifier = Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.78f)).padding(4.dp))
                 }
             }
         }
@@ -2314,11 +2364,12 @@ private fun NowPlayingScreen(
     }) {
         // Only the artwork/backdrop is sampled: never the player controls themselves.
         Box(Modifier.fillMaxSize().background(Background)) {
-            if (!state.artworkUri.isNullOrBlank()) {
-                AsyncImage(model = state.artworkUri, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().blur(55.dp).alpha(0.38f))
+            val artwork: @Composable () -> Unit = {
+                CoverImage(state.artworkUri, state.coverQuery(), null, Modifier.fillMaxSize().blur(55.dp).alpha(0.38f))
             }
-            if (layout == PlayerLayout.CINEMATIC && state.mediaId.startsWith("youtube:") && (videoMode == "Always" || (videoMode == "Wi-Fi only" && onWifi()))) VideoBackdrop(state)
+            val showVideo = layout == PlayerLayout.CINEMATIC && state.mediaId.startsWith("youtube:") &&
+                (videoMode == "Always" || (videoMode == "Wi-Fi only" && onWifi()))
+            if (showVideo) VideoBackdrop(state, artwork) else artwork()
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
                 Color(0xFF070B14).copy(alpha = 0.42f),
                 Color(0xFF070B14).copy(alpha = 0.22f),
