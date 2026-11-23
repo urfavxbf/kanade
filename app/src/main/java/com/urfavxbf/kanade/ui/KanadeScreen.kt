@@ -890,7 +890,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 Column(Modifier.weight(1f).heightIn(min = 58.dp)
                     .clip(RoundedCornerShape(15.dp))
                     .background(if (active) Color(0xFFF2E2D2).copy(alpha = 0.09f) else Color.Transparent)
-                    .selectable(selected = active, role = Role.Tab, onClick = { showAlbum = false; showArtist = false; artistReturnsToAlbum = false; page = tab })
+                    .motionSelectable(selected = active, role = Role.Tab, onClick = { showAlbum = false; showArtist = false; artistReturnsToAlbum = false; page = tab })
                     .semantics { contentDescription = label },
                     verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(Modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale }) {
@@ -1202,7 +1202,7 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
                     for ((name, color) in group) {
                         val plain = name == PLAIN_DARK || name == PLAIN_LIGHT
                         Column(Modifier.weight(1f).glassSurface(16.dp)
-                            .selectable(selected = selectedPalette == name, role = Role.RadioButton, onClick = {
+                            .motionSelectable(selected = selectedPalette == name, role = Role.RadioButton, onClick = {
                                 if (plain) model.setThemeMode(if (name == PLAIN_DARK) ThemeMode.DARK else ThemeMode.LIGHT)
                                 model.setColorTheme(if (plain) PLAIN else name)
                             })
@@ -1268,10 +1268,11 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
 
 @Composable
 private fun ThemeChoice(text: String, selected: Boolean, onClick: () -> Unit) {
+    val color by animateColorAsState(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f),
+        animationSpec = tween(if (LocalReduceMotion.current) 0 else 180), label = "selection color")
     Box(Modifier.clip(RoundedCornerShape(13.dp))
-        .background(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f))
-
-        .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+        .background(color)
+        .motionSelectable(selected = selected, role = Role.RadioButton, onClick = onClick)
         .padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
         Label(text, 12.sp, if (selected) Background else PrimaryText,
             if (selected) FontWeight.Bold else FontWeight.Normal)
@@ -1325,6 +1326,16 @@ private fun Modifier.motionClick(role: Role = Role.Button, onClickLabel: String?
     )
     return graphicsLayer { scaleX = scale; scaleY = scale }
         .clickable(interactionSource = interaction, indication = null, role = role, onClickLabel = onClickLabel, onClick = onClick)
+}
+
+@Composable
+private fun Modifier.motionSelectable(selected: Boolean, role: Role, onClick: () -> Unit): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed && !LocalReduceMotion.current) 0.96f else 1f,
+        animationSpec = tween(if (LocalReduceMotion.current) 0 else 130), label = "selection press")
+    return graphicsLayer { scaleX = scale; scaleY = scale }
+        .selectable(selected = selected, interactionSource = interaction, indication = null, role = role, onClick = onClick)
 }
 
 @Composable
