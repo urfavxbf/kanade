@@ -118,6 +118,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -500,12 +501,12 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 Page.HOME -> {
                     val bottom = with(LocalDensity.current) { chrome.bottomHeight.toDp() }
                     LazyColumn(state = homeList, contentPadding = PaddingValues(bottom = bottom + 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Label("Home", 32.sp, PrimaryText, FontWeight.ExtraBold, Modifier.weight(1f).combinedClickable(
-                                    onClick = { overlay = Overlay.HOME_EDITOR }, onLongClick = { overlay = Overlay.HOME_EDITOR }))
-                                Chip("Edit Home") { overlay = Overlay.HOME_EDITOR }
+                                Label("Home", 36.sp, PrimaryText, FontWeight.ExtraBold, Modifier.weight(1f).combinedClickable(
+                                    onClickLabel = "Edit Home", onClick = { overlay = Overlay.HOME_EDITOR },
+                                    onLongClick = { overlay = Overlay.HOME_EDITOR }).semantics { heading() })
                                 BasicText("⚙", Modifier.motionClick {
                                     settingsReturn = page; page = Page.SETTINGS
                                 }.semantics { contentDescription = "Settings" }.padding(10.dp),
@@ -524,19 +525,25 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                 val resume = showResume && index == 0
                                 val track = if (resume) recent.firstOrNull() else picks.getOrNull(index - if (showResume) 1 else 0)
                                 val current = resume && playback.hasItem
-                                Row(Modifier.fillMaxWidth().glassSurface(18.dp).motionClick {
+                                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(LocalKanadePalette.current.artworkStart).motionClick {
                                     if (current) {
                                         if (!playback.playing) model.playback.toggle()
                                         showNowPlaying = true
                                     } else if (track != null) model.playListTracks(if (resume) recent else homeDiscovery.recommended, track)
-                                }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    AlbumImage(if (current) playback.artworkUri else track?.artworkUri, Modifier.size(100.dp),
-                                        if (current) playback.coverQuery() else track?.coverQuery())
-                                    Spacer(Modifier.width(14.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Label(if (resume) "Continue listening" else "Recommended", 12.sp, Accent, FontWeight.Bold)
-                                        Label(if (current) playback.title else track?.title.orEmpty(), 21.sp, PrimaryText, FontWeight.Bold, lines = 2)
-                                        Label(if (current) playback.artist else track?.artist.orEmpty(), 13.sp, Muted, lines = 1)
+                                }, contentAlignment = Alignment.BottomStart) {
+                                    val name = if (current) playback.title else track?.title.orEmpty()
+                                    val artist = if (current) playback.artist else track?.artist.orEmpty()
+                                    val youtube = if (current) playback.mediaId.startsWith("youtube:") else track?.source == TrackSource.YOUTUBE
+                                    CoverImage(if (current) playback.artworkUri else track?.artworkUri,
+                                        if (current) playback.coverQuery() else track?.coverQuery(), null, Modifier.matchParentSize())
+                                    Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(
+                                        Color.Black.copy(alpha = 0.34f), Color.Black.copy(alpha = 0.92f)))))
+                                    Column(Modifier.fillMaxWidth().heightIn(min = 212.dp).padding(20.dp),
+                                        verticalArrangement = Arrangement.Bottom) {
+                                        Label(if (resume) "Continue listening" else "Recommended", 13.sp, Color.White, FontWeight.SemiBold)
+                                        Spacer(Modifier.height(6.dp))
+                                        Label(if (youtube) songTitle(name, artist) else name, 30.sp, Color.White, FontWeight.ExtraBold, lines = 2)
+                                        Label(artist, 15.sp, Color.White, lines = 2)
                                     }
                                 }
                             }
@@ -595,7 +602,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     }
                 }
                 Page.LIBRARY -> Column {
-                    Header("Library", "Your music, all in one place.")
+                    SectionTitle("Library", screen = true)
                     Spacer(Modifier.height(12.dp))
                     if (!model.hasPermission()) {
                         EmptyState(KanadeIcon.MUSIC, "Grant music permission", "Browse MP3 music stored on your device.") {
@@ -749,12 +756,12 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS },
                         pagination = if (showOnline) discover else null, onLoadMore = model::loadMoreSearchResults,
-                        searchArtists = artists, searchAlbums = albums, searchLayout = true, listState = searchList,
+                        searchArtists = artists, searchAlbums = albums, searchQuery = needle, searchLayout = true, listState = searchList,
                         onArtist = { entry -> model.openArtist(entry); showArtist = true },
                         onAlbum = { entry -> model.openAlbum(entry); showAlbum = true },
                         searchLeading = {
-                            Column {
-                                Header("Search", "Search on-device MP3s and YouTube Music songs.")
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionTitle("Search", screen = true)
                                 SearchField(onlineQuery, "Song, album or artist", { onlineQuery = it }, submit, glassBackdrop = searchGlass)
                                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     for (choice in listOf("All", "On device", "Online")) {
@@ -1628,12 +1635,21 @@ private fun SearchField(
     )
 }
 
+private fun Track.displayTitle() = if (source == TrackSource.YOUTUBE) songTitle(title, artist) else title
+
+@Composable
+private fun SectionTitle(title: String, modifier: Modifier = Modifier, screen: Boolean = false) {
+    Label(title, if (screen) 36.sp else 22.sp, PrimaryText, FontWeight.ExtraBold,
+        modifier.semantics { heading() }.padding(vertical = if (screen) 8.dp else 4.dp))
+}
+
 @Composable
 private fun ShelfHeading(title: String, onSeeAll: (() -> Unit)?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         val action = if (onSeeAll == null) Modifier else Modifier.motionClick(onClick = onSeeAll)
-        Label(title, 20.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f).then(action))
-        if (onSeeAll != null) Chip("See all", onClick = onSeeAll)
+        SectionTitle(title, Modifier.weight(1f).then(action))
+        if (onSeeAll != null) Box(Modifier.heightIn(min = 48.dp).motionClick(onClickLabel = "See all $title", onClick = onSeeAll)
+            .padding(horizontal = 8.dp), contentAlignment = Alignment.Center) { Label("See all", 14.sp, Accent, FontWeight.SemiBold) }
     }
 }
 
@@ -1659,14 +1675,23 @@ private fun DashboardShelf(title: String, tracks: List<Track>, onSeeAll: (() -> 
 private fun CatalogShelf(title: String, entries: List<YouTubeMusicRepository.CatalogItem>, albums: Boolean, onSeeAll: (() -> Unit)? = null, onSelect: (YouTubeMusicRepository.CatalogItem) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ShelfHeading(title, onSeeAll)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(entries) { entry ->
-                Column(Modifier.width(128.dp).motionClick { onSelect(entry) }) {
-                    AlbumImage(entry.artwork, Modifier.size(128.dp), if (albums) entry.coverQuery() else null)
-                    Spacer(Modifier.height(5.dp))
-                    Label(entry.name, 14.sp, PrimaryText, FontWeight.Bold, lines = 2)
-                    Label(entry.subtitle, 12.sp, Muted, lines = 1)
-                }
+        CatalogStrip(entries, albums, onSelect)
+    }
+}
+
+@Composable
+private fun CatalogStrip(entries: List<YouTubeMusicRepository.CatalogItem>, albums: Boolean,
+    onSelect: (YouTubeMusicRepository.CatalogItem) -> Unit) {
+    val width = if (albums) 132.dp else 104.dp
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        items(entries) { entry ->
+            Column(Modifier.width(width).motionClick { onSelect(entry) },
+                horizontalAlignment = if (albums) Alignment.Start else Alignment.CenterHorizontally) {
+                val shape = if (albums) RoundedCornerShape(15.dp) else CircleShape
+                AlbumImage(entry.artwork, Modifier.size(width).clip(shape), if (albums) entry.coverQuery() else null)
+                Spacer(Modifier.height(8.dp))
+                Label(entry.name, 15.sp, PrimaryText, FontWeight.Bold, lines = 2)
+                if (albums) Label(entry.subtitle, 13.sp, Muted, lines = 1)
             }
         }
     }
@@ -1743,6 +1768,23 @@ private fun AlbumImage(artwork: String?, modifier: Modifier, query: CoverQuery?,
 }
 
 @Composable
+private fun DetailHero(art: @Composable (Dp) -> Unit, details: @Composable () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 20.dp)) {
+        if (maxWidth >= 340.dp && LocalDensity.current.fontScale <= 1.3f) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                art((maxWidth * 0.38f).coerceAtMost(196.dp))
+                Column(Modifier.weight(1f)) { details() }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                art(minOf(maxWidth, 156.dp))
+                Column { details() }
+            }
+        }
+    }
+}
+
+@Composable
 private fun AlbumScreen(
     state: AlbumPageState, favoriteIds: Set<String>, onBack: () -> Unit,
     onPlay: (Track) -> Unit, onFavorite: (Track) -> Unit, onRadio: (Track) -> Unit,
@@ -1766,25 +1808,22 @@ private fun AlbumScreen(
         item(key = "album-header") {
             Column(Modifier.fillMaxWidth()) {
                 IconTextButton(KanadeIcon.BACK, "Back", onBack)
-                Spacer(Modifier.height(18.dp))
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    AlbumImage(album.artwork, Modifier.size(220.dp), albumCover)
-                }
-                Spacer(Modifier.height(20.dp))
-                Label(album.name, 27.sp, PrimaryText, FontWeight.Bold, lines = 3)
-                Label(if (album.url == null) "Album · On device" else "Album · YouTube", 13.sp, Muted)
-                if (album.subtitle.isNotBlank() && album.subtitle != "Album") {
-                    if (album.url == null || album.artistUrl != null) {
-                        Label(album.subtitle, 15.sp, Accent, FontWeight.SemiBold,
-                            modifier = Modifier.motionClick {
-                                onArtist(YouTubeMusicRepository.CatalogItem(album.subtitle, "Artist", null, album.artistUrl))
-                            }.padding(vertical = 8.dp))
-                    } else Label(album.subtitle, 15.sp, Muted, modifier = Modifier.padding(vertical = 8.dp))
-                }
-                if (state.tracks.isNotEmpty()) {
-                    Label("${state.tracks.size} tracks${if (state.hasMore) " loaded" else ""}", 12.sp, Muted)
-                    Spacer(Modifier.height(12.dp))
-                    AccentAction("Play all") { onPlay(state.tracks.first()) }
+                DetailHero(art = { size -> AlbumImage(album.artwork, Modifier.size(size), albumCover) }) {
+                    Label(if (album.url == null) "Album · On device" else "Album · YouTube", 13.sp, Muted)
+                    SectionTitle(album.name, screen = true)
+                    if (album.subtitle.isNotBlank() && album.subtitle != "Album") {
+                        if (album.url == null || album.artistUrl != null) {
+                            Label(album.subtitle, 15.sp, Accent, FontWeight.SemiBold,
+                                modifier = Modifier.motionClick {
+                                    onArtist(YouTubeMusicRepository.CatalogItem(album.subtitle, "Artist", null, album.artistUrl))
+                                }.padding(vertical = 8.dp))
+                        } else Label(album.subtitle, 15.sp, Muted, modifier = Modifier.padding(vertical = 8.dp))
+                    }
+                    if (state.tracks.isNotEmpty()) {
+                        Label("${state.tracks.size} tracks${if (state.hasMore) " loaded" else ""}", 12.sp, Muted)
+                        Spacer(Modifier.height(12.dp))
+                        AccentAction("Play all") { onPlay(state.tracks.first()) }
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
                 Label("Tracks", 20.sp, PrimaryText, FontWeight.Bold)
@@ -1846,22 +1885,27 @@ private fun ArtistScreen(
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = bottom), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item(key = "artist-header") {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+            var expanded by rememberSaveable(artist.name) { mutableStateOf(false) }
+            var overflowing by remember(artist.name, state.description) { mutableStateOf(false) }
+            Column(Modifier.fillMaxWidth()) {
                 IconTextButton(KanadeIcon.BACK, "Back", onBack)
-                Spacer(Modifier.height(12.dp))
-                Box(Modifier.size(176.dp).clip(CircleShape).background(LocalKanadePalette.current.tint.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center) {
-                    KanadeGlyph(KanadeIcon.MUSIC, Accent, selected = true, size = 48.dp)
-                    if (!artist.artwork.isNullOrBlank()) AsyncImage(model = artist.artwork, contentDescription = "${artist.name} artist image",
-                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                DetailHero(art = { size ->
+                    Box(Modifier.size(size).clip(CircleShape).background(SurfaceLight), contentAlignment = Alignment.Center) {
+                        KanadeGlyph(KanadeIcon.MUSIC, Accent, selected = true, size = 40.dp)
+                        if (!artist.artwork.isNullOrBlank()) AsyncImage(model = artist.artwork, contentDescription = null,
+                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    }
+                }) {
+                    Label(if (online) "Artist · YouTube" else "Artist · On device", 13.sp, Muted)
+                    SectionTitle(artist.name, screen = true)
+                    if (state.subscribers >= 0) Label("${java.text.NumberFormat.getIntegerInstance().format(state.subscribers)} subscribers", 14.sp, Muted)
                 }
-                Spacer(Modifier.height(16.dp))
-                Label(artist.name, 30.sp, PrimaryText, FontWeight.Bold, lines = 3)
-                Label(if (online) "Artist · YouTube" else "Artist · On device", 13.sp, Muted)
-                if (state.subscribers >= 0) Label("${java.text.NumberFormat.getIntegerInstance().format(state.subscribers)} subscribers", 13.sp, Muted)
-                Spacer(Modifier.height(12.dp))
-                if (state.description.isNotBlank()) Label(state.description, 14.sp, PrimaryText, lines = Int.MAX_VALUE)
-                else Label(if (online) "Artist biography is unavailable from this source." else "Showing music stored on this device.", 13.sp, Muted)
+                if (state.description.isNotBlank()) {
+                    BasicText(state.description, maxLines = if (expanded) Int.MAX_VALUE else 3,
+                        overflow = TextOverflow.Ellipsis, onTextLayout = { if (!expanded) overflowing = it.hasVisualOverflow },
+                        style = TextStyle(fontFamily = LocalAppFont.current, color = PrimaryText, fontSize = 15.sp, lineHeight = 21.sp))
+                    if (overflowing || expanded) Chip(if (expanded) "Show less" else "Read bio") { expanded = !expanded }
+                }
                 if (online) Label("Albums and tracks are search results and may include related artists.", 12.sp, Muted, modifier = Modifier.padding(top = 8.dp))
             }
         }
@@ -1927,6 +1971,7 @@ private fun TrackList(
     searchArtists: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
     searchAlbums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
     searchLayout: Boolean = false,
+    searchQuery: String = "",
     onArtist: (YouTubeMusicRepository.CatalogItem) -> Unit = {},
     onAlbum: (YouTubeMusicRepository.CatalogItem) -> Unit = {},
     searchLeading: (@Composable () -> Unit)? = null,
@@ -1935,10 +1980,14 @@ private fun TrackList(
     listState: LazyListState = rememberLazyListState(),
 ) {
     var actionsTrack by remember { mutableStateOf<Track?>(null) }
+    val spotlight = remember(searchLayout, searchQuery, tracks, searchArtists, searchAlbums) {
+        if (!searchLayout) null else searchSpotlight(searchQuery, tracks.map { it.displayTitle() },
+            searchArtists.map { it.name }, searchAlbums.map { it.name })
+    }
     val prefixCount = if (!searchLayout) 0 else
         (if (searchLeading != null) 1 else 0) + (if (searchBrowse != null) 1 else 0) +
-        (if (searchEmptyMessage != null) 1 else 0) + (if (tracks.isNotEmpty()) 2 else 0) +
-        (if (searchArtists.isNotEmpty()) 1 + searchArtists.size else 0) +
+        (if (searchEmptyMessage != null) 1 else 0) + (if (tracks.isNotEmpty()) 1 else 0) +
+        (if (spotlight != null) 1 else 0) + (if (searchArtists.isNotEmpty()) 1 else 0) +
         (if (searchAlbums.isNotEmpty()) 1 + searchAlbums.size else 0)
     val nearEnd by remember(listState, tracks.size, prefixCount) {
         derivedStateOf {
@@ -1958,32 +2007,41 @@ private fun TrackList(
         if (searchLeading != null) item(key = "search-leading") { searchLeading() }
         if (searchBrowse != null) item(key = "search-browse") { searchBrowse() }
         if (searchEmptyMessage != null) item(key = "search-empty") { Label(searchEmptyMessage, 14.sp, Muted) }
-        if (searchLayout && tracks.isNotEmpty()) {
+        if (spotlight != null) {
             item(key = "search-top-result") {
-                val top = tracks.first()
-                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                    Label("Top result", 20.sp, PrimaryText, FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth().motionClick { onPlay(top) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AlbumImage(top.artworkUri, Modifier.size(64.dp), top.coverQuery())
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Label(top.title, 16.sp, PrimaryText, FontWeight.Bold, lines = 2)
-                            Label("Track · ${top.artist}", 12.sp, Muted, lines = 1)
+                Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+                    SectionTitle("Top result")
+                    when (spotlight.kind) {
+                        ResultKind.TRACK -> {
+                            val track = tracks[spotlight.index]
+                            SpotlightRow(track.displayTitle(), "Track · ${track.artist}", track.artworkUri, track.coverQuery()) { onPlay(track) }
+                        }
+                        ResultKind.ARTIST -> {
+                            val artist = searchArtists[spotlight.index]
+                            SpotlightRow(artist.name, "Artist", artist.artwork, null, portrait = true) { onArtist(artist) }
+                        }
+                        ResultKind.ALBUM -> {
+                            val album = searchAlbums[spotlight.index]
+                            val detail = if (album.subtitle.isBlank() || album.subtitle == "Album") "Album" else "Album · ${album.subtitle}"
+                            SpotlightRow(album.name, detail, album.artwork, album.coverQuery()) { onAlbum(album) }
                         }
                     }
                 }
             }
         }
         if (searchLayout && searchArtists.isNotEmpty()) {
-            item(key = "search-artists-heading") { Label("Artists", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
-            items(searchArtists, key = { "artist:${it.name}" }) { entry -> CatalogResultRow(entry, album = false, onSelect = onArtist) }
+            item(key = "search-artists") {
+                Column(Modifier.padding(top = 12.dp)) {
+                    SectionTitle("Artists")
+                    CatalogStrip(searchArtists, albums = false, onSelect = onArtist)
+                }
+            }
         }
         if (searchLayout && searchAlbums.isNotEmpty()) {
-            item(key = "search-albums-heading") { Label("Albums", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
+            item(key = "search-albums-heading") { SectionTitle("Albums", Modifier.padding(top = 16.dp)) }
             items(searchAlbums, key = { "album:${it.name}" }) { entry -> CatalogResultRow(entry, album = true, onSelect = onAlbum) }
         }
-        if (searchLayout && tracks.isNotEmpty()) item(key = "search-tracks-heading") { Label("Tracks", 20.sp, PrimaryText, FontWeight.Bold, Modifier.padding(top = 12.dp, bottom = 4.dp)) }
+        if (searchLayout && tracks.isNotEmpty()) item(key = "search-tracks-heading") { SectionTitle("Tracks", Modifier.padding(top = 16.dp)) }
         items(tracks, key = { "track:${it.id}" }) { track ->
             Row(
                 (if (LocalReduceMotion.current) Modifier else Modifier.animateItem()).fillMaxWidth().clip(RoundedCornerShape(if (searchLayout) 0.dp else 15.dp))
@@ -1993,11 +2051,15 @@ private fun TrackList(
                 AlbumImage(track.artworkUri, Modifier.size(54.dp).motionClick { onPlay(track) }, track.coverQuery())
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f).motionClick { onPlay(track) }) {
-                    Label(if (track.source == TrackSource.YOUTUBE) songTitle(track.title, track.artist) else track.title, 13.sp, PrimaryText, FontWeight.SemiBold, lines = 1)
-                    Label(track.artist, 11.sp, Muted, lines = 1)
-                    Label(when (track.source) { TrackSource.LOCAL -> "ON DEVICE"; TrackSource.AUDIUS -> "AUDIUS STREAM"; TrackSource.YOUTUBE -> "YOUTUBE" },
-                        9.sp, Accent)
-                    if (track.durationMs > 0) Label(DurationFormatter.format(track.durationMs), 11.sp, Muted)
+                    Label(track.displayTitle(), 16.sp, PrimaryText, FontWeight.SemiBold, lines = 2)
+                    val source = when (track.source) {
+                        TrackSource.LOCAL -> "On device"
+                        TrackSource.AUDIUS -> "Audius"
+                        TrackSource.YOUTUBE -> "YouTube"
+                    }
+                    Label(track.artist, 13.sp, Muted, lines = 1)
+                    Label(if (track.durationMs > 0) "$source · ${DurationFormatter.format(track.durationMs)}" else source,
+                        12.sp, Muted, lines = 1)
                 }
                 TinyButton(KanadeIcon.FAVORITE, if (track.id in favoriteIds) "Remove from favorites" else "Add to favorites", selected = track.id in favoriteIds) { onFavorite(track) }
                 TinyButton(KanadeIcon.MORE, "Track actions for ${track.title}") { actionsTrack = track }
@@ -2033,6 +2095,21 @@ private fun TrackList(
                 Spacer(Modifier.height(7.dp))
                 SimpleRow("Edit display metadata", "Change the labels shown in Kanade") { actionsTrack = null; onTags(track) }
             }
+        }
+    }
+}
+
+@Composable
+private fun SpotlightRow(title: String, detail: String, artwork: String?, query: CoverQuery?,
+    portrait: Boolean = false, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().motionClick(onClick = onClick).padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        val shape = if (portrait) CircleShape else RoundedCornerShape(14.dp)
+        AlbumImage(artwork, Modifier.size(80.dp).clip(shape), query)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Label(title, 24.sp, PrimaryText, FontWeight.ExtraBold, lines = 2)
+            Label(detail, 14.sp, Muted, lines = 2)
         }
     }
 }
@@ -2396,7 +2473,7 @@ private fun NowPlayingScreen(
                         }
                         BasicText(title, Modifier.weight(1f).padding(horizontal = 8.dp), maxLines = 1,
                             overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = LocalAppFont.current,
-                                color = Color.White, fontWeight = FontWeight.Bold, fontSize = 28.sp,
+                                color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 26.sp,
                                 textAlign = TextAlign.Center, shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f)))
                         PlayerButton(KanadeIcon.MORE, "Player tools", onClick = onTools)
                     }
@@ -2433,7 +2510,8 @@ private fun NowPlayingScreen(
                                     label = "Synchronized lyric transition",
                                 ) { activeIndex ->
                                     lyrics.lines.getOrNull(activeIndex)?.let {
-                                        TimedLyricText(it, currentLyricTime, true, 30.sp, Color.White)
+                                        TimedLyricText(it, currentLyricTime, true, if (wide) 26.sp else 30.sp,
+                                            Color.White, Modifier.fillMaxWidth(), centered = true)
                                     }
                                 }
                                 lyrics.lines.getOrNull(index + 1)?.let { next ->
@@ -2563,7 +2641,7 @@ private fun lyricTime(state: PlaybackState, lyrics: LyricsState, offset: Long): 
 
 @Composable
 private fun TimedLyricText(line: com.urfavxbf.kanade.lyrics.LyricLine, clock: Long, active: Boolean,
-    size: TextUnit, color: Color, modifier: Modifier = Modifier) {
+    size: TextUnit, color: Color, modifier: Modifier = Modifier, centered: Boolean = false) {
     val segment = if (active) line.segments.lastOrNull { it.timeMs <= clock } else null
     val text = androidx.compose.ui.text.buildAnnotatedString {
         append(line.text)
@@ -2571,7 +2649,8 @@ private fun TimedLyricText(line: com.urfavxbf.kanade.lyrics.LyricLine, clock: Lo
             fontWeight = FontWeight.ExtraBold), segment.start, segment.end)
     }
     BasicText(text, modifier = modifier, style = TextStyle(fontFamily = LocalAppFont.current,
-        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium, fontSize = size,
+        textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+        fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium, fontSize = size, lineHeight = size * 1.18f,
         color = if (active && line.segments.isEmpty()) color else color.copy(alpha = 0.58f)))
 }
 
