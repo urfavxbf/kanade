@@ -75,7 +75,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val themeMode: StateFlow<ThemeMode> = _themeMode
     private val _colorTheme = MutableStateFlow(appearancePrefs.getString("color_theme", "Kanade Green") ?: "Kanade Green")
     val colorTheme: StateFlow<String> = _colorTheme
-    private val _appFont = MutableStateFlow(appearancePrefs.getString("app_font", "Open Sans") ?: "Open Sans")
+    private val _appFont = MutableStateFlow(appearancePrefs.getString("app_font", "Kanade Sans") ?: "Kanade Sans")
     val appFont: StateFlow<String> = _appFont
 
     fun setAppFont(name: String) {

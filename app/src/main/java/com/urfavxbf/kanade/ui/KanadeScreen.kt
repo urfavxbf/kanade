@@ -137,13 +137,14 @@ import io.github.fletchmckee.liquid.liquefiable
 import io.github.fletchmckee.liquid.rememberLiquidState
 
 private val appFonts = linkedMapOf(
+    "Kanade Sans" to FontFamily.SansSerif,
     "Open Sans" to FontFamily(Font(R.font.open_sans)),
     "System" to FontFamily.Default,
     "Serif" to FontFamily.Serif,
     "Monospace" to FontFamily.Monospace,
 )
 private val LocalReduceMotion = staticCompositionLocalOf { false }
-private val LocalAppFont = staticCompositionLocalOf { appFonts.getValue("Open Sans") }
+private val LocalAppFont = staticCompositionLocalOf { appFonts.getValue("Kanade Sans") }
 
 internal data class KanadePalette(
     val background: Color, val backgroundTop: Color, val backgroundBottom: Color,
@@ -311,7 +312,7 @@ fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMod
     val colorTheme by model.colorTheme.collectAsState()
     val font by model.appFont.collectAsState()
     val reduced by model.reduceMotion.collectAsState()
-    CompositionLocalProvider(LocalReduceMotion provides reduced, LocalAppFont provides (appFonts[font] ?: appFonts.getValue("Open Sans")),
+    CompositionLocalProvider(LocalReduceMotion provides reduced, LocalAppFont provides (appFonts[font] ?: appFonts.getValue("Kanade Sans")),
         LocalKanadePalette provides paletteFor(colorTheme, darkTheme)) {
         KanadeContent(model, themeMode, account, accountAction, onAccountAction)
     }
@@ -429,7 +430,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Label("Home", 32.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f).combinedClickable(
+                                Label("Home", 32.sp, PrimaryText, FontWeight.ExtraBold, Modifier.weight(1f).combinedClickable(
                                     onClick = { overlay = Overlay.HOME_EDITOR }, onLongClick = { overlay = Overlay.HOME_EDITOR }))
                                 Chip("Edit Home") { overlay = Overlay.HOME_EDITOR }
                                 BasicText("⚙", Modifier.clickable(role = Role.Button) {
@@ -1205,7 +1206,7 @@ private fun ThemeChoice(text: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable private fun Header(title: String, subtitle: String) {
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Label(title, 32.sp, PrimaryText, FontWeight.Bold)
+        Label(title, 32.sp, PrimaryText, FontWeight.ExtraBold)
         Spacer(Modifier.height(4.dp))
         Label(subtitle, 13.sp, Muted)
     }
@@ -1214,7 +1215,7 @@ private fun ThemeChoice(text: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun Label(
     text: String, size: TextUnit, color: Color = PrimaryText,
-    weight: FontWeight = FontWeight.Normal, modifier: Modifier = Modifier,
+    weight: FontWeight = FontWeight.Medium, modifier: Modifier = Modifier,
     lines: Int = Int.MAX_VALUE,
 ) {
     BasicText(text, modifier = modifier, maxLines = lines, overflow = TextOverflow.Ellipsis,
@@ -1295,7 +1296,7 @@ private fun SearchField(
 ) {
     BasicTextField(
         value = value, onValueChange = change, singleLine = true,
-        textStyle = TextStyle(fontFamily = LocalAppFont.current, color = PrimaryText, fontSize = 14.sp),
+        textStyle = TextStyle(fontFamily = LocalAppFont.current, color = PrimaryText, fontSize = 14.sp, fontWeight = FontWeight.Medium),
         cursorBrush = SolidColor(Accent),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { search() }),
