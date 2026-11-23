@@ -73,6 +73,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
+import com.urfavxbf.kanade.data.MusicMoods
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -464,24 +465,6 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                     style = TextStyle(color = PrimaryText, fontSize = 26.sp))
                             }
                         }
-                        if (homeDiscovery.loading) item { Label("Finding music…", 13.sp, Muted) }
-                        homeDiscovery.error?.let { message -> item { Label(message, 13.sp, Muted); Chip("Retry") { model.loadHomeDiscovery() } } }
-                        if (homeDiscovery.recommended.isNotEmpty()) item {
-                            DashboardShelf("Recommended · popular searches", homeDiscovery.recommended.take(12)) { model.playListTracks(homeDiscovery.recommended, it) }
-                        }
-                        if (homeDiscovery.artists.isNotEmpty()) item {
-                            CatalogShelf("Artists to explore", homeDiscovery.artists) { entry ->
-                                model.openArtist(entry); showArtist = true
-                            }
-                        }
-                        if (homeDiscovery.albums.isNotEmpty()) item {
-                            CatalogShelf("Albums to explore", homeDiscovery.albums) { entry ->
-                                model.openAlbum(entry); showAlbum = true
-                            }
-                        }
-                        if (homeDiscovery.hits.isNotEmpty()) item {
-                            DashboardShelf("Top hits · search results", homeDiscovery.hits.take(12)) { model.playListTracks(homeDiscovery.hits, it) }
-                        }
                         val quick = (favorites + topTracks + recent + library.tracks.take(6)).distinctBy { it.id }.take(6)
                         for (section in homeOrder) {
                             if (section in hiddenSections) continue
@@ -542,6 +525,24 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                 "Listening insights" -> {
                                     item { SimpleRow("Listening insights", "History and smart collections") { page = Page.INSIGHTS } }
                                 }
+                            }
+                        }
+                        if (homeDiscovery.loading) item { Label("Finding music…", 13.sp, Muted) }
+                        homeDiscovery.error?.let { message -> item { Label(message, 13.sp, Muted); Chip("Retry") { model.loadHomeDiscovery() } } }
+                        if (homeDiscovery.recommended.isNotEmpty()) item {
+                            DashboardShelf("Recommended · popular searches", homeDiscovery.recommended.take(12)) { model.playListTracks(homeDiscovery.recommended, it) }
+                        }
+                        if (homeDiscovery.hits.isNotEmpty()) item {
+                            DashboardShelf("Top hits · search results", homeDiscovery.hits.take(12)) { model.playListTracks(homeDiscovery.hits, it) }
+                        }
+                        if (homeDiscovery.artists.isNotEmpty()) item {
+                            CatalogShelf("Artists to explore", homeDiscovery.artists) { entry ->
+                                model.openArtist(entry); showArtist = true
+                            }
+                        }
+                        if (homeDiscovery.albums.isNotEmpty()) item {
+                            CatalogShelf("Albums to explore", homeDiscovery.albums) { entry ->
+                                model.openAlbum(entry); showAlbum = true
                             }
                         }
                     }
@@ -654,6 +655,28 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     }
                 }
                 Page.ONLINE -> {
+                    var selectedMood by remember { mutableStateOf<MusicMoods.Mood?>(null) }
+                    var moods by remember { mutableStateOf<List<MusicMoods.Mood>>(emptyList()) }
+                    var moodPlaylists by remember { mutableStateOf<List<YouTubeMusicRepository.CatalogItem>>(emptyList()) }
+                    var moodLoading by remember { mutableStateOf(false) }
+                    var moodError by remember { mutableStateOf<String?>(null) }
+                    var moodAttempt by remember { mutableStateOf(0) }
+                    LaunchedEffect(selectedMood, moodAttempt) {
+                        moodLoading = true
+                        moodError = null
+                        try {
+                            if (selectedMood == null) {
+                                moods = MusicMoods.moods()
+                                if (moods.isEmpty()) moodError = "No moods available right now."
+                            } else {
+                                moodPlaylists = MusicMoods.playlists(selectedMood!!)
+                                if (moodPlaylists.isEmpty()) moodError = "No playlists available for this mood."
+                            }
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (_: Exception) { moodError = "Couldn't load moods. Check your connection and try again." }
+                        finally { moodLoading = false }
+                    }
+                    BackHandler(enabled = selectedMood != null && !showAlbum && !showArtist && !showNowPlaying && overlay == Overlay.NONE) { selectedMood = null }
                     val submit: () -> Unit = {
                         submitted = onlineQuery.trim()
                         if (scope != "On device") model.search(submitted)
@@ -672,7 +695,6 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         .map { YouTubeMusicRepository.CatalogItem(it.album, it.artist, it.artworkUri) }
                     val artists = (localArtists + if (showOnline) discover.artists else emptyList()).distinctBy { it.name.lowercase() }
                     val albums = (localAlbums + if (showOnline) discover.albums else emptyList()).distinctBy { it.name.lowercase() }
-                    val availableTracks = (recent + favorites + library.tracks).distinctBy { it.id }
                     TrackList(matches, favoriteIds,
                         onPlay = { model.playListTracks(matches, it) },
                         onFavorite = model::toggleFavorite, onRadio = model::startRadio,
@@ -703,16 +725,20 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         searchBrowse = if (needle.isEmpty()) {{
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Spacer(Modifier.height(4.dp))
-                                Label("Explore moods", 20.sp, PrimaryText, FontWeight.Bold)
-                                for (pair in moodCategories.chunked(2)) {
+                                if (selectedMood != null) Chip("All moods") { selectedMood = null }
+                                Label(selectedMood?.name ?: "Explore moods", 20.sp, PrimaryText, FontWeight.Bold)
+                                if (moodLoading) Label("Loading…", 13.sp, Muted)
+                                moodError?.let { message ->
+                                    Label(message, 13.sp, Muted)
+                                    Chip("Retry") { moodAttempt++ }
+                                }
+                                if (selectedMood != null && !moodLoading) moodPlaylists.forEach { entry ->
+                                    CatalogResultRow(entry) { model.openAlbum(it); showAlbum = true }
+                                }
+                                if (selectedMood == null) for (pair in moods.chunked(2)) {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                         pair.forEach { mood ->
-                                            val artwork = availableTracks.firstOrNull {
-                                                it.title.contains(mood.name, true) || it.album.contains(mood.name, true)
-                                            }?.artworkUri
-                                            MoodTile(mood, artwork, Modifier.weight(1f)) {
-                                                scope = "Online"; onlineQuery = mood.query; submitted = mood.query; model.search(mood.query)
-                                            }
+                                            MoodTile(mood.name, Modifier.weight(1f)) { moodPlaylists = emptyList(); selectedMood = mood }
                                         }
                                         if (pair.size == 1) Spacer(Modifier.weight(1f))
                                     }
@@ -1376,33 +1402,16 @@ private fun CatalogShelf(title: String, entries: List<YouTubeMusicRepository.Cat
     }
 }
 
-private data class MoodCategory(val name: String, val query: String, val color: Color)
-
-private val moodCategories = listOf(
-    MoodCategory("Chill", "chill music", Color(0xFF3A4A59)),
-    MoodCategory("Commute", "commute music", Color(0xFF675929)),
-    MoodCategory("Energize", "energetic music", Color(0xFF56533A)),
-    MoodCategory("Feel good", "feel good music", Color(0xFF3D5A49)),
-    MoodCategory("Focus", "focus music", Color(0xFF464C4D)),
-    MoodCategory("Gaming", "gaming music", Color(0xFF454148)),
-    MoodCategory("Party", "party music", Color(0xFF554361)),
-    MoodCategory("Romance", "love songs", Color(0xFF63343A)),
-    MoodCategory("Sleep", "sleep music", Color(0xFF493D60)),
-    MoodCategory("Workout", "workout music", Color(0xFF674638)),
-)
-
 @Composable
-private fun MoodTile(mood: MoodCategory, artwork: String?, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun MoodTile(name: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val colors = listOf(Color(0xFF3A4A59), Color(0xFF675929), Color(0xFF3D5A49), Color(0xFF63343A), Color(0xFF493D60))
+    val color = colors[(name.hashCode() and Int.MAX_VALUE) % colors.size]
     Box(modifier.height(88.dp).clip(RoundedCornerShape(18.dp))
-        .background(Brush.linearGradient(listOf(mood.color, lerp(mood.color, Color.Black, 0.38f))))
+        .background(Brush.linearGradient(listOf(color, lerp(color, Color.Black, 0.38f))))
         .clickable(role = Role.Button, onClick = onClick)
-        .semantics { contentDescription = "Search ${mood.name} music" }.padding(14.dp)) {
-        Label(mood.name, 15.sp, Color.White, FontWeight.Bold,
+        .semantics { contentDescription = "Browse $name playlists" }.padding(14.dp)) {
+        Label(name, 15.sp, Color.White, FontWeight.Bold,
             modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(0.58f), lines = 2)
-        if (artwork != null) {
-            AsyncImage(model = artwork, contentDescription = null, contentScale = ContentScale.Crop,
-                modifier = Modifier.align(Alignment.BottomEnd).size(54.dp).clip(RoundedCornerShape(11.dp)))
-        }
     }
 }
 
@@ -2221,3 +2230,4 @@ private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composab
         }
     }
 }
+
