@@ -1,8 +1,10 @@
 name: Android emulator smoke test
 
 on:
-  push:
-    branches: [test/android-emulator-smoke-20261123]
+  pull_request:
+    paths:
+      - '.github/workflows/emulator-smoke.yml'
+      - 'scripts/emulator_smoke.py'
   workflow_dispatch:
 
 permissions:
