@@ -159,6 +159,7 @@ private val appFonts = linkedMapOf(
     "Serif" to FontFamily.Serif,
     "Monospace" to FontFamily.Monospace,
 )
+private val LocalWordLyrics = androidx.compose.runtime.compositionLocalOf { true }
 private val LocalReduceMotion = staticCompositionLocalOf { false }
 private val LocalAppFont = staticCompositionLocalOf { appFonts.getValue("Kanade Sans") }
 
@@ -329,8 +330,9 @@ fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMod
     val font by model.appFont.collectAsState()
     val reduced by model.reduceMotion.collectAsState()
     val style by model.controlStyle.collectAsState()
+    val wordLyrics by model.wordLyrics.collectAsState()
     val palette = paletteFor(colorTheme, darkTheme)
-    CompositionLocalProvider(LocalControlStyle provides style,
+    CompositionLocalProvider(LocalControlStyle provides style, LocalWordLyrics provides wordLyrics,
         LocalRaisedColors provides (if (palette.background.luminance() < 0.5f) DarkRaised else LightRaised),
         LocalReduceMotion provides reduced, LocalAppFont provides (appFonts[font] ?: appFonts.getValue("Kanade Sans")),
         LocalKanadePalette provides palette) {
@@ -967,7 +969,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     } else {
         val mode by model.videoMode.collectAsState()
         val layout by model.playerLayout.collectAsState()
-        NowPlayingScreen(playback, lyrics, mode, layout, onLayout = { overlay = Overlay.PLAYER_LAYOUT },
+        val bars by model.spectrumBars.collectAsState()
+        NowPlayingScreen(playback, lyrics, mode, layout, bars, onLayout = { overlay = Overlay.PLAYER_LAYOUT },
             onClose = { showNowPlaying = false }, onToggle = model.playback::toggle,
             onNext = model.playback::next, onPrevious = model.playback::previous,
             onShuffle = model.playback::toggleShuffle, onRepeat = model.playback::cycleRepeat,
@@ -1271,6 +1274,8 @@ private enum class SettingEntry(val title: String, val terms: String, val audio:
     FONT("App font", "appearance typography"),
     PALETTE("Color palette", "appearance colors"),
     LAYOUT("Player layout", "now playing cinematic lyrics focus"),
+    VISUALIZER("Visualizer bars", "now playing spectrum equalizer bars count plain seek bar"),
+    HIGHLIGHT("Lyrics highlighting", "now playing lyrics karaoke word by word line by line sync"),
     VIDEO("Video backdrop", "background wi-fi only always off"),
     MOTION("Reduce motion", "animations movement"),
     BOOST("Online volume boost", "audio lab loudness gain decibels", true),
@@ -1428,6 +1433,27 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
                     val layout by model.playerLayout.collectAsState()
                     Label("Player layout", 15.sp, PrimaryText, FontWeight.Bold)
                     LayoutChoices(layout, model::setPlayerLayout)
+                }
+                SettingEntry.VISUALIZER -> {
+                    val bars by model.spectrumBars.collectAsState()
+                    Label(entry.title, 15.sp, PrimaryText, FontWeight.Bold)
+                    Row(Modifier.horizontalScroll(rememberScrollState()).selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (count in spectrumBarOptions) {
+                            ThemeChoice(if (count == 0) "Plain seek bar" else count.toString(), count == bars) {
+                                model.setSpectrumBars(count)
+                            }
+                        }
+                    }
+                }
+                SettingEntry.HIGHLIGHT -> {
+                    Label(entry.title, 15.sp, PrimaryText, FontWeight.Bold)
+                    Row(Modifier.horizontalScroll(rememberScrollState()).selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ThemeChoice("Line by line", !LocalWordLyrics.current) { model.setWordLyrics(false) }
+                        ThemeChoice("Word by word", LocalWordLyrics.current) { model.setWordLyrics(true) }
+                    }
+                    if (LocalWordLyrics.current) Label("Lyrics with line timestamps highlight the whole line.", 13.sp, Muted)
                 }
                 SettingEntry.VIDEO -> {
                     Label("Video backdrop", 15.sp, PrimaryText, FontWeight.Bold)
@@ -2422,7 +2448,7 @@ private fun QueueCoverStack(state: PlaybackState, coverSize: Dp, onPlayAt: (Int)
 
 @Composable
 private fun NowPlayingScreen(
-    state: PlaybackState, lyrics: LyricsState, videoMode: String, layout: PlayerLayout, onLayout: () -> Unit, onClose: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit,
+    state: PlaybackState, lyrics: LyricsState, videoMode: String, layout: PlayerLayout, bars: Int, onLayout: () -> Unit, onClose: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit,
     onPrevious: () -> Unit, onShuffle: () -> Unit, onRepeat: () -> Unit, onSeek: (Long) -> Unit,
     onPlayAt: (Int) -> Unit, onLyrics: () -> Unit, lyricDelay: Long, onTools: () -> Unit,
 ) {
@@ -2567,7 +2593,7 @@ private fun NowPlayingScreen(
                     val panel = if (LocalControlStyle.current == ControlStyle.SOFT_RAISED) Modifier.softRaised(panelShape)
                         else Modifier.clip(panelShape).background(Color(0xFF1B1D20))
                     Column(Modifier.fillMaxWidth().then(panel).padding(12.dp)) {
-                        PlaybackProgress(state, onSeek)
+                        PlaybackProgress(state, bars, onSeek)
                         Spacer(Modifier.height(9.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -2619,9 +2645,15 @@ private fun NowPlayingScreen(
 /** Advance between controller updates only at real line or word boundaries. */
 @Composable
 private fun lyricTime(state: PlaybackState, lyrics: LyricsState, offset: Long): Long {
-    val boundaries = remember(lyrics.lines) {
-        lyrics.lines.flatMap { line -> listOfNotNull(line.timeMs, line.endMs) + line.segments.map { it.timeMs } }
-            .distinct().sorted()
+    val wordLyrics = LocalWordLyrics.current
+    val boundaries = remember(lyrics.lines, wordLyrics) {
+        buildSet {
+            for (line in lyrics.lines) {
+                add(line.timeMs)
+                line.endMs?.let { add(it) }
+                if (wordLyrics) line.segments.forEach { add(it.timeMs) }
+            }
+        }.sorted()
     }
     val position = lyricClock(state.positionMs, offset)
     var current by remember(state.mediaId, position, state.playing, state.speed, boundaries) { mutableStateOf(position) }
@@ -2643,7 +2675,8 @@ private fun lyricTime(state: PlaybackState, lyrics: LyricsState, offset: Long): 
 @Composable
 private fun TimedLyricText(line: com.urfavxbf.kanade.lyrics.LyricLine, clock: Long, active: Boolean,
     size: TextUnit, color: Color, modifier: Modifier = Modifier, centered: Boolean = false) {
-    val segment = if (active) line.segments.lastOrNull { it.timeMs <= clock } else null
+    val highlightWords = LocalWordLyrics.current && line.segments.isNotEmpty()
+    val segment = if (active && highlightWords) line.segments.lastOrNull { it.timeMs <= clock } else null
     val text = androidx.compose.ui.text.buildAnnotatedString {
         append(line.text)
         if (segment != null) addStyle(androidx.compose.ui.text.SpanStyle(color = color,
@@ -2652,11 +2685,11 @@ private fun TimedLyricText(line: com.urfavxbf.kanade.lyrics.LyricLine, clock: Lo
     BasicText(text, modifier = modifier, style = TextStyle(fontFamily = LocalAppFont.current,
         textAlign = if (centered) TextAlign.Center else TextAlign.Start,
         fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium, fontSize = size, lineHeight = size * 1.18f,
-        color = if (active && line.segments.isEmpty()) color else color.copy(alpha = 0.58f)))
+        color = if (active && !highlightWords) color else color.copy(alpha = 0.58f)))
 }
 
 @Composable
-private fun PlaybackProgress(state: PlaybackState, onSeek: (Long) -> Unit) {
+private fun PlaybackProgress(state: PlaybackState, bars: Int, onSeek: (Long) -> Unit) {
     var preview by remember(state.mediaId) { mutableStateOf<Float?>(null) }
     val rawProgress = if (state.durationMs > 0) (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f
     val reduceMotion = LocalReduceMotion.current
@@ -2695,7 +2728,13 @@ private fun PlaybackProgress(state: PlaybackState, onSeek: (Long) -> Unit) {
             } finally { preview = null }
         }, contentAlignment = Alignment.CenterStart) {
         val accent = if (LocalControlStyle.current == ControlStyle.SOFT_RAISED) LocalRaisedColors.current.accent else Accent
-        SpectrumBar(state.artworkUri, progress, state.playing, LocalReduceMotion.current, accent)
+        if (bars == 0) {
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.36f))) {
+                Box(Modifier.fillMaxWidth(progress).height(4.dp).background(accent))
+            }
+        } else {
+            SpectrumBar(state.artworkUri, progress, state.playing, reduceMotion, accent, bars)
+        }
         preview?.let {
             BoxWithConstraints(Modifier.fillMaxWidth().align(Alignment.TopStart)) {
                 val time = DurationFormatter.format((state.durationMs * it).toLong())

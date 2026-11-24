@@ -96,6 +96,26 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         _playerLayout.value = layout
     }
 
+    private val _spectrumBars = MutableStateFlow(
+        appearancePrefs.getInt("spectrum_bars", DEFAULT_SPECTRUM_BARS)
+            .takeIf { it in spectrumBarOptions } ?: DEFAULT_SPECTRUM_BARS
+    )
+    internal val spectrumBars: StateFlow<Int> = _spectrumBars
+
+    internal fun setSpectrumBars(count: Int) {
+        if (count !in spectrumBarOptions) return
+        appearancePrefs.edit().putInt("spectrum_bars", count).apply()
+        _spectrumBars.value = count
+    }
+
+    private val _wordLyrics = MutableStateFlow(lyricPrefs.getBoolean("highlight_words", true))
+    internal val wordLyrics: StateFlow<Boolean> = _wordLyrics
+
+    internal fun setWordLyrics(enabled: Boolean) {
+        lyricPrefs.edit().putBoolean("highlight_words", enabled).apply()
+        _wordLyrics.value = enabled
+    }
+
     private val _controlStyle = MutableStateFlow(ControlStyle.fromStored(appearancePrefs.getString("control_style", null)))
     internal val controlStyle: StateFlow<ControlStyle> = _controlStyle
 
