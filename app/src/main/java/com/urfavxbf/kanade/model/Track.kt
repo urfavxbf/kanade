@@ -24,6 +24,7 @@ data class Track(
             MediaMetadata.Builder()
                 .setTitle(title)
                 .setArtist(artist)
+                .setAlbumTitle(album.takeIf { it.isNotBlank() })
                 .setArtworkUri(artworkUri?.let(android.net.Uri::parse))
                 .build()
         )

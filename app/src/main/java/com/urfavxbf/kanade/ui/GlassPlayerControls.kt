@@ -158,14 +158,16 @@ internal fun MinimalGlassControlButton(
         animationSpec = if (reduceMotion) tween(0) else spring(dampingRatio = 0.70f, stiffness = 750f),
         label = "Control press",
     )
-    val shape = RoundedCornerShape(16.dp)
+    val raised = LocalControlStyle.current == ControlStyle.SOFT_RAISED
+    val shape = if (raised) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
             .size(44.dp)
             .graphicsLayer { scaleX = pressedScale; scaleY = pressedScale }
-            .then(if (glass) Modifier.warmRaisedGlass(backdrop, radius = 16.dp, elevation = if (active) 5.dp else 2.dp)
+            .then(if (raised) Modifier.softRaised(shape, pressed)
+                else if (glass) Modifier.warmRaisedGlass(backdrop, radius = 16.dp, elevation = if (active) 5.dp else 2.dp)
                 else Modifier.clip(shape).background(Color.White.copy(alpha = if (active) 0.16f else 0.05f)))
-            .background(if (active) Color(0xFFFFF3E3).copy(alpha = 0.12f) else Color.Transparent)
+            .background(if (active && !raised) Color(0xFFFFF3E3).copy(alpha = 0.12f) else Color.Transparent)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -177,7 +179,7 @@ internal fun MinimalGlassControlButton(
     ) {
         KanadeGlyph(
             icon = icon,
-            color = contentColor,
+            color = if (raised && active) LocalRaisedColors.current.accent else contentColor,
             selected = active,
             size = 22.dp,
             bold = false,
