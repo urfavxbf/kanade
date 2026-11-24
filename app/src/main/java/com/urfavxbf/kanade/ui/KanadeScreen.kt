@@ -319,7 +319,7 @@ private fun underChrome(): Pair<Modifier, PaddingValues> {
     return modifier to padding
 }
 
-private val homeSections = listOf("Continue listening", "Quick picks", "Pinned playlists", "Recently played", "Start radio")
+private val homeSections = listOf("Continue listening", "Recently played", "Most played", "Quick picks", "Pinned playlists", "Start radio")
 
 private enum class Page { HOME, LIBRARY, ONLINE, PLAYLISTS, INSIGHTS, SETTINGS }
 private enum class Overlay { HOME_EDITOR, FOLDERS, TOOLS, SESSIONS, NONE, QUEUE, LYRICS, SEARCH_LYRICS, PLAYER_LAYOUT, LYRIC_SOURCE, PICK_PLAYLIST, EDIT_TAGS }
@@ -371,6 +371,9 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     val hiddenSections = remember(revision) { prefs.getStringSet("home_hidden", emptySet()).orEmpty() }
     val quick = remember(favorites, topTracks, recent, library.tracks) {
         (favorites + topTracks + recent + library.tracks.take(6)).distinctBy { it.id }
+    }
+    val homePool = remember(quick, recent, homeDiscovery) {
+        (quick + recent + homeDiscovery.recommended + homeDiscovery.hits).distinctBy { it.id }
     }
     val stations = remember(recent, quick) { (recent + quick).distinctBy { it.artist.lowercase() } }
     val offsetKey = "offset:${playback.mediaId}"
@@ -445,12 +448,14 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
         else fadeIn(tween(duration)) togetherWith (slideOutVertically(tween(duration)) { it / 6 } + fadeOut(tween(duration)))
     }, label = "player screen") { playerVisible ->
     if (!playerVisible) Box(
-        Modifier.fillMaxSize().safeDrawingPadding().imePadding()
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp),
+        Modifier.fillMaxSize().safeDrawingPadding().imePadding(),
     ) {
         // Capture the scrolling page under the chrome, not just a flat gradient.
         // Exclude the navbar and mini-player, which remain sibling overlays.
-        Box(Modifier.fillMaxSize().then(if (raised) Modifier else Modifier.liquefiable(chromeGlass))
+        val homeVisible = page == Page.HOME && !showAlbum && !showArtist
+        val pageInset = if (homeVisible) 0.dp else 16.dp
+        Box(Modifier.fillMaxSize().padding(start = pageInset, end = pageInset, top = if (homeVisible) 0.dp else 8.dp)
+            .then(if (raised) Modifier else Modifier.liquefiable(chromeGlass))
             .background(Brush.verticalGradient(listOf(
                 LocalKanadePalette.current.backgroundTop, Background, LocalKanadePalette.current.backgroundBottom
             )))
@@ -502,65 +507,36 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             when (displayedPage) {
                 Page.HOME -> {
                     val bottom = with(LocalDensity.current) { chrome.bottomHeight.toDp() }
+                    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
                     LazyColumn(state = homeList, contentPadding = PaddingValues(bottom = bottom + 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                        item {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Label("Home", 36.sp, PrimaryText, FontWeight.ExtraBold, Modifier.weight(1f).combinedClickable(
-                                    onClickLabel = "Edit Home", onClick = { overlay = Overlay.HOME_EDITOR },
-                                    onLongClick = { overlay = Overlay.HOME_EDITOR }).semantics { heading() })
-                                BasicText("⚙", Modifier.motionClick {
-                                    settingsReturn = page; page = Page.SETTINGS
-                                }.semantics { contentDescription = "Settings" }.padding(10.dp),
-                                    style = TextStyle(color = PrimaryText, fontSize = 26.sp))
-                            }
-                        }
-                        val showResume = "Continue listening" !in hiddenSections && (playback.hasItem || recent.isNotEmpty())
-                        val picks = homeDiscovery.recommended.distinctBy { it.id }.filterNot {
-                            showResume && it.id == (if (playback.hasItem) playback.mediaId else recent.firstOrNull()?.id)
-                        }.take(4)
-                        val pageCount = picks.size + if (showResume) 1 else 0
-                        if (pageCount > 0) item(key = "featured") {
-                            val pager = rememberPagerState { pageCount }
-                            HorizontalPager(state = pager, pageSpacing = 10.dp,
-                                contentPadding = PaddingValues(end = if (pageCount > 1) 26.dp else 0.dp)) { index ->
-                                val resume = showResume && index == 0
-                                val track = if (resume) recent.firstOrNull() else picks.getOrNull(index - if (showResume) 1 else 0)
-                                val current = resume && playback.hasItem
-                                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(LocalKanadePalette.current.artworkStart).motionClick {
-                                    if (current) {
-                                        if (!playback.playing) model.playback.toggle()
-                                        showNowPlaying = true
-                                    } else if (track != null) model.playListTracks(if (resume) recent else homeDiscovery.recommended, track)
-                                }, contentAlignment = Alignment.BottomStart) {
-                                    val name = if (current) playback.title else track?.title.orEmpty()
-                                    val artist = if (current) playback.artist else track?.artist.orEmpty()
-                                    val youtube = if (current) playback.mediaId.startsWith("youtube:") else track?.source == TrackSource.YOUTUBE
-                                    CoverImage(if (current) playback.artworkUri else track?.artworkUri,
-                                        if (current) playback.coverQuery() else track?.coverQuery(), null, Modifier.matchParentSize())
-                                    Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(
-                                        Color.Black.copy(alpha = 0.34f), Color.Black.copy(alpha = 0.92f)))))
-                                    Column(Modifier.fillMaxWidth().heightIn(min = 212.dp).padding(20.dp),
-                                        verticalArrangement = Arrangement.Bottom) {
-                                        Label(if (resume) "Continue listening" else "Recommended", 13.sp, Color.White, FontWeight.SemiBold)
-                                        Spacer(Modifier.height(6.dp))
-                                        Label(if (youtube) songTitle(name, artist) else name, 30.sp, Color.White, FontWeight.ExtraBold, lines = 2)
-                                        Label(artist, 15.sp, Color.White, lines = 2)
-                                    }
-                                }
-                            }
+                        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        item(key = "featured") {
+                            HomeCarousel(playback, recent, homeDiscovery, homePool,
+                                resumeEnabled = "Continue listening" !in hiddenSections,
+                                height = (screenHeight * 0.55f).coerceIn(234.dp, 560.dp),
+                                onDial = { if (homePool.isEmpty()) page = Page.ONLINE else shelf = "Speed dial" },
+                                onShuffle = {
+                                    val mix = homePool.shuffled()
+                                    mix.firstOrNull()?.let { model.playListTracks(mix, it) }
+                                },
+                                onToggle = model.playback::toggle, onOpenPlayer = { showNowPlaying = true },
+                                onResume = { model.playListTracks(recent, it) },
+                                onSong = { model.playListTracks(homeDiscovery.recommended, it) },
+                                onArtist = { model.openArtist(it); showArtist = true },
+                                onEdit = { overlay = Overlay.HOME_EDITOR },
+                                onSettings = { settingsReturn = Page.HOME; page = Page.SETTINGS })
                         }
                         for (section in homeOrder) {
                             if (section in hiddenSections) continue
                             when (section) {
                                 "Quick picks" -> {
-                                    if (quick.isNotEmpty()) item {
+                                    if (quick.isNotEmpty()) homeShelf {
                                         DashboardShelf("Quick picks", quick.take(6), onSeeAll = { shelf = "Quick picks" }) { model.playListTracks(quick, it) }
                                     }
                                 }
                                 "Pinned playlists" -> {
                                     val pinned = playlists.filter { it.id.toString() in pins }
-                                    if (pinned.isNotEmpty()) item {
+                                    if (pinned.isNotEmpty()) homeShelf {
                                         ShelfHeading("Pinned playlists") { shelf = "Pinned playlists" }
                                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             items(pinned, key = { it.id }) { playlist ->
@@ -572,31 +548,36 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                     }
                                 }
                                 "Recently played" -> {
-                                    if (recent.isNotEmpty()) item {
+                                    if (recent.isNotEmpty()) homeShelf {
                                         DashboardShelf("Recently played", recent.take(12), onSeeAll = { shelf = "Recently played" }) { model.playListTracks(recent, it) }
                                     }
                                 }
+                                "Most played" -> {
+                                    if (topTracks.isNotEmpty()) homeShelf {
+                                        DashboardShelf("Most played", topTracks.take(12), onSeeAll = { shelf = "Most played" }) { model.playListTracks(topTracks, it) }
+                                    }
+                                }
                                 "Start radio" -> {
-                                    if (stations.isNotEmpty()) item {
+                                    if (stations.isNotEmpty()) homeShelf {
                                         DashboardShelf("Start radio", stations.take(8), onSeeAll = { shelf = "Start radio" }, onSelect = model::startRadio)
                                     }
                                 }
                             }
                         }
-                        if (homeDiscovery.loading) item { Label("Finding music…", 13.sp, Muted) }
-                        homeDiscovery.error?.let { message -> item { Label(message, 13.sp, Muted); Chip("Retry") { model.loadHomeDiscovery() } } }
-                        if (homeDiscovery.recommended.isNotEmpty()) item {
+                        if (homeDiscovery.loading) homeShelf { Label("Finding music…", 13.sp, Muted) }
+                        homeDiscovery.error?.let { message -> homeShelf { Label(message, 13.sp, Muted); Chip("Retry") { model.loadHomeDiscovery() } } }
+                        if (homeDiscovery.recommended.isNotEmpty()) homeShelf {
                             DashboardShelf("Recommended", homeDiscovery.recommended.take(8), onSeeAll = { shelf = "Recommended" }) { model.playListTracks(homeDiscovery.recommended, it) }
                         }
-                        if (homeDiscovery.hits.isNotEmpty()) item {
+                        if (homeDiscovery.hits.isNotEmpty()) homeShelf {
                             DashboardShelf("Top hits", homeDiscovery.hits.take(8), onSeeAll = { shelf = "Top hits" }) { model.playListTracks(homeDiscovery.hits, it) }
                         }
-                        if (homeDiscovery.artists.isNotEmpty()) item {
+                        if (homeDiscovery.artists.isNotEmpty()) homeShelf {
                             CatalogShelf("Artists to explore", homeDiscovery.artists.take(8), albums = false, onSeeAll = { shelf = "Artists" }) { entry ->
                                 model.openArtist(entry); showArtist = true
                             }
                         }
-                        if (homeDiscovery.albums.isNotEmpty()) item {
+                        if (homeDiscovery.albums.isNotEmpty()) homeShelf {
                             CatalogShelf("Albums to explore", homeDiscovery.albums.take(8), albums = true, onSeeAll = { shelf = "Albums" }) { entry ->
                                 model.openAlbum(entry); showAlbum = true
                             }
@@ -894,7 +875,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
         }
         }
 
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 16.dp)
             .onGloballyPositioned { chrome.bottomHeight = it.size.height }) {
         AnimatedVisibility(visible = playback.hasItem,
             enter = fadeIn(tween(if (reduceNavigationMotion) 0 else 180)) + expandVertically(tween(if (reduceNavigationMotion) 0 else 220)),
@@ -1003,6 +984,8 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                         val tracks = when (title) {
                             "Top hits" -> homeDiscovery.hits
                             "Quick picks" -> quick
+                            "Speed dial" -> homePool
+                            "Most played" -> topTracks
                             "Recently played" -> recent
                             "Start radio" -> stations
                             else -> homeDiscovery.recommended
@@ -1659,6 +1642,171 @@ private fun SearchField(
             }
         },
     )
+}
+
+private sealed interface HomeFeature {
+    data object SpeedDial : HomeFeature
+    data object Shuffle : HomeFeature
+    data object Resume : HomeFeature
+    data class Song(val track: Track) : HomeFeature
+    data class Artist(val artist: YouTubeMusicRepository.CatalogItem) : HomeFeature
+}
+
+@Composable
+private fun HomeCarousel(
+    playback: PlaybackState, recent: List<Track>, discovery: HomeDiscovery, pool: List<Track>,
+    resumeEnabled: Boolean, height: Dp, onDial: () -> Unit, onShuffle: () -> Unit,
+    onToggle: () -> Unit, onOpenPlayer: () -> Unit, onResume: (Track) -> Unit,
+    onSong: (Track) -> Unit, onArtist: (YouTubeMusicRepository.CatalogItem) -> Unit,
+    onEdit: () -> Unit, onSettings: () -> Unit,
+) {
+    val resumeId = if (playback.hasItem) playback.mediaId else recent.firstOrNull()?.id
+    val slides = remember(resumeEnabled, resumeId, discovery, pool.size) {
+        buildList<HomeFeature> {
+            if (resumeEnabled && resumeId != null) add(HomeFeature.Resume)
+            add(HomeFeature.SpeedDial)
+            if (pool.size > 1) add(HomeFeature.Shuffle)
+            val songs = discovery.recommended.filterNot { it.id == resumeId }.distinctBy { it.id }.take(3)
+            val artists = discovery.artists.take(2)
+            for (i in 0 until maxOf(songs.size, artists.size)) {
+                songs.getOrNull(i)?.let { add(HomeFeature.Song(it)) }
+                artists.getOrNull(i)?.let { add(HomeFeature.Artist(it)) }
+            }
+        }
+    }
+    val pager = rememberPagerState(initialPage = slides.indexOf(HomeFeature.SpeedDial)) { slides.size }
+    val reduced = LocalReduceMotion.current
+    Box(Modifier.fillMaxWidth()) {
+        HorizontalPager(state = pager, key = { i ->
+            when (val slide = slides[i]) {
+                is HomeFeature.Song -> "song:" + slide.track.id
+                is HomeFeature.Artist -> "artist:" + slide.artist.name
+                HomeFeature.SpeedDial -> "speed-dial"
+                HomeFeature.Shuffle -> "shuffle"
+                HomeFeature.Resume -> "resume"
+            }
+        }) { index ->
+            val slide = slides[index]
+            val track = when (slide) {
+                is HomeFeature.Song -> slide.track
+                HomeFeature.Resume -> if (playback.hasItem) null else recent.firstOrNull()
+                else -> null
+            }
+            val current = slide == HomeFeature.Resume && playback.hasItem
+            val artist = (slide as? HomeFeature.Artist)?.artist
+            val title = when {
+                current -> if (playback.mediaId.startsWith("youtube:")) songTitle(playback.title, playback.artist) else playback.title
+                track != null -> track.displayTitle()
+                artist != null -> artist.name
+                slide == HomeFeature.Shuffle -> "Random play"
+                else -> "Speed dial"
+            }
+            val caption = when {
+                current -> "Now playing"
+                slide == HomeFeature.Resume -> "Continue listening"
+                artist != null -> "Artist to explore"
+                track != null -> track.artist
+                else -> ""
+            }
+            val action = when {
+                current -> if (playback.playing) "Pause" else "Play"
+                artist != null -> "View artist"
+                slide == HomeFeature.SpeedDial -> if (pool.isEmpty()) "Find music" else "Open speed dial"
+                slide == HomeFeature.Shuffle -> "Shuffle"
+                else -> "Play"
+            }
+            val activate: () -> Unit = when (slide) {
+                HomeFeature.SpeedDial -> onDial
+                HomeFeature.Shuffle -> onShuffle
+                HomeFeature.Resume -> if (current) onToggle else ({ track?.let(onResume) })
+                is HomeFeature.Song -> ({ onSong(slide.track) })
+                is HomeFeature.Artist -> ({ onArtist(slide.artist) })
+            }
+            val art = if (current) playback.artworkUri else artist?.artwork ?: track?.artworkUri
+            Box(Modifier.fillMaxWidth().clipToBounds().background(LocalKanadePalette.current.artworkStart)) {
+                Box(Modifier.matchParentSize().graphicsLayer {
+                    if (!reduced) {
+                        val distance = (pager.currentPage - index + pager.currentPageOffsetFraction).coerceIn(-1f, 1f)
+                        translationX = distance * size.width * 0.18f
+                        scaleX = 1.18f
+                        scaleY = 1.18f
+                    }
+                }) {
+                    if (slide == HomeFeature.SpeedDial || slide == HomeFeature.Shuffle) {
+                        HomeCoverCollage(pool, alternate = slide == HomeFeature.Shuffle)
+                    } else {
+                        CoverImage(art, if (current) playback.coverQuery() else track?.coverQuery(), null, Modifier.fillMaxSize())
+                    }
+                }
+                Box(Modifier.matchParentSize().background(Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.40f), 0.45f to Color.Black.copy(alpha = 0.16f),
+                    0.83f to Color.Black.copy(alpha = 0.87f), 1f to Background)))
+                Column(Modifier.fillMaxWidth().heightIn(min = height).padding(start = 24.dp, end = 24.dp, top = 72.dp, bottom = 38.dp),
+                    verticalArrangement = Arrangement.Bottom) {
+                    if (caption.isNotEmpty()) Label(caption, 13.sp, Color.White, FontWeight.Medium, lines = 1)
+                    val titleModifier = if (current) Modifier.motionClick(onClickLabel = "Open player", onClick = onOpenPlayer) else Modifier
+                    Label(title, if (slide == HomeFeature.SpeedDial) 36.sp else 29.sp, Color.White, FontWeight.ExtraBold,
+                        titleModifier.semantics { heading() }, lines = 2)
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.clip(CircleShape).background(Color.White).motionClick(onClick = activate)
+                        .heightIn(min = 48.dp).padding(horizontal = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        val icon = when {
+                            current && playback.playing -> KanadeIcon.PAUSE
+                            slide == HomeFeature.Shuffle -> KanadeIcon.SHUFFLE
+                            artist != null || slide == HomeFeature.SpeedDial -> KanadeIcon.FORWARD
+                            else -> KanadeIcon.PLAY
+                        }
+                        KanadeGlyph(icon, Color.Black, size = 16.dp)
+                        Label(action, 14.sp, Color.Black, FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween) {
+            Box(Modifier.size(48.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.38f))
+                .motionClick(onClick = onEdit).semantics { contentDescription = "Edit Home" }, contentAlignment = Alignment.Center) {
+                KanadeGlyph(KanadeIcon.MUSIC, Color.White, size = 22.dp)
+            }
+            Box(Modifier.size(48.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.38f))
+                .motionClick(onClick = onSettings).semantics { contentDescription = "Settings" }, contentAlignment = Alignment.Center) {
+                Label("⚙", 22.sp, Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeCoverCollage(pool: List<Track>, alternate: Boolean) {
+    val covers = remember(pool, alternate) {
+        (if (alternate) pool.asReversed() else pool).distinctBy { it.artworkUri ?: it.album.ifBlank { it.id } }.take(6)
+    }
+    if (covers.isEmpty()) {
+        Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(
+            LocalKanadePalette.current.artworkStart, LocalKanadePalette.current.artworkEnd))))
+        return
+    }
+    Column(Modifier.fillMaxSize().graphicsLayer {
+        rotationZ = if (alternate) 8f else -10f
+        scaleX = 1.22f
+        scaleY = 1.22f
+    }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        repeat(3) { row ->
+            Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(2) { col ->
+                    val cover = covers[(row * 2 + col) % covers.size]
+                    AlbumImage(cover.artworkUri, Modifier.weight(1f).fillMaxSize(), cover.coverQuery())
+                }
+            }
+        }
+    }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.homeShelf(content: @Composable () -> Unit) {
+    item {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) { content() }
+    }
 }
 
 private fun Track.displayTitle() = if (source == TrackSource.YOUTUBE) songTitle(title, artist) else title
