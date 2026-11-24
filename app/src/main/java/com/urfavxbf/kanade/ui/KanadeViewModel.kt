@@ -126,7 +126,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _colorTheme = MutableStateFlow(appearancePrefs.getString("color_theme", "Kanade Green") ?: "Kanade Green")
     val colorTheme: StateFlow<String> = _colorTheme
-    private val _appFont = MutableStateFlow(appearancePrefs.getString("app_font", "Kanade Sans") ?: "Kanade Sans")
+    private val _appFont = MutableStateFlow(appearancePrefs.getString("app_font", null) ?: DEFAULT_APP_FONT)
     val appFont: StateFlow<String> = _appFont
 
     fun setAppFont(name: String) {
@@ -634,10 +634,8 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     fun removeFromPlaylist(id: Long, trackId: String) = viewModelScope.launch {
         removedSong.value = store.removeFromPlaylist(id, trackId)
     }
-    fun undoRemoval() = viewModelScope.launch {
-        val item = removedSong.value ?: return@launch
-        removedSong.value = null
-        store.restore(item)
+    fun finishRemovalNotice(item: com.urfavxbf.kanade.data.PlaylistItem, restore: Boolean) {
+        if (removedSong.compareAndSet(item, null) && restore) viewModelScope.launch { store.restore(item) }
     }
     fun deletePlaylist(id: Long) = viewModelScope.launch { store.removePlaylist(id) }
     fun selectPlaylist(id: Long) {

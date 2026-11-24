@@ -25,6 +25,8 @@ import android.view.TextureView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
@@ -85,6 +87,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
+import com.urfavxbf.kanade.data.coverRequestSize
+import com.urfavxbf.kanade.data.coverVariants
 import com.urfavxbf.kanade.data.CoverQuery
 import com.urfavxbf.kanade.data.MusicBrainzArtwork
 import com.urfavxbf.kanade.data.MusicMoods
@@ -109,6 +113,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -126,16 +131,20 @@ import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
-import com.urfavxbf.kanade.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.ui.window.Dialog
 import androidx.media3.common.Player
 import androidx.media3.common.MediaItem
@@ -152,16 +161,8 @@ import com.urfavxbf.kanade.playback.PlaybackState
 import io.github.fletchmckee.liquid.liquefiable
 import io.github.fletchmckee.liquid.rememberLiquidState
 
-private val appFonts = linkedMapOf(
-    "Kanade Sans" to FontFamily.SansSerif,
-    "Open Sans" to FontFamily(Font(R.font.open_sans)),
-    "System" to FontFamily.Default,
-    "Serif" to FontFamily.Serif,
-    "Monospace" to FontFamily.Monospace,
-)
 private val LocalWordLyrics = androidx.compose.runtime.compositionLocalOf { true }
 private val LocalReduceMotion = staticCompositionLocalOf { false }
-private val LocalAppFont = staticCompositionLocalOf { appFonts.getValue("Kanade Sans") }
 
 internal data class KanadePalette(
     val background: Color, val backgroundTop: Color, val backgroundBottom: Color,
@@ -327,14 +328,13 @@ private enum class Overlay { HOME_EDITOR, FOLDERS, TOOLS, SESSIONS, NONE, QUEUE,
 @Composable
 fun KanadeScreen(model: KanadeViewModel, darkTheme: Boolean, themeMode: ThemeMode, account: String, accountAction: String, onAccountAction: () -> Unit) {
     val colorTheme by model.colorTheme.collectAsState()
-    val font by model.appFont.collectAsState()
     val reduced by model.reduceMotion.collectAsState()
     val style by model.controlStyle.collectAsState()
     val wordLyrics by model.wordLyrics.collectAsState()
     val palette = paletteFor(colorTheme, darkTheme)
     CompositionLocalProvider(LocalControlStyle provides style, LocalWordLyrics provides wordLyrics,
         LocalRaisedColors provides (if (palette.background.luminance() < 0.5f) DarkRaised else LightRaised),
-        LocalReduceMotion provides reduced, LocalAppFont provides (appFonts[font] ?: appFonts.getValue("Kanade Sans")),
+        LocalReduceMotion provides reduced,
         LocalKanadePalette provides palette) {
         KanadeContent(model, themeMode, account, accountAction, onAccountAction)
     }
@@ -392,7 +392,22 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     var settingsReturn by rememberSaveable { mutableStateOf(Page.HOME) }
     var scope by rememberSaveable { mutableStateOf("All") }
     var submitted by rememberSaveable { mutableStateOf("") }
+    val snackbar = remember { SnackbarHostState() }
     val undo by model.removedSong.collectAsState()
+    LaunchedEffect(undo) {
+        val item = undo ?: return@LaunchedEffect
+        val result = snackbar.showSnackbar("Removed from playlist", actionLabel = "Undo", duration = SnackbarDuration.Long)
+        model.finishRemovalNotice(item, restore = result == SnackbarResult.ActionPerformed)
+    }
+    fun queueTrack(track: Track, next: Boolean) {
+        val added = model.playback.add(track, next)
+        val message = when {
+            !added -> "Queue unavailable. Try again."
+            next -> "Playing next · " + track.displayTitle()
+            else -> "Added to queue · " + track.displayTitle()
+        }
+        scrollScope.launch { snackbar.showSnackbar(message) }
+    }
     var overlay by remember { mutableStateOf(Overlay.NONE) }
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var showArtist by rememberSaveable { mutableStateOf(false) }
@@ -431,6 +446,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     BackHandler(enabled = showNowPlaying && overlay == Overlay.NONE) { showNowPlaying = false }
     LaunchedEffect(playback.hasItem) { if (!playback.hasItem) showNowPlaying = false }
 
+    BackHandler(enabled = shelf != null && !showArtist && !showAlbum && !showNowPlaying && overlay == Overlay.NONE) { shelf = null }
     val chrome = remember { ChromeMetrics() }
     // Separate source layers: nav/mini-player sample page content while inputs
     // sample the base background. Search controls never sample their own glass.
@@ -452,7 +468,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
     ) {
         // Capture the scrolling page under the chrome, not just a flat gradient.
         // Exclude the navbar and mini-player, which remain sibling overlays.
-        val homeVisible = page == Page.HOME && !showAlbum && !showArtist
+        val homeVisible = page == Page.HOME && shelf == null && !showAlbum && !showArtist
         val pageInset = if (homeVisible) 0.dp else 16.dp
         Box(Modifier.fillMaxSize().padding(start = pageInset, end = pageInset, top = if (homeVisible) 0.dp else 8.dp)
             .then(if (raised) Modifier else Modifier.liquefiable(chromeGlass))
@@ -463,6 +479,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             AnimatedContent(targetState = when {
                 showAlbum && albumPage.album != null -> "album"
                 showArtist && artistPage.artist != null -> "artist"
+                shelf != null -> "shelf:$shelf"
                 else -> "page"
             }, transitionSpec = {
                 val duration = if (reduceNavigationMotion) 0 else 260
@@ -470,19 +487,60 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 (slideInHorizontally(tween(duration)) { direction * it / 6 } + fadeIn(tween(duration))) togetherWith
                     (slideOutHorizontally(tween(duration)) { -direction * it / 10 } + fadeOut(tween(duration)))
             }, label = "detail screen") { section ->
-            if (section == "album") {
+            if (section.startsWith("shelf:")) {
+                val title = section.removePrefix("shelf:")
+                val bottom = with(LocalDensity.current) { chrome.bottomHeight.toDp() }
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom + 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { IconTextButton(KanadeIcon.BACK, "Back") { shelf = null } }
+                    item { SectionTitle(title, screen = true) }
+                    when (title) {
+                        "Artists", "Albums" -> items(if (title == "Artists") homeDiscovery.artists else homeDiscovery.albums) { entry ->
+                            CatalogResultRow(entry, album = title == "Albums") {
+                                if (title == "Artists") { model.openArtist(it); showArtist = true }
+                                else { model.openAlbum(it); showAlbum = true }
+                            }
+                        }
+                        "Pinned playlists" -> items(playlists.filter { it.id.toString() in pins }) { playlist ->
+                            Chip(playlist.name) {
+                                shelf = null
+                                selectedPlaylistId = playlist.id
+                                model.selectPlaylist(playlist.id)
+                                page = Page.PLAYLISTS
+                            }
+                        }
+                        else -> {
+                            val tracks = when (title) {
+                                "Top hits" -> homeDiscovery.hits
+                                "Quick picks" -> quick
+                                "Speed dial" -> homePool
+                                "Most played" -> topTracks
+                                "Recently played" -> recent
+                                "Start radio" -> stations
+                                else -> homeDiscovery.recommended
+                            }
+                            items(tracks) { track ->
+                                SimpleRow(track.title, track.artist) {
+                                    if (title == "Start radio") model.startRadio(track) else model.playListTracks(tracks, track)
+                                    shelf = null
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (section == "album") {
                 AlbumScreen(albumPage, favoriteIds, onBack = { showAlbum = false },
                     onPlay = { model.playListTracks(albumPage.tracks, it) }, onFavorite = model::toggleFavorite,
-                    onRadio = model::startRadio, onQueue = { model.playback.add(it, true) },
-                    onAppend = { model.playback.add(it, false) },
+                    onRadio = model::startRadio, onQueue = { queueTrack(it, true) },
+                    onAppend = { queueTrack(it, false) },
                     onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                     onMore = model::moreAlbumTracks, onRetry = model::retryAlbum,
                     onArtist = { entry -> model.openArtist(entry); artistReturnsToAlbum = true; showAlbum = false; showArtist = true })
             } else if (section == "artist") {
                 ArtistScreen(artistPage, favoriteIds, onBack = { showArtist = false; if (artistReturnsToAlbum) showAlbum = true; artistReturnsToAlbum = false },
                     onPlay = { model.playListTracks(artistPage.tracks, it) }, onFavorite = model::toggleFavorite,
-                    onRadio = model::startRadio, onQueue = { model.playback.add(it, true) },
-                    onAppend = { model.playback.add(it, false) },
+                    onRadio = model::startRadio, onQueue = { queueTrack(it, true) },
+                    onAppend = { queueTrack(it, false) },
                     onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                     onMoreTracks = model::moreArtistTracks, onRetryTracks = model::retryArtistTracks,
                     onMoreAlbums = model::moreArtistAlbums, onAlbum = { entry ->
@@ -684,7 +742,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                 TrackList(shown, favoriteIds, listState = libraryList,
                                     onPlay = { model.playListTracks(shown, it) },
                                     onFavorite = model::toggleFavorite, onRadio = model::startRadio,
-                                    onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
+                                    onQueue = { queueTrack(it, true) }, onAppend = { queueTrack(it, false) },
                                     onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                                     onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                             }
@@ -735,7 +793,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     TrackList(matches, favoriteIds,
                         onPlay = { model.playListTracks(matches, it) },
                         onFavorite = model::toggleFavorite, onRadio = model::startRadio,
-                        onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
+                        onQueue = { queueTrack(it, true) }, onAppend = { queueTrack(it, false) },
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS },
                         pagination = if (showOnline) discover else null, onLoadMore = model::loadMoreSearchResults,
@@ -826,16 +884,15 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                             Chip(if (selectedPlaylistId.toString() in pins) "Unpin" else "Pin to Home") { model.togglePin(selectedPlaylistId) }
                             Chip("Import") { m3uImporter.launch(arrayOf("audio/x-mpegurl", "text/*", "*/*")) }
                             Chip("Export") { m3uExporter.launch("kanade-playlist.m3u") }
-                            Chip("Delete") { model.deletePlaylist(selectedPlaylistId); selectedPlaylistId = -1L }
+                            Chip("Delete", destructive = true) { model.deletePlaylist(selectedPlaylistId); selectedPlaylistId = -1L }
                         }
                         Spacer(Modifier.height(12.dp))
-                        if (undo?.playlistId == selectedPlaylistId) Chip("Undo removal") { model.undoRemoval() }
                         if (selectedTracks.isEmpty()) EmptyState(KanadeIcon.MUSIC, "Playlist is empty",
                             "Open a song’s menu to add music.")
                         else TrackList(selectedTracks, favoriteIds,
                             onPlay = { model.playListTracks(selectedTracks, it) },
                             onFavorite = model::toggleFavorite, onRadio = model::startRadio,
-                            onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
+                            onQueue = { queueTrack(it, true) }, onAppend = { queueTrack(it, false) },
                             onPlaylist = { model.removeFromPlaylist(selectedPlaylistId, it.id) },
                             removeFromPlaylist = true,
                             onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
@@ -865,7 +922,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     else TrackList(tracks, favoriteIds,
                         onPlay = { model.playListTracks(tracks, it) },
                         onFavorite = model::toggleFavorite, onRadio = model::startRadio,
-                        onQueue = { model.playback.add(it, true) }, onAppend = { model.playback.add(it, false) },
+                        onQueue = { queueTrack(it, true) }, onAppend = { queueTrack(it, false) },
                         onPlaylist = { selectedTrack = it; overlay = Overlay.PICK_PLAYLIST },
                         onTags = { selectedTrack = it; overlay = Overlay.EDIT_TAGS })
                 }
@@ -915,7 +972,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                     .clip(RoundedCornerShape(15.dp))
                     .background(if (raised && active) LocalRaisedColors.current.accent.copy(alpha = 0.14f) else if (active) Color(0xFFF2E2D2).copy(alpha = 0.09f) else Color.Transparent)
                     .motionSelectable(selected = active, role = Role.Tab, onClick = {
-                        if (active && !showArtist && !showAlbum) {
+                        if (active && shelf == null && !showArtist && !showAlbum) {
                             if (tab == Page.PLAYLISTS && selectedPlaylistId >= 0) selectedPlaylistId = -1L
                             else {
                                 val list = when (tab) {
@@ -929,7 +986,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                                 }
                             }
                         }
-                        showAlbum = false; showArtist = false; artistReturnsToAlbum = false; page = tab
+                        shelf = null; showAlbum = false; showArtist = false; artistReturnsToAlbum = false; page = tab
                     })
                     .semantics { contentDescription = label },
                     verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -959,48 +1016,18 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             onLyrics = { overlay = Overlay.LYRICS }, lyricDelay = lyricDelay, onTools = { overlay = Overlay.TOOLS })
     }
     }
+    val snackInset = with(LocalDensity.current) { if (showNowPlaying) 0.dp else chrome.bottomHeight.toDp() }
+    SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter)
+        .safeDrawingPadding().imePadding().padding(start = 16.dp, end = 16.dp, bottom = snackInset + 6.dp)) { data ->
+        val action = data.visuals.actionLabel
+        Snackbar(shape = RoundedCornerShape(16.dp), containerColor = PrimaryText, contentColor = Background,
+            action = if (action == null) null else ({
+                Box(Modifier.heightIn(min = 48.dp).motionClick { data.performAction() }.padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center) { Label(action, 14.sp, Background, FontWeight.Bold) }
+            })) { Label(data.visuals.message, 14.sp, Background, lines = 3) }
+    }
     }
 
-    shelf?.let { title ->
-        FeatureDialog(title, { shelf = null }) {
-            LazyColumn(Modifier.fillMaxWidth().height(360.dp)) {
-                when (title) {
-                    "Artists", "Albums" -> items(if (title == "Artists") homeDiscovery.artists else homeDiscovery.albums) { entry ->
-                        CatalogResultRow(entry, album = title == "Albums") {
-                            shelf = null
-                            if (title == "Artists") { model.openArtist(it); showArtist = true }
-                            else { model.openAlbum(it); showAlbum = true }
-                        }
-                    }
-                    "Pinned playlists" -> items(playlists.filter { it.id.toString() in pins }) { playlist ->
-                        Chip(playlist.name) {
-                            shelf = null
-                            selectedPlaylistId = playlist.id
-                            model.selectPlaylist(playlist.id)
-                            page = Page.PLAYLISTS
-                        }
-                    }
-                    else -> {
-                        val tracks = when (title) {
-                            "Top hits" -> homeDiscovery.hits
-                            "Quick picks" -> quick
-                            "Speed dial" -> homePool
-                            "Most played" -> topTracks
-                            "Recently played" -> recent
-                            "Start radio" -> stations
-                            else -> homeDiscovery.recommended
-                        }
-                        items(tracks) { track ->
-                            SimpleRow(track.title, track.artist) {
-                                if (title == "Start radio") model.startRadio(track) else model.playListTracks(tracks, track)
-                                shelf = null
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
     when (overlay) {
         Overlay.HOME_EDITOR -> FeatureDialog("Edit Home", { overlay = Overlay.NONE }) {
             homeOrder.forEachIndexed { index, section ->
@@ -1032,7 +1059,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             }
             for (folder in (folders + included + excluded).distinct().sorted()) {
                 Label(folder.ifBlank { "Storage root" }, 14.sp, PrimaryText)
-                Row {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (mode in listOf("Default", "Include", "Exclude")) {
                         ThemeChoice(mode, mode == when (folder) { in included -> "Include"; in excluded -> "Exclude"; else -> "Default" }) {
                             prefs.edit().putStringSet("include", if (mode == "Include") included + folder else included - folder)
@@ -1047,7 +1074,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             val names by model.playback.sessionNames.collectAsState()
             var name by rememberSaveable { mutableStateOf("") }
             SearchField(name, "Session name", { name = it.take(60) }, {})
-            if (name.isNotBlank() && playback.hasItem) Chip(if (name.trim() in names) "Replace session" else "Save session") {
+            if (name.isNotBlank() && playback.hasItem) AccentAction(if (name.trim() in names) "Replace session" else "Save session") {
                 model.playback.saveSession(name); name = ""
             }
             for (saved in names) SimpleRow(saved, "Resume session") { model.playback.openSession(saved); overlay = Overlay.NONE }
@@ -1061,7 +1088,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 if (station.isNotEmpty()) {
                     var mix by rememberSaveable { mutableStateOf("Radio · " + (model.findTrack(station)?.title ?: playback.title)) }
                     SearchField(mix, "Playlist name", { mix = it }, {})
-                    Chip("Save mix as playlist") { model.saveRadioMix(mix) }
+                    AccentAction("Save mix as playlist") { model.saveRadioMix(mix) }
                     if (station != id) Chip("Hide from this station") { model.hideStationSong(); overlay = Overlay.NONE }
                 }
                 Chip("Queue sessions") { overlay = Overlay.SESSIONS }
@@ -1114,7 +1141,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             if (playback.queue.isEmpty()) Label("Queue is empty", 14.sp, Muted)
             else {
                 Row {
-                    Chip("Clear queue") { model.playback.clear(); overlay = Overlay.NONE }
+                    Chip("Clear queue", destructive = true) { model.playback.clear(); overlay = Overlay.NONE }
                     Spacer(Modifier.width(8.dp))
                     Label("${playback.queue.size} tracks", 12.sp, Muted)
                 }
@@ -1187,7 +1214,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
             if (lyrics.lines.isEmpty()) Label(lyrics.plain ?: lyrics.message, 14.sp, Muted)
             else {
                 Label("Lyrics timing · ${lyricDelay} ms", 14.sp, PrimaryText)
-                Row {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Chip("Earlier") { prefs.edit().putLong(offsetKey, lyricDelay - 250).apply() }
                     Chip("Later") { prefs.edit().putLong(offsetKey, lyricDelay + 250).apply() }
                     Chip("Reset") { prefs.edit().remove(offsetKey).apply() }
@@ -1236,7 +1263,7 @@ private fun KanadeContent(model: KanadeViewModel, themeMode: ThemeMode, account:
                 }
             }
         }
-        Overlay.PICK_PLAYLIST -> FeatureDialog("Add to playlist", { overlay = Overlay.NONE }) {
+        Overlay.PICK_PLAYLIST -> ActionSheet("Add to playlist", { overlay = Overlay.NONE }) {
             if (playlists.isEmpty()) Label("Create a playlist in the Playlists tab first.", 13.sp, Muted)
             for (playlist in playlists) {
                 SimpleRow(playlist.name, "Add selected track") {
@@ -1496,15 +1523,7 @@ private fun SettingsScreen(model: KanadeViewModel, playback: PlaybackState, them
 
 @Composable
 private fun ThemeChoice(text: String, selected: Boolean, onClick: () -> Unit) {
-    val color by animateColorAsState(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f),
-        animationSpec = tween(if (LocalReduceMotion.current) 0 else 180), label = "selection color")
-    Box(Modifier.clip(RoundedCornerShape(13.dp))
-        .background(color)
-        .motionSelectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-        .padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
-        Label(text, 12.sp, if (selected) Background else PrimaryText,
-            if (selected) FontWeight.Bold else FontWeight.Normal)
-    }
+    Chip(text, selected, onClick = onClick)
 }
 
 @Composable private fun Header(title: String, subtitle: String) {
@@ -1525,22 +1544,29 @@ private fun Label(
         style = TextStyle(fontFamily = LocalAppFont.current, color = color, fontSize = size, fontWeight = weight))
 }
 
-@Composable private fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
-    val color by animateColorAsState(if (selected) Accent else LocalKanadePalette.current.tint.copy(alpha = 0.08f),
-        animationSpec = tween(if (LocalReduceMotion.current) 0 else 180), label = "chip color")
-    Box(Modifier.clip(RoundedCornerShape(13.dp))
-        .background(color)
-        .motionClick(onClick = onClick)
-        .padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
-        Label(text, 12.sp, if (selected) Background else PrimaryText,
-            if (selected) FontWeight.Bold else FontWeight.Normal)
+@Composable
+private fun Chip(text: String, selected: Boolean? = null, destructive: Boolean = false, onClick: () -> Unit) {
+    val ink = if (destructive) LocalKanadePalette.current.error else PrimaryText
+    val shape = RoundedCornerShape(16.dp)
+    val fill by animateColorAsState(
+        if (selected == true) Accent else lerp(SurfaceLight, ink, 0.05f),
+        animationSpec = tween(if (LocalReduceMotion.current) 0 else 160), label = "button fill",
+    )
+    val interaction = if (selected == null) Modifier.motionClick(onClick = onClick)
+        else Modifier.motionSelectable(selected, Role.RadioButton, onClick)
+    Box(Modifier.clip(shape).background(fill)
+        .border(1.dp, if (selected == true) Accent else ink.copy(alpha = 0.20f), shape)
+        .then(interaction).sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+        .padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+        Label(text, 14.sp, if (selected == true) Background else ink, FontWeight.SemiBold)
     }
 }
 
 @Composable private fun AccentAction(text: String, onClick: () -> Unit) {
-    Box(Modifier.clip(RoundedCornerShape(13.dp)).background(Accent)
-        .motionClick(onClick = onClick).padding(horizontal = 17.dp, vertical = 14.dp)) {
-        Label(text, 12.sp, Background, FontWeight.Bold)
+    Box(Modifier.clip(CircleShape).background(Accent).motionClick(onClick = onClick)
+        .heightIn(min = 48.dp).padding(horizontal = 22.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center) {
+        Label(text, 15.sp, Background, FontWeight.Bold)
     }
 }
 
@@ -1903,28 +1929,29 @@ private fun YouTubeMusicRepository.CatalogItem.coverQuery(trackArtist: String = 
 
 @Composable
 private fun CoverImage(artwork: String?, query: CoverQuery?, description: String?, modifier: Modifier) {
-    androidx.compose.runtime.key(artwork, query) {
-        val primary = artwork?.takeIf { it.isNotBlank() }
-        var primaryFailed by remember { mutableStateOf(false) }
-        val needsCover = primary == null || primaryFailed
-        var alternatives by remember { mutableStateOf(emptyList<String>()) }
-        var index by remember { mutableStateOf(0) }
-        LaunchedEffect(needsCover) {
-            if (needsCover && query != null) {
-                // Let quickly scrolled rows leave composition before starting a network request.
-                kotlinx.coroutines.delay(250)
-                alternatives = MusicBrainzArtwork.find(query)
+    var target by remember { mutableStateOf(0) }
+    Box(modifier.onSizeChanged { size ->
+        target = coverRequestSize(maxOf(size.width, size.height))
+    }) {
+        if (target == 0) return@Box
+        androidx.compose.runtime.key(artwork, query, target) {
+            val primary = remember { coverVariants(artwork, target) }
+            var candidates by remember { mutableStateOf(primary) }
+            var index by remember { mutableStateOf(0) }
+            val needsFallback = index >= primary.size
+            LaunchedEffect(needsFallback) {
+                if (needsFallback && query != null) {
+                    // Avoid starting metadata lookups for rows that quickly leave the screen.
+                    kotlinx.coroutines.delay(250)
+                    candidates = (primary + MusicBrainzArtwork.find(query).flatMap { coverVariants(it, target) }).distinct()
+                }
             }
-        }
-        val model = if (needsCover) alternatives.getOrNull(index) else primary
-        Crossfade(targetState = model, modifier = modifier,
-            animationSpec = tween(if (LocalReduceMotion.current) 0 else 220), label = "album artwork") { image ->
-            if (image != null) AsyncImage(model = image, contentDescription = description,
-                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-                onError = {
-                    if (image == primary) primaryFailed = true
-                    else if (image == alternatives.getOrNull(index)) index++
-                })
+            Crossfade(targetState = candidates.getOrNull(index), modifier = Modifier.fillMaxSize(),
+                animationSpec = tween(if (LocalReduceMotion.current) 0 else 220), label = "album artwork") { image ->
+                if (image != null) AsyncImage(model = image, contentDescription = description,
+                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                    onError = { if (image == candidates.getOrNull(index)) index++ })
+            }
         }
     }
 }
@@ -2028,7 +2055,7 @@ private fun AlbumScreen(
         }
     }
     actionsTrack?.let { track ->
-        FeatureDialog(track.title, { actionsTrack = null }) {
+        ActionSheet(track.title, { actionsTrack = null }) {
             SimpleRow("Start radio", "Build a mix from this song") { actionsTrack = null; onRadio(track) }
             SimpleRow("Play next", "Add this song to the queue") { actionsTrack = null; onQueue(track) }
             SimpleRow("Add to queue", "After the last song") { actionsTrack = null; onAppend(track) }
@@ -2067,8 +2094,7 @@ private fun ArtistScreen(
                 DetailHero(art = { size ->
                     Box(Modifier.size(size).clip(CircleShape).background(SurfaceLight), contentAlignment = Alignment.Center) {
                         KanadeGlyph(KanadeIcon.MUSIC, Accent, selected = true, size = 40.dp)
-                        if (!artist.artwork.isNullOrBlank()) AsyncImage(model = artist.artwork, contentDescription = null,
-                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        if (!artist.artwork.isNullOrBlank()) CoverImage(artist.artwork, null, null, Modifier.fillMaxSize())
                     }
                 }) {
                     Label(if (online) "Artist · YouTube" else "Artist · On device", 13.sp, Muted)
@@ -2125,7 +2151,7 @@ private fun ArtistScreen(
         }
     }
     actionsTrack?.let { track ->
-        FeatureDialog(track.title, { actionsTrack = null }) {
+        ActionSheet(track.title, { actionsTrack = null }) {
             SimpleRow("Start radio", "Build a mix from this song") { actionsTrack = null; onRadio(track) }
             SimpleRow("Play next", "Add this song to the queue") { actionsTrack = null; onQueue(track) }
             SimpleRow("Add to queue", "After the last song") { actionsTrack = null; onAppend(track) }
@@ -2257,7 +2283,7 @@ private fun TrackList(
         }
     }
     actionsTrack?.let { track ->
-        FeatureDialog(track.title, { actionsTrack = null }) {
+        ActionSheet(track.title, { actionsTrack = null }) {
             SimpleRow("Start radio", "Build a mix from this song") { actionsTrack = null; onRadio(track) }
             SimpleRow(if (track.id in favoriteIds) "Remove favorite" else "Favorite", track.artist) { actionsTrack = null; onFavorite(track) }
             SimpleRow("Add to queue", "After the last song") { actionsTrack = null; onAppend(track) }
@@ -2303,7 +2329,8 @@ private fun CatalogResultRow(entry: YouTubeMusicRepository.CatalogItem, album: B
 
 @Composable
 private fun TinyButton(icon: KanadeIcon, description: String, selected: Boolean = false, onClick: () -> Unit) {
-    Box(Modifier.size(39.dp).clip(CircleShape).motionClick(onClick = onClick)
+    Box(Modifier.size(48.dp).clip(CircleShape)
+        .background(if (selected) Accent.copy(alpha = 0.14f) else Color.Transparent).motionClick(onClick = onClick)
         .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
         KanadeGlyph(icon, if (selected) Accent else Muted, selected = selected, size = 21.dp)
     }
@@ -2311,12 +2338,12 @@ private fun TinyButton(icon: KanadeIcon, description: String, selected: Boolean 
 
 @Composable
 private fun IconTextButton(icon: KanadeIcon, text: String, onClick: () -> Unit) {
-    Row(Modifier.clip(RoundedCornerShape(13.dp)).background(SurfaceLight)
-        .motionClick(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
+    Row(Modifier.clip(CircleShape).background(SurfaceLight)
+        .motionClick(onClick = onClick).heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
         KanadeGlyph(icon, PrimaryText, size = 17.dp)
-        Spacer(Modifier.width(5.dp))
-        Label(text, 12.sp, PrimaryText)
+        Spacer(Modifier.width(6.dp))
+        Label(text, 14.sp, PrimaryText, FontWeight.SemiBold)
     }
 }
 
@@ -2355,7 +2382,7 @@ private fun EmptyState(icon: KanadeIcon, title: String, detail: String, action: 
 }
 
 @Composable
-private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp, dialog: Boolean = false): Modifier =
+private fun Modifier.glassSurface(radius: androidx.compose.ui.unit.Dp): Modifier =
     clip(RoundedCornerShape(radius)).background(SurfaceLight)
 
 @Composable
@@ -2897,6 +2924,19 @@ private fun PlaybackProgress(state: PlaybackState, bars: Int, onSeek: (Long) -> 
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActionSheet(title: String, dismiss: () -> Unit, content: @Composable () -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SurfaceLight, contentColor = PrimaryText) {
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Label(title, 20.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f).semantics { heading() }, lines = 2)
+            TinyButton(KanadeIcon.CLOSE, "Close actions", onClick = dismiss)
+        }
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp), content = { content() })
+    }
+}
+
 @Composable
 private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composable () -> Unit) {
     var entered by remember { mutableStateOf(false) }
@@ -2910,14 +2950,21 @@ private fun FeatureDialog(title: String, dismiss: () -> Unit, content: @Composab
         BoxWithConstraints(Modifier.fillMaxWidth().graphicsLayer {
             scaleX = dialogScale; scaleY = dialogScale; alpha = dialogAlpha
         }) {
-            Column(Modifier.fillMaxWidth().heightIn(max = maxHeight * 0.9f)
-                .glassSurface(25.dp, dialog = true).verticalScroll(rememberScrollState()).padding(19.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Label(title, 20.sp, PrimaryText, FontWeight.Bold, Modifier.weight(1f), lines = 2)
-                    TinyButton(KanadeIcon.CLOSE, "Close dialog") { dismiss() }
+            val shape = RoundedCornerShape(26.dp)
+            Column(Modifier.fillMaxWidth().heightIn(max = maxHeight * 0.92f)
+                .clip(shape).background(SurfaceLight).border(1.dp, PrimaryText.copy(alpha = 0.14f), shape)) {
+                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Label(title, 22.sp, PrimaryText, FontWeight.Bold,
+                        Modifier.weight(1f).semantics { heading() }, lines = 2)
+                    TinyButton(KanadeIcon.CLOSE, "Close dialog", onClick = dismiss)
                 }
-                Spacer(Modifier.height(15.dp))
-                content()
+                Spacer(Modifier.fillMaxWidth().height(1.dp).background(PrimaryText.copy(alpha = 0.12f)))
+                Column(Modifier.fillMaxWidth().weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    content()
+                }
             }
         }
     }

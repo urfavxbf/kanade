@@ -66,7 +66,7 @@ object YouTubeMusicRepository {
         ArtistProfile(
             runCatching { extractor.description }.getOrDefault(""),
             runCatching { extractor.subscriberCount }.getOrDefault(-1L),
-            runCatching { extractor.avatars.lastOrNull()?.url }.getOrNull(),
+            runCatching { extractor.avatars.largestArtwork() }.getOrNull(),
         )
     }
 
@@ -74,7 +74,7 @@ object YouTubeMusicRepository {
         val extractor = ServiceList.YouTube.getSearchExtractor(query, listOf(MUSIC_ALBUMS), "")
         val results = if (page == null) { extractor.fetchPage(); extractor.initialPage } else extractor.getPage(page)
         val items = results.items.filterIsInstance<PlaylistInfoItem>().map {
-            CatalogItem(it.name, it.uploaderName ?: "Album", it.thumbnails.lastOrNull()?.url, it.url, it.uploaderUrl)
+            CatalogItem(it.name, it.uploaderName ?: "Album", it.thumbnails.largestArtwork(), it.url, it.uploaderUrl)
         }.distinctBy { it.url ?: it.name }
         CatalogPage(items, results.nextPage?.takeIf { Page.isValid(it) })
     }
@@ -84,8 +84,8 @@ object YouTubeMusicRepository {
         extractor.fetchPage()
         extractor.initialPage.items.mapNotNull { item ->
             when (item) {
-                is ChannelInfoItem -> if (artists) CatalogItem(item.name, "Artist", item.thumbnails.lastOrNull()?.url, item.url) else null
-                is PlaylistInfoItem -> if (!artists) CatalogItem(item.name, item.uploaderName ?: "Album", item.thumbnails.lastOrNull()?.url, item.url, item.uploaderUrl) else null
+                is ChannelInfoItem -> if (artists) CatalogItem(item.name, "Artist", item.thumbnails.largestArtwork(), item.url) else null
+                is PlaylistInfoItem -> if (!artists) CatalogItem(item.name, item.uploaderName ?: "Album", item.thumbnails.largestArtwork(), item.url, item.uploaderUrl) else null
                 else -> null
             }
         }.distinctBy { it.name.lowercase() }.take(10)
@@ -98,7 +98,7 @@ object YouTubeMusicRepository {
         val tracks = results.items.mapNotNull { item ->
             val videoId = YouTubeTrackId.fromUrl(item.url) ?: return@mapNotNull null
             Track(id = "youtube:$videoId", title = item.name, artist = item.uploaderName ?: "Unknown artist",
-                uri = "kanadeyt://track/$videoId", artworkUri = item.thumbnails.lastOrNull()?.url,
+                uri = "kanadeyt://track/$videoId", artworkUri = item.thumbnails.largestArtwork(),
                 durationMs = item.duration.coerceAtLeast(0) * 1_000, source = TrackSource.YOUTUBE)
         }.distinctBy { it.id }
         SearchPage(tracks, results.nextPage?.takeIf { Page.isValid(it) })
@@ -123,7 +123,7 @@ object YouTubeMusicRepository {
         val tracks = page.items.filterIsInstance<StreamInfoItem>().mapNotNull { item ->
             val id = YouTubeTrackId.fromUrl(item.url) ?: return@mapNotNull null
             Track(id = "youtube:$id", title = item.name, artist = item.uploaderName ?: "Unknown artist",
-                uri = "kanadeyt://track/$id", artworkUri = item.thumbnails.lastOrNull()?.url,
+                uri = "kanadeyt://track/$id", artworkUri = item.thumbnails.largestArtwork(),
                 durationMs = item.duration.coerceAtLeast(0) * 1_000, source = TrackSource.YOUTUBE)
         }.distinctBy { it.id }
         return SearchPage(tracks, page.nextPage?.takeIf { Page.isValid(it) })

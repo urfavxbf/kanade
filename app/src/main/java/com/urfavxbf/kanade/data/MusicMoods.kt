@@ -64,8 +64,14 @@ object MusicMoods {
             val id = browse.removePrefix("VL")
             if (!id.matches(Regex("(?:PL|RD|OLAK5uy_)[A-Za-z0-9_-]+")) || name.isBlank()) return@visit
             var image: String? = null
+            var largestArea = -1L
             visit(item.optJSONObject("thumbnailRenderer")) { candidate ->
-                candidate.optString("url").takeIf { it.startsWith("https://") }?.let { image = it }
+                val url = candidate.optString("url")
+                val area = candidate.optInt("width").toLong() * candidate.optInt("height")
+                if (url.startsWith("https://") && area > largestArea) {
+                    image = url
+                    largestArea = area
+                }
             }
             result += YouTubeMusicRepository.CatalogItem(name, "Playlist", image, "https://www.youtube.com/playlist?list=$id")
         }

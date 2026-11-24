@@ -114,14 +114,15 @@ class PlaybackConnection(context: Context) {
         } }
     }
 
-    fun add(track: Track, next: Boolean = false) {
+    fun add(track: Track, next: Boolean = false): Boolean {
+        val player = controller ?: return false
+        if (!player.isCommandAvailable(Player.COMMAND_CHANGE_MEDIA_ITEMS)) return false
         knownTracks[track.id] = track
-        controller?.let { player ->
-            if (next && player.currentMediaItem != null) {
-                player.addMediaItem(player.currentMediaItemIndex + 1, track.mediaItem())
-            } else player.addMediaItem(track.mediaItem())
-            persist(force = true)
-        }
+        if (next && player.currentMediaItem != null) {
+            player.addMediaItem(player.currentMediaItemIndex + 1, track.mediaItem())
+        } else player.addMediaItem(track.mediaItem())
+        persist(force = true)
+        return true
     }
 
     fun remove(index: Int) {
