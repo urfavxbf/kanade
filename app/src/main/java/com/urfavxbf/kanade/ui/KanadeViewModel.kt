@@ -29,6 +29,7 @@ import com.urfavxbf.kanade.model.Track
 import com.urfavxbf.kanade.model.TrackSource
 import com.urfavxbf.kanade.playback.PlaybackConnection
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -45,13 +46,34 @@ data class LibraryState(
 )
 data class DiscoverState(
     val tracks: List<Track> = emptyList(),
+    val artists: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    val albums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
     val searching: Boolean = false,
     val loadingMore: Boolean = false,
     val hasMore: Boolean = false,
     val loadMoreError: String? = null,
     val message: String = "Search for songs or artists on YouTube.",
 )
-data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Lyrics unavailable", val plain: String? = null)
+data class HomeDiscovery(
+    val recommended: List<Track> = emptyList(), val hits: List<Track> = emptyList(),
+    val artists: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    val albums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    val loading: Boolean = true, val error: String? = null,
+)
+data class AlbumPageState(
+    val album: YouTubeMusicRepository.CatalogItem? = null,
+    val tracks: List<Track> = emptyList(), val loading: Boolean = false,
+    val hasMore: Boolean = false, val error: String? = null,
+)
+data class ArtistPageState(
+    val artist: YouTubeMusicRepository.CatalogItem? = null,
+    val description: String = "", val subscribers: Long = -1,
+    val tracks: List<Track> = emptyList(), val albums: List<YouTubeMusicRepository.CatalogItem> = emptyList(),
+    val loadingTracks: Boolean = false, val loadingAlbums: Boolean = false,
+    val tracksMore: Boolean = false, val albumsMore: Boolean = false,
+    val trackError: String? = null, val albumError: String? = null,
+)
+data class LyricsState(val lines: List<LyricLine> = emptyList(), val message: String = "Lyrics unavailable", val plain: String? = null, val source: String = "Automatic")
 
 class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val local = LocalMusicRepository(app.contentResolver)
@@ -64,9 +86,47 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         if (appearancePrefs.contains("dark_theme")) appearancePrefs.getBoolean("dark_theme", true) else null,
     ))
     val themeMode: StateFlow<ThemeMode> = _themeMode
+    private val _playerLayout = MutableStateFlow(PlayerLayout.entries.firstOrNull {
+        it.name == appearancePrefs.getString("player_layout", null)
+    } ?: PlayerLayout.CINEMATIC)
+    internal val playerLayout: StateFlow<PlayerLayout> = _playerLayout
+
+    internal fun setPlayerLayout(layout: PlayerLayout) {
+        appearancePrefs.edit().putString("player_layout", layout.name).apply()
+        _playerLayout.value = layout
+    }
+
+    private val _spectrumBars = MutableStateFlow(
+        appearancePrefs.getInt("spectrum_bars", DEFAULT_SPECTRUM_BARS)
+            .takeIf { it in spectrumBarOptions } ?: DEFAULT_SPECTRUM_BARS
+    )
+    internal val spectrumBars: StateFlow<Int> = _spectrumBars
+
+    internal fun setSpectrumBars(count: Int) {
+        if (count !in spectrumBarOptions) return
+        appearancePrefs.edit().putInt("spectrum_bars", count).apply()
+        _spectrumBars.value = count
+    }
+
+    private val _wordLyrics = MutableStateFlow(lyricPrefs.getBoolean("highlight_words", true))
+    internal val wordLyrics: StateFlow<Boolean> = _wordLyrics
+
+    internal fun setWordLyrics(enabled: Boolean) {
+        lyricPrefs.edit().putBoolean("highlight_words", enabled).apply()
+        _wordLyrics.value = enabled
+    }
+
+    private val _controlStyle = MutableStateFlow(ControlStyle.fromStored(appearancePrefs.getString("control_style", null)))
+    internal val controlStyle: StateFlow<ControlStyle> = _controlStyle
+
+    internal fun setControlStyle(style: ControlStyle) {
+        appearancePrefs.edit().putString("control_style", style.key).apply()
+        _controlStyle.value = style
+    }
+
     private val _colorTheme = MutableStateFlow(appearancePrefs.getString("color_theme", "Kanade Green") ?: "Kanade Green")
     val colorTheme: StateFlow<String> = _colorTheme
-    private val _appFont = MutableStateFlow(appearancePrefs.getString("app_font", "Open Sans") ?: "Open Sans")
+    private val _appFont = MutableStateFlow(appearancePrefs.getString("app_font", null) ?: DEFAULT_APP_FONT)
     val appFont: StateFlow<String> = _appFont
 
     fun setAppFont(name: String) {
@@ -102,6 +162,9 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     val library: StateFlow<LibraryState> = _library
     private val _discover = MutableStateFlow(DiscoverState())
     val discover: StateFlow<DiscoverState> = _discover
+    private val _homeDiscovery = MutableStateFlow(HomeDiscovery())
+    val homeDiscovery: StateFlow<HomeDiscovery> = _homeDiscovery
+    private var homeJob: Job? = null
     private val _favorites = MutableStateFlow<List<Track>>(emptyList())
     val favorites: StateFlow<List<Track>> = _favorites
     private val _favoriteIds = MutableStateFlow<Set<String>>(emptySet())
@@ -121,6 +184,131 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private val _lyrics = MutableStateFlow(LyricsState())
     val lyrics: StateFlow<LyricsState> = _lyrics
 
+    private val _albumPage = MutableStateFlow(AlbumPageState())
+    val albumPage: StateFlow<AlbumPageState> = _albumPage
+    private var albumJob: Job? = null
+    private var albumNext: Page? = null
+    private var albumGeneration = 0L
+
+    fun openAlbum(album: YouTubeMusicRepository.CatalogItem) {
+        albumJob?.cancel()
+        albumNext = null
+        val generation = ++albumGeneration
+        if (album.url == null) {
+            val tracks = _library.value.tracks.filter {
+                it.album.ifBlank { "Unknown album" }.equals(album.name, true) &&
+                    (album.subtitle == "Album" || it.artist.equals(album.subtitle, true))
+            }
+            _albumPage.value = AlbumPageState(album = album, tracks = tracks)
+        } else {
+            _albumPage.value = AlbumPageState(album = album, loading = true)
+            albumJob = viewModelScope.launch { loadAlbum(generation, null) }
+        }
+    }
+    fun moreAlbumTracks() {
+        val page = albumNext ?: return
+        if (_albumPage.value.loading) return
+        _albumPage.value = _albumPage.value.copy(loading = true, error = null)
+        albumJob = viewModelScope.launch { loadAlbum(albumGeneration, page) }
+    }
+    fun retryAlbum() {
+        val album = _albumPage.value.album ?: return
+        if (_albumPage.value.loading) return
+        if (albumNext == null) openAlbum(album) else moreAlbumTracks()
+    }
+    private suspend fun loadAlbum(generation: Long, page: Page?) {
+        val url = _albumPage.value.album?.url ?: return
+        try {
+            val result = YouTubeMusicRepository.albumTracks(url, page)
+            if (generation != albumGeneration) return
+            albumNext = result.nextPage?.takeUnless { page != null && SearchPagination.sameCursor(page, it) }
+            result.tracks.forEach { known[it.id] = it }
+            _albumPage.value = _albumPage.value.copy(tracks = SearchPagination.merge(_albumPage.value.tracks, result.tracks),
+                loading = false, hasMore = albumNext != null)
+        } catch (e: CancellationException) { throw e } catch (_: Exception) {
+            if (generation == albumGeneration) _albumPage.value = _albumPage.value.copy(loading = false,
+                error = "Couldn't load this album. Check your connection and try again.")
+        }
+    }
+
+    private val _artistPage = MutableStateFlow(ArtistPageState())
+    val artistPage: StateFlow<ArtistPageState> = _artistPage
+    private var artistJob: Job? = null
+    private var artistTrackJob: Job? = null
+    private var artistAlbumJob: Job? = null
+    private var artistTrackPage: Page? = null
+    private var artistAlbumPage: Page? = null
+    private var artistGeneration = 0L
+
+    fun openArtist(artist: YouTubeMusicRepository.CatalogItem) {
+        artistJob?.cancel(); artistTrackJob?.cancel(); artistAlbumJob?.cancel()
+        artistTrackPage = null; artistAlbumPage = null
+        val generation = ++artistGeneration
+        if (artist.url == null) {
+            val tracks = _library.value.tracks.filter { it.artist.equals(artist.name, true) }
+            val albums = tracks.filter { it.album.isNotBlank() }.distinctBy { it.album.lowercase() }
+                .map { YouTubeMusicRepository.CatalogItem(it.album, it.artist, it.artworkUri) }
+            _artistPage.value = ArtistPageState(artist = artist, tracks = tracks, albums = albums)
+            return
+        }
+        _artistPage.value = ArtistPageState(artist = artist, loadingTracks = true, loadingAlbums = true)
+        artistJob = viewModelScope.launch {
+            launch {
+                try {
+                    val profile = YouTubeMusicRepository.artistProfile(artist.url)
+                    if (generation == artistGeneration) _artistPage.value = _artistPage.value.copy(
+                        artist = artist.copy(artwork = profile.artwork ?: artist.artwork),
+                        description = profile.description, subscribers = profile.subscribers)
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+            }
+            launch { loadArtistTracks(generation, null) }
+            launch { loadArtistAlbums(generation, null) }
+        }
+    }
+
+    fun moreArtistTracks() {
+        val page = artistTrackPage ?: return
+        if (_artistPage.value.loadingTracks) return
+        artistTrackJob = viewModelScope.launch { loadArtistTracks(artistGeneration, page) }
+    }
+    private suspend fun loadArtistTracks(generation: Long, page: Page?) {
+        val artist = _artistPage.value.artist ?: return
+        _artistPage.value = _artistPage.value.copy(loadingTracks = true, trackError = null)
+        try {
+            val result = if (page == null) YouTubeMusicRepository.search(artist.name) else YouTubeMusicRepository.searchNext(artist.name, page)
+            if (generation != artistGeneration) return
+            val next = result.nextPage?.takeUnless { page != null && SearchPagination.sameCursor(page, it) }
+            artistTrackPage = next
+            result.tracks.forEach { known[it.id] = it }
+            _artistPage.value = _artistPage.value.copy(tracks = SearchPagination.merge(_artistPage.value.tracks, result.tracks),
+                loadingTracks = false, tracksMore = next != null)
+        } catch (e: CancellationException) { throw e } catch (_: Exception) {
+            if (generation == artistGeneration) _artistPage.value = _artistPage.value.copy(loadingTracks = false, trackError = "Couldn't load tracks. Try again.")
+        }
+    }
+    fun moreArtistAlbums() {
+        if (_artistPage.value.loadingAlbums) return
+        artistAlbumJob = viewModelScope.launch { loadArtistAlbums(artistGeneration, artistAlbumPage) }
+    }
+    private suspend fun loadArtistAlbums(generation: Long, page: Page?) {
+        val artist = _artistPage.value.artist ?: return
+        _artistPage.value = _artistPage.value.copy(loadingAlbums = true, albumError = null)
+        try {
+            val result = YouTubeMusicRepository.searchAlbumPage(artist.name, page)
+            if (generation != artistGeneration) return
+            val next = result.nextPage?.takeUnless { page != null && SearchPagination.sameCursor(page, it) }
+            artistAlbumPage = next
+            val albums = (_artistPage.value.albums + result.items).distinctBy { it.url ?: it.name }
+            _artistPage.value = _artistPage.value.copy(albums = albums, loadingAlbums = false, albumsMore = next != null)
+        } catch (e: CancellationException) { throw e } catch (_: Exception) {
+            if (generation == artistGeneration) _artistPage.value = _artistPage.value.copy(loadingAlbums = false, albumError = "Couldn't load albums. Try again.")
+        }
+    }
+    fun retryArtistTracks() {
+        if (_artistPage.value.loadingTracks) return
+        artistTrackJob = viewModelScope.launch { loadArtistTracks(artistGeneration, artistTrackPage) }
+    }
+
     private var searchJob: Job? = null
     private var loadMoreJob: Job? = null
     private var searchGeneration = 0L
@@ -134,6 +322,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     private var recordedEntryId: Long? = null
 
     init {
+        loadHomeDiscovery()
         viewModelScope.launch { store.favorites.collect { _favoriteIds.value = it.toSet() } }
         viewModelScope.launch { store.favoriteTracks.collect { _favorites.value = it.map { item -> item.toTrack() } } }
         viewModelScope.launch { store.playlists.collect { _playlists.value = it } }
@@ -239,6 +428,31 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private suspend fun <T> availableOr(fallback: T, block: suspend () -> T): T =
+        try { block() } catch (e: CancellationException) { throw e } catch (_: Exception) { fallback }
+
+    fun loadHomeDiscovery() {
+        homeJob?.cancel()
+        _homeDiscovery.value = HomeDiscovery()
+        homeJob = viewModelScope.launch {
+            try {
+                kotlinx.coroutines.supervisorScope {
+                    val recommended = async { availableOr(emptyList()) { YouTubeMusicRepository.search("popular music Philippines").tracks } }
+                    val hits = async { availableOr(emptyList()) { YouTubeMusicRepository.search("top hits Philippines").tracks } }
+                    val artists = async { availableOr(emptyList()) { YouTubeMusicRepository.searchCatalog("popular Philippines", true) } }
+                    val albums = async { availableOr(emptyList()) { YouTubeMusicRepository.searchCatalog("popular Philippines", false) } }
+                    val first = recommended.await()
+                    val top = hits.await()
+                    val performers = artists.await()
+                    val records = albums.await()
+                    (first + top).forEach { known[it.id] = it }
+                    _homeDiscovery.value = HomeDiscovery(first, top, performers, records, false,
+                        if (first.isEmpty() && top.isEmpty() && performers.isEmpty() && records.isEmpty()) "Could not load music. Check your connection." else null)
+                }
+            } catch (e: CancellationException) { throw e }
+        }
+    }
+
     fun search(query: String) {
         searchJob?.cancel()
         loadMoreJob?.cancel()
@@ -258,18 +472,30 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         val generation = searchGeneration
         _discover.value = DiscoverState(searching = true, message = "Searching YouTube…")
         searchJob = viewModelScope.launch {
+            launch {
+                try {
+                    val artists = YouTubeMusicRepository.searchCatalog(normalized, true)
+                    if (generation == searchGeneration) _discover.value = _discover.value.copy(artists = artists)
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+            }
+            launch {
+                try {
+                    val albums = YouTubeMusicRepository.searchCatalog(normalized, false)
+                    if (generation == searchGeneration) _discover.value = _discover.value.copy(albums = albums)
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+            }
             try {
                 val page = YouTubeMusicRepository.search(normalized)
                 if (generation != searchGeneration) return@launch
                 nextSearchPage = page.nextPage
                 page.tracks.forEach { known[it.id] = it }
-                _discover.value = DiscoverState(tracks = page.tracks, hasMore = page.nextPage != null,
+                _discover.value = _discover.value.copy(tracks = page.tracks, searching = false, hasMore = page.nextPage != null,
                     message = if (page.tracks.isEmpty() && page.nextPage == null) "No matches. Try another song."
                         else "${page.tracks.size} results")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 if (generation == searchGeneration) {
-                    _discover.value = DiscoverState(message = "Couldn't load YouTube results. Check your connection and try again.")
+                    _discover.value = _discover.value.copy(searching = false, message = "Couldn't load YouTube results. Check your connection and try again.")
                 }
             }
         }
@@ -408,10 +634,8 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
     fun removeFromPlaylist(id: Long, trackId: String) = viewModelScope.launch {
         removedSong.value = store.removeFromPlaylist(id, trackId)
     }
-    fun undoRemoval() = viewModelScope.launch {
-        val item = removedSong.value ?: return@launch
-        removedSong.value = null
-        store.restore(item)
+    fun finishRemovalNotice(item: com.urfavxbf.kanade.data.PlaylistItem, restore: Boolean) {
+        if (removedSong.compareAndSet(item, null) && restore) viewModelScope.launch { store.restore(item) }
     }
     fun deletePlaylist(id: Long) = viewModelScope.launch { store.removePlaylist(id) }
     fun selectPlaylist(id: Long) {
@@ -446,21 +670,27 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun loadLyrics(uri: Uri) {
-        val id = playback.state.value.mediaId
-        if (id.isBlank()) return
+    fun loadLyrics(uri: Uri, id: String) {
+        if (id.isBlank() || id != playback.state.value.mediaId) return
         val app = getApplication<Application>()
         try { app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         catch (_: SecurityException) { }
-        lyricPrefs.edit().remove("match:$id").putString(id, uri.toString()).apply()
+        lyricPrefs.edit().remove("source:$id").remove("match:$id").putString(id, uri.toString()).apply()
         loadSavedLyrics(id)
     }
 
     fun chooseLyrics(id: String, match: OnlineLyrics.Match) {
         if (id.isBlank() || id != playback.state.value.mediaId) return
         lyricJob?.cancel()
-        lyricPrefs.edit().remove(id).putString("match:$id", match.raw).apply()
-        _lyrics.value = LyricsState(match.lyrics.synced, "", match.lyrics.plain)
+        lyricPrefs.edit().remove("source:$id").remove(id).putString("match:$id", match.raw).apply()
+        _lyrics.value = LyricsState(match.lyrics.synced, "", match.lyrics.plain, "LRCLIB")
+    }
+
+    fun selectLyricSource(source: String) {
+        val id = playback.state.value.mediaId
+        if (id.isBlank()) return
+        lyricPrefs.edit().remove(id).remove("match:$id").putString("source:$id", source).apply()
+        loadSavedLyrics(id)
     }
 
     private fun loadSavedLyrics(id: String) {
@@ -469,7 +699,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
         lyricPrefs.getString("match:$id", null)?.let { raw ->
             val saved = runCatching { OnlineLyrics.decode(org.json.JSONObject(raw)) }.getOrNull()
             if (saved != null) {
-                _lyrics.value = LyricsState(saved.synced, "", saved.plain)
+                _lyrics.value = LyricsState(saved.synced, "", saved.plain, "LRCLIB")
                 return
             }
         }
@@ -479,12 +709,20 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
             if (id.isBlank()) { _lyrics.value = LyricsState(); return }
             lyricJob = viewModelScope.launch {
                 try {
-                    val result = OnlineLyrics.get(state.title, state.artist, state.durationMs)
+                    val source = lyricPrefs.getString("source:$id", "Automatic")
+                    val title = if (id.startsWith("youtube:")) songTitle(state.title, state.artist) else state.title
+                    val recording = if (source != "Video captions") availableOr<OnlineLyrics.Result?>(null) {
+                        OnlineLyrics.get(title, state.artist, state.durationMs)
+                    } else null
+                    val video = if (id.startsWith("youtube:") && (source == "Video captions" ||
+                            (source == "Automatic" && recording?.synced.isNullOrEmpty()))) {
+                        availableOr(emptyList()) { YouTubeMusicRepository.captionLines(id.removePrefix("youtube:")) }
+                    } else emptyList()
                     _lyrics.value = when {
-                        result == null -> LyricsState(message = "Lyrics unavailable for this song.")
-                        result.synced.isNotEmpty() -> LyricsState(lines = result.synced, message = "")
-                        !result.plain.isNullOrBlank() -> LyricsState(message = "", plain = result.plain)
-                        else -> LyricsState(message = "Lyrics unavailable for this song.")
+                        video.isNotEmpty() -> LyricsState(video, "", source = "Video captions")
+                        recording != null && (recording.synced.isNotEmpty() || recording.plain != null) ->
+                            LyricsState(recording.synced, "", recording.plain, "LRCLIB")
+                        else -> LyricsState(message = "No lyrics available from this source.", source = source ?: "Automatic")
                     }
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
@@ -501,7 +739,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val parsed = LrcParser.parse(contents)
                 _lyrics.value = LyricsState(parsed,
-                    if (parsed.isEmpty()) "No synchronized timestamps found in this LRC file." else "")
+                    if (parsed.isEmpty()) "No synchronized timestamps found in this LRC file." else "", source = "Local LRC")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _lyrics.value = LyricsState(message = "This lyrics file is no longer accessible.")
@@ -511,6 +749,7 @@ class KanadeViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         searchJob?.cancel()
+        homeJob?.cancel()
         loadMoreJob?.cancel()
         playlistJob?.cancel()
         lyricJob?.cancel()

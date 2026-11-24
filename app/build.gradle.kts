@@ -57,6 +57,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.runtime:runtime")
     implementation("io.github.fletchmckee.liquid:liquid:1.1.1")
@@ -74,5 +75,7 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+

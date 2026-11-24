@@ -2,6 +2,8 @@ package com.urfavxbf.kanade
 
 import android.app.Activity
 import android.content.Context
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -27,6 +29,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.urfavxbf.kanade.ui.LocalAppFont
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
@@ -90,7 +93,7 @@ internal fun AccountEntry(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        BasicText(stringResource(R.string.kanade_account), style = TextStyle(color = ink, fontSize = 32.sp, fontWeight = FontWeight.Bold))
+        BasicText(stringResource(R.string.kanade_account), style = TextStyle(fontFamily = LocalAppFont.current, color = ink, fontSize = 32.sp, fontWeight = FontWeight.Bold))
         Spacer(Modifier.height(28.dp))
         AccountButton(stringResource(if (busy) R.string.please_wait else R.string.google_sign_in), ink, configured && !busy) {
             busy = true
@@ -115,23 +118,36 @@ internal fun AccountEntry(
             }
         }
         Spacer(Modifier.height(12.dp))
-        AccountButton(stringResource(R.string.continue_guest), ink, !busy) { setGuest(true) }
+        AccountButton(stringResource(R.string.continue_guest), ink, !busy, primary = false) { setGuest(true) }
         val message = if (!configured) R.string.account_unavailable else error
         if (message != 0) {
             Spacer(Modifier.height(16.dp))
-            BasicText(stringResource(message), style = TextStyle(color = ink, fontSize = 15.sp))
+            BasicText(stringResource(message), style = TextStyle(fontFamily = LocalAppFont.current, color = ink, fontSize = 15.sp))
         }
     }
 }
 
 @Composable
-private fun AccountButton(label: String, ink: Color, enabled: Boolean, onClick: () -> Unit) {
+private fun AccountButton(label: String, ink: Color, enabled: Boolean, primary: Boolean = true, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(26.dp)
+    val fill = when {
+        !enabled -> ink.copy(alpha = 0.08f)
+        primary -> ink
+        else -> Color.Transparent
+    }
+    val textColor = when {
+        !enabled -> ink.copy(alpha = 0.55f)
+        primary && ink == Color.White -> Color.Black
+        primary -> Color.White
+        else -> ink
+    }
     Box(
         Modifier.widthIn(max = 400.dp).fillMaxWidth().heightIn(min = 52.dp)
-            .background(ink.copy(alpha = 0.09f), RoundedCornerShape(16.dp))
+            .clip(shape).background(fill)
+            .border(1.dp, if (enabled && !primary) ink.copy(alpha = 0.30f) else Color.Transparent, shape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        BasicText(label, style = TextStyle(color = ink.copy(alpha = if (enabled) 1f else 0.55f), fontSize = 16.sp))
+        BasicText(label, style = TextStyle(fontFamily = LocalAppFont.current, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
     }
 }

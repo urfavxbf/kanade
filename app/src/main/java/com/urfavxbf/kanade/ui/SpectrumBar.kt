@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -22,9 +23,13 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.urfavxbf.kanade.playback.LiveSpectrum
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
+
+internal const val DEFAULT_SPECTRUM_BARS = 36
+internal val spectrumBarOptions = listOf(0, 12, 24, DEFAULT_SPECTRUM_BARS, 48, 60)
 
 @Composable
-internal fun SpectrumBar(art: String?, progress: Float, playing: Boolean, reduced: Boolean, fallback: Color) {
+internal fun SpectrumBar(art: String?, progress: Float, playing: Boolean, reduced: Boolean, fallback: Color, bars: Int) {
     val context = LocalContext.current
     var tint by remember(art, fallback) { mutableStateOf(fallback) }
     LaunchedEffect(art, fallback) {
@@ -58,10 +63,29 @@ internal fun SpectrumBar(art: String?, progress: Float, playing: Boolean, reduce
         update()
         onDispose { owner.lifecycle.removeObserver(observer); LiveSpectrum.visible = false }
     }
-    val levels by LiveSpectrum.bands.collectAsState()
+    val displayed = remember { mutableStateOf(FloatArray(12)) }
+    LaunchedEffect(owner, playing, reduced) {
+        if (!playing || reduced) {
+            displayed.value = FloatArray(12)
+            return@LaunchedEffect
+        }
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            try {
+                var lastFrame = withFrameNanos { it }
+                while (isActive) {
+                    val now = withFrameNanos { it }
+                    displayed.value = smoothSpectrum(displayed.value, LiveSpectrum.bands.value,
+                        ((now - lastFrame) / 1_000_000_000.0).toFloat())
+                    lastFrame = now
+                }
+            } finally {
+                displayed.value = FloatArray(12)
+            }
+        }
+    }
     val accent = if (tint.luminance() < 0.35f) lerp(tint, Color.White, 0.55f) else tint
     Canvas(Modifier.fillMaxWidth().height(30.dp)) {
-        val bars = 36
+        val levels = displayed.value
         val step = size.width / bars
         for (i in 0 until bars) {
             val band = i * (levels.size - 1f) / (bars - 1)
@@ -75,3 +99,4 @@ internal fun SpectrumBar(art: String?, progress: Float, playing: Boolean, reduce
         }
     }
 }
+

@@ -17,9 +17,14 @@ internal object LiveSpectrum : TeeAudioProcessor.AudioBufferSink {
     private var nextFrame = 0L
     private val window = DoubleArray(512) { 0.5 - 0.5 * cos(2 * PI * it / 511) }
     private val samples = DoubleArray(window.size)
+    private val coefficients = DoubleArray(12)
     override fun flush(sampleRateHz: Int, channelCount: Int, encoding: Int) {
         rate = if (encoding == C.ENCODING_PCM_16BIT) sampleRateHz else 0
         channels = channelCount
+        if (rate > 0) for (band in coefficients.indices) {
+            val frequency = min(rate * 0.44, 90.0 * 1.49.pow(band))
+            coefficients[band] = 2 * cos(2 * PI * frequency / rate)
+        }
         nextFrame = 0
         bands.value = FloatArray(12)
     }
@@ -37,8 +42,7 @@ internal object LiveSpectrum : TeeAudioProcessor.AudioBufferSink {
             samples[i] = total / (32768.0 * channels) * window[i * 511 / (count - 1)]
         }
         bands.value = FloatArray(12) { band ->
-            val frequency = min(rate * 0.44, 90.0 * 1.49.pow(band))
-            val coefficient = 2 * cos(2 * PI * frequency / rate)
+            val coefficient = coefficients[band]
             var a = 0.0
             var b = 0.0
             for (i in 0 until count) {
@@ -51,3 +55,4 @@ internal object LiveSpectrum : TeeAudioProcessor.AudioBufferSink {
         }
     }
 }
+

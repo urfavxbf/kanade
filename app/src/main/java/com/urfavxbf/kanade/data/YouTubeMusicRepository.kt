@@ -15,6 +15,10 @@ import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_SONGS
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -48,6 +52,58 @@ object YouTubeMusicRepository {
         })
     }
 
+    data class CatalogItem(val name: String, val subtitle: String, val artwork: String?, val url: String? = null, val artistUrl: String? = null)
+    data class CatalogPage(val items: List<CatalogItem>, val nextPage: Page?)
+    data class ArtistProfile(val description: String, val subscribers: Long, val artwork: String?)
+
+    suspend fun artistProfile(url: String): ArtistProfile = withContext(Dispatchers.IO) {
+        val uri = java.net.URI(url)
+        require(uri.scheme == "https" && uri.host in listOf("youtube.com", "www.youtube.com", "music.youtube.com", "m.youtube.com"))
+        val path = uri.path.orEmpty()
+        require(Regex("^/channel/UC[A-Za-z0-9_-]+$").matches(path))
+        val extractor = ServiceList.YouTube.getChannelExtractor("https://www.youtube.com$path")
+        extractor.fetchPage()
+        ArtistProfile(
+            runCatching { extractor.description }.getOrDefault(""),
+            runCatching { extractor.subscriberCount }.getOrDefault(-1L),
+            runCatching { extractor.avatars.largestArtwork() }.getOrNull(),
+        )
+    }
+
+    suspend fun searchAlbumPage(query: String, page: Page? = null): CatalogPage = withContext(Dispatchers.IO) {
+        val extractor = ServiceList.YouTube.getSearchExtractor(query, listOf(MUSIC_ALBUMS), "")
+        val results = if (page == null) { extractor.fetchPage(); extractor.initialPage } else extractor.getPage(page)
+        val items = results.items.filterIsInstance<PlaylistInfoItem>().map {
+            CatalogItem(it.name, it.uploaderName ?: "Album", it.thumbnails.largestArtwork(), it.url, it.uploaderUrl)
+        }.distinctBy { it.url ?: it.name }
+        CatalogPage(items, results.nextPage?.takeIf { Page.isValid(it) })
+    }
+
+    suspend fun searchCatalog(query: String, artists: Boolean): List<CatalogItem> = withContext(Dispatchers.IO) {
+        val extractor = ServiceList.YouTube.getSearchExtractor(query, listOf(if (artists) MUSIC_ARTISTS else MUSIC_ALBUMS), "")
+        extractor.fetchPage()
+        extractor.initialPage.items.mapNotNull { item ->
+            when (item) {
+                is ChannelInfoItem -> if (artists) CatalogItem(item.name, "Artist", item.thumbnails.largestArtwork(), item.url) else null
+                is PlaylistInfoItem -> if (!artists) CatalogItem(item.name, item.uploaderName ?: "Album", item.thumbnails.largestArtwork(), item.url, item.uploaderUrl) else null
+                else -> null
+            }
+        }.distinctBy { it.name.lowercase() }.take(10)
+    }
+
+    suspend fun albumTracks(url: String, page: Page? = null): SearchPage = withContext(Dispatchers.IO) {
+        val id = YouTubePlaylistId.fromUrl(url) ?: throw IOException("Invalid album address")
+        val extractor = ServiceList.YouTube.getPlaylistExtractor("https://www.youtube.com/playlist?list=$id")
+        val results = if (page == null) { extractor.fetchPage(); extractor.initialPage } else extractor.getPage(page)
+        val tracks = results.items.mapNotNull { item ->
+            val videoId = YouTubeTrackId.fromUrl(item.url) ?: return@mapNotNull null
+            Track(id = "youtube:$videoId", title = item.name, artist = item.uploaderName ?: "Unknown artist",
+                uri = "kanadeyt://track/$videoId", artworkUri = item.thumbnails.largestArtwork(),
+                durationMs = item.duration.coerceAtLeast(0) * 1_000, source = TrackSource.YOUTUBE)
+        }.distinctBy { it.id }
+        SearchPage(tracks, results.nextPage?.takeIf { Page.isValid(it) })
+    }
+
     data class SearchPage(val tracks: List<Track>, val nextPage: Page?)
 
     private fun songsExtractor(query: String) = ServiceList.YouTube.getSearchExtractor(query, listOf(MUSIC_SONGS), "")
@@ -67,10 +123,30 @@ object YouTubeMusicRepository {
         val tracks = page.items.filterIsInstance<StreamInfoItem>().mapNotNull { item ->
             val id = YouTubeTrackId.fromUrl(item.url) ?: return@mapNotNull null
             Track(id = "youtube:$id", title = item.name, artist = item.uploaderName ?: "Unknown artist",
-                uri = "kanadeyt://track/$id", artworkUri = item.thumbnails.lastOrNull()?.url,
+                uri = "kanadeyt://track/$id", artworkUri = item.thumbnails.largestArtwork(),
                 durationMs = item.duration.coerceAtLeast(0) * 1_000, source = TrackSource.YOUTUBE)
         }.distinctBy { it.id }
         return SearchPage(tracks, page.nextPage?.takeIf { Page.isValid(it) })
+    }
+
+    suspend fun captionLines(id: String): List<com.urfavxbf.kanade.lyrics.LyricLine> = withContext(Dispatchers.IO) {
+        if (!YouTubeTrackId.isValid(id)) return@withContext emptyList()
+        val extractor = ServiceList.YouTube.getStreamExtractor("https://www.youtube.com/watch?v=$id")
+        extractor.fetchPage()
+        val language = java.util.Locale.getDefault().language
+        val track = extractor.getSubtitles(org.schabi.newpipe.extractor.MediaFormat.VTT)
+            .filter { it.isUrl && it.content.startsWith("https://") }
+            .sortedWith(compareBy({ it.isAutoGenerated }, { it.languageTag.substringBefore('-') != language },
+                { it.languageTag.substringBefore('-') != "en" }))
+            .firstOrNull() ?: return@withContext emptyList()
+        val connection = java.net.URL(track.content).openConnection() as java.net.HttpURLConnection
+        try {
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
+            connection.inputStream.bufferedReader().use {
+                com.urfavxbf.kanade.lyrics.VideoCaptions.parse(it.readText())
+            }
+        } finally { connection.disconnect() }
     }
 
     @Throws(IOException::class)

@@ -55,43 +55,8 @@ internal fun LiquidGlassPlayPauseButton(
         modifier = Modifier
             .size(62.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(
-                elevation = 8.dp,
-                shape = CircleShape,
-                ambientColor = Color(0xFFCCAB8F).copy(alpha = 0.26f),
-                spotColor = Color(0xFF241711).copy(alpha = 0.24f),
-            )
-            .liquid(backdrop) {
-                shape = CircleShape
-                refraction = 0.50f
-                curve = 0.50f
-                edge = 0.15f
-                dispersion = 0.12f
-                frost = 2.dp
-                saturation = 1.65f
-                tint = Color(0xFFF6EBDF).copy(alpha = 0.18f)
-            }
-            .clip(CircleShape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.26f),
-                        Color(0xFFEADAC9).copy(alpha = 0.06f),
-                        Color.White.copy(alpha = 0.025f),
-                    )
-                )
-            )
-            .border(
-                1.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.84f),
-                        Color.White.copy(alpha = 0.20f),
-                        Color.White.copy(alpha = 0.42f),
-                    )
-                ),
-                CircleShape,
-            )
+            .then(if (LocalControlStyle.current == ControlStyle.SOFT_RAISED) Modifier.softRaised(CircleShape, pressed)
+                else Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.20f)))
             .clickable(
                 interactionSource = source,
                 indication = null,

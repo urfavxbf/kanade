@@ -146,6 +146,9 @@ internal fun MinimalGlassControlButton(
     description: String,
     active: Boolean = false,
     reduceMotion: Boolean,
+    backdrop: LiquidState? = null,
+    contentColor: Color = Color(0xFFF9F3EC),
+    glass: Boolean = true,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -155,39 +158,16 @@ internal fun MinimalGlassControlButton(
         animationSpec = if (reduceMotion) tween(0) else spring(dampingRatio = 0.70f, stiffness = 750f),
         label = "Control press",
     )
-    val shape = RoundedCornerShape(16.dp)
+    val raised = LocalControlStyle.current == ControlStyle.SOFT_RAISED
+    val shape = if (raised) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
             .size(44.dp)
             .graphicsLayer { scaleX = pressedScale; scaleY = pressedScale }
-            .shadow(
-                elevation = if (active) 5.dp else 2.dp,
-                shape = shape,
-                ambientColor = Color(0xFFF4D8B9).copy(alpha = if (active) 0.45f else 0.10f),
-                spotColor = WarmShadow.copy(alpha = 0.18f),
-            )
-            .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    if (active) listOf(
-                        Color(0xFFFFF3E3).copy(alpha = 0.18f),
-                        Color(0xFFE2C7AC).copy(alpha = 0.09f),
-                    ) else listOf(
-                        Color(0xFFFFFAF5).copy(alpha = 0.075f),
-                        Color(0xFFE7DAD0).copy(alpha = 0.025f),
-                    )
-                )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = if (active) 0.64f else 0.43f),
-                        Color.White.copy(alpha = 0.09f),
-                    )
-                ),
-                shape = shape,
-            )
+            .then(if (raised) Modifier.softRaised(shape, pressed)
+                else if (glass) Modifier.warmRaisedGlass(backdrop, radius = 16.dp, elevation = if (active) 5.dp else 2.dp)
+                else Modifier.clip(shape).background(Color.White.copy(alpha = if (active) 0.16f else 0.05f)))
+            .background(if (active && !raised) Color(0xFFFFF3E3).copy(alpha = 0.12f) else Color.Transparent)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -199,7 +179,7 @@ internal fun MinimalGlassControlButton(
     ) {
         KanadeGlyph(
             icon = icon,
-            color = if (active) Color(0xFFFFE4C4) else Color(0xFFF9F3EC),
+            color = if (raised && active) LocalRaisedColors.current.accent else contentColor,
             selected = active,
             size = 22.dp,
             bold = false,
