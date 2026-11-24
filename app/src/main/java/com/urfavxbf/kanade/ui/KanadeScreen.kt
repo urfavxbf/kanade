@@ -1770,14 +1770,15 @@ private fun AlbumImage(artwork: String?, modifier: Modifier, query: CoverQuery?,
 @Composable
 private fun DetailHero(art: @Composable (Dp) -> Unit, details: @Composable () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 20.dp)) {
-        if (maxWidth >= 340.dp && LocalDensity.current.fontScale <= 1.3f) {
+        val availableWidth = maxWidth
+        if (availableWidth >= 340.dp && LocalDensity.current.fontScale <= 1.3f) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                art((maxWidth * 0.38f).coerceAtMost(196.dp))
+                art((availableWidth * 0.38f).coerceAtMost(196.dp))
                 Column(Modifier.weight(1f)) { details() }
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                art(minOf(maxWidth, 156.dp))
+                art(minOf(availableWidth, 156.dp))
                 Column { details() }
             }
         }
